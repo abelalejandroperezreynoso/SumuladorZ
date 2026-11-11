@@ -42,7 +42,7 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 | Saltar | `Espacio` (flexiona las piernas para tomar impulso y despega) |
 | Disparar | Clic izquierdo (mantener para ráfaga) |
 | Golpear | Clic derecho o `F` |
-| Cubrirse / salir de la cobertura | `C` (cerca de un muro y de cara a él) |
+| Cubrirse / salir de la cobertura | `C` (cerca de un muro u objeto) |
 | Cámara / zoom | Ratón / rueda |
 | Reiniciar el mundo | `R` |
 | Iniciar / detener la horda | `H` o el botón superior |
@@ -67,8 +67,10 @@ El zombi usa el mismo modelo del personaje recoloreado (piel verdosa y ropa oscu
 
 - **Campo de tiro** (al frente): dianas a 10, 18 y 27 m y latas sobre una mesa.
 - **Coberturas** (antes de las dianas): muros bajos y altos. Con `C` el personaje se desliza
-  hasta el muro y se pega de espaldas; `A`/`D` lo mueven a lo largo. Tras un muro bajo se
-  agacha y al disparar se levanta para tirar por encima; tras uno alto se asoma por el borde.
+  hasta la cobertura más cercana y se pega de espaldas; `A`/`D` lo mueven a lo largo. Sirve
+  casi cualquier objeto: muros, postes, bloques, el parapeto y también cajas y barriles.
+  Al disparar se asoma: por encima de una cobertura baja, o inclinándose por el borde si hay
+  uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
 - **Cajas, muro de bloques y barriles** (izquierda): para empujar, golpear y derribar.
 - **Sacos de boxeo** (derecha): tres sacos de distinto peso colgados con articulaciones.
