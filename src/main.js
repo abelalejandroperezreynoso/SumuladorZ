@@ -8,7 +8,7 @@ import { Combat } from './combat.js';
 import { Horde } from './horde.js';
 import { Autopilot } from './autopilot.js';
 import { setupTouch } from './touch.js';
-import { setupPWA } from './pwa.js';
+import { setupPWA, setupUpdateButton } from './pwa.js';
 
 setupPWA();
 
@@ -92,6 +92,7 @@ async function start() {
   autoBtn.addEventListener('click', () => { toggleAuto(); autoBtn.blur(); });
 
   setupTouch(input);
+  setupUpdateButton(document.getElementById('update-btn'), showToast);
   overlayMsg.textContent = 'Haz clic o toca para jugar';
   // En móviles se arranca con el propio toque (iOS no siempre genera "click" en un div).
   const begin = (e) => {
