@@ -487,8 +487,17 @@ export class Player {
     };
     this.controller.computeColliderMovement(this.collider, delta, undefined, GROUPS.player);
     const m = this.controller.computedMovement();
+    // Junto a un zombi (otro cuerpo cinemático) el controlador puede devolver más avance
+    // horizontal del pedido; se limita para no salir disparado.
+    let mx = m.x, mz = m.z;
+    const want = Math.hypot(delta.x, delta.z), got = Math.hypot(mx, mz);
+    if (got > want + 1e-4) {
+      const k = want / got;
+      mx *= k;
+      mz *= k;
+    }
     const t = this.body.translation();
-    this.body.setNextKinematicTranslation({ x: t.x + m.x, y: t.y + m.y, z: t.z + m.z });
+    this.body.setNextKinematicTranslation({ x: t.x + mx, y: t.y + m.y, z: t.z + mz });
 
     const wasGrounded = this.grounded;
     this.grounded = this.controller.computedGrounded() && this.velocity.y <= 0;

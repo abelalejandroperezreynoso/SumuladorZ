@@ -17,6 +17,8 @@ export const GROUPS = {
   // Zombis: chocan con todo (también reciben balas) salvo al calcular su propio movimiento.
   enemy: (G_ENEMY << 16) | (ALL & ~G_BULLET),
   enemyBody: (G_ENEMY << 16) | ALL,
+  // Al moverse, un zombi ignora a los demás: se separan con un empuje suave (ver horde.js).
+  enemyMove: (G_ENEMY << 16) | (ALL & ~(G_BULLET | G_ENEMY)),
 };
 
 export async function initPhysics() {
