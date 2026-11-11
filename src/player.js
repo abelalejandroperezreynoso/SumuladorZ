@@ -223,28 +223,36 @@ export class Player {
     this.gun.visible = false;
     this.recoil = 0; // 1 justo al disparar; decae enseguida
 
-    // Vista de esqueleto: oculta las mallas y dibuja huesos gruesos y articulaciones, que se
-    // leen mucho mejor que las líneas de un píxel de SkeletonHelper.
+    // Vista de esqueleto al estilo de Blender: cada hueso es un octaedro alargado, ancho
+    // junto a su origen y afilado hacia la punta, con una esfera en cada articulación.
     this.skeleton = new THREE.Group();
     this.skeleton.visible = false;
     scene.add(this.skeleton);
-    const boneMat = new THREE.MeshBasicMaterial({ color: 0xffd34d, depthTest: false, transparent: true });
-    const jointMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true });
-    const boneGeo = new THREE.CylinderGeometry(0.02, 0.02, 1, 6);
-    const jointGeo = new THREE.SphereGeometry(0.035, 10, 8);
+    const boneMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.7, flatShading: true });
+    const jointMat = new THREE.MeshStandardMaterial({ color: 0xc4c4c4, roughness: 0.5 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x111111 });
+    // Octaedro de longitud 1 sobre +Y: origen, anillo cuadrado al 10 % y punta.
+    const W = 0.1;
+    const boneGeo = new THREE.BufferGeometry();
+    boneGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+      0, 0, 0, W, W, W, W, W, -W, -W, W, -W, -W, W, W, 0, 1, 0,
+    ], 3));
+    boneGeo.setIndex([0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 1, 4, 5, 1, 2, 5, 2, 3, 5, 3, 4, 5, 4, 1]);
+    boneGeo.computeVertexNormals();
+    const edgeGeo = new THREE.EdgesGeometry(boneGeo);
+    const jointGeo = new THREE.SphereGeometry(0.03, 14, 10);
     const SKIP = /Index|Middle|Ring|Pinky|Thumb|^PT|^Root$/; // dedos y huesos auxiliares
     this.stick = { links: [], joints: [] };
     const addLink = (from, to) => {
       const mesh = new THREE.Mesh(boneGeo, boneMat);
-      mesh.renderOrder = 10;
+      mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
       this.skeleton.add(mesh);
       this.stick.links.push({ from, to, mesh });
     };
     model.traverse((o) => {
       if (!o.isBone || SKIP.test(o.name)) return;
       const joint = new THREE.Mesh(jointGeo, jointMat);
-      joint.renderOrder = 11;
-      if (o.name === 'Head') joint.scale.setScalar(3); // la cabeza, más grande
+      if (o.name === 'Head') joint.scale.setScalar(3.5); // la cabeza, más grande
       this.skeleton.add(joint);
       this.stick.joints.push({ bone: o, mesh: joint });
       if (o.parent?.isBone && !SKIP.test(o.parent.name)) addLink(o.parent, o);
@@ -490,9 +498,9 @@ export class Player {
       const len = _a.distanceTo(_h);
       l.mesh.visible = len > 1e-4;
       if (!l.mesh.visible) continue;
-      l.mesh.position.copy(_a).add(_h).multiplyScalar(0.5);
+      l.mesh.position.copy(_a);
       l.mesh.quaternion.setFromUnitVectors(_v.set(0, 1, 0), _h.sub(_a).divideScalar(len));
-      l.mesh.scale.set(1, len, 1);
+      l.mesh.scale.setScalar(len); // el grosor es proporcional a la longitud, como en Blender
     }
   }
 
