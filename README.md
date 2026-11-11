@@ -84,7 +84,14 @@ node tools/watch.cjs salida            # todas las escenas
 node tools/watch.cjs salida zombi giro # solo algunas
 ```
 
-Necesita Playwright con Chromium instalado en el entorno; no es una dependencia del juego.
+`tools/gameplay.cjs` hace jugar una partida larga con un estilo (`bot`, `stand` o `punch`) y
+resume cada oleada: duración, daño recibido, disparos y bajas. Sirve para medir el equilibrio.
+
+```bash
+node tools/gameplay.cjs stand 300
+```
+
+Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependencias del juego.
 
 ## Zonas del mundo de pruebas
 
