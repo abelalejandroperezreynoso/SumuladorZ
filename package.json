@@ -1,11 +1,11 @@
 {
   "name": "sumuladorz",
   "version": "1.0.0",
-  "description": "Videojuego 3D en tercera persona con físicas (Three.js + Rapier)",
+  "description": "Videojuego 3D en tercera persona con f\u00edsicas (Three.js + Rapier)",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --host"
   },
   "repository": {
     "type": "git",

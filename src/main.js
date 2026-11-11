@@ -5,6 +5,7 @@ import { Input } from './input.js';
 import { ThirdPersonCamera } from './camera.js';
 import { Player } from './player.js';
 import { Combat } from './combat.js';
+import { setupTouch } from './touch.js';
 
 const overlay = document.getElementById('overlay');
 const overlayMsg = document.getElementById('overlay-msg');
@@ -36,8 +37,12 @@ async function start() {
   const input = new Input(renderer.domElement);
   const cam = new ThirdPersonCamera(camera);
 
-  overlayMsg.textContent = 'Haz clic para jugar · Esc para liberar el ratón';
-  overlay.addEventListener('click', () => input.lock());
+  setupTouch(input);
+  overlayMsg.textContent = 'Haz clic o toca para jugar';
+  overlay.addEventListener('click', () => {
+    input.lock();
+    if (input.touchMode) overlay.classList.add('hidden');
+  });
   document.addEventListener('pointerlockchange', () => {
     overlay.classList.toggle('hidden', input.locked);
   });

@@ -13,7 +13,19 @@ npm run dev      # abre http://localhost:5173
 npm run build    # versión de producción en dist/
 ```
 
-## Controles
+## Probarlo en el móvil (iPhone / Android)
+
+El juego detecta la pantalla táctil y muestra un joystick y botones. Dos formas de abrirlo:
+
+1. **Misma red wifi:** ejecuta `npm run dev` en el ordenador y abre en el móvil la dirección
+   `Network` que muestra la terminal (por ejemplo `http://192.168.1.20:5173`).
+2. **GitHub Pages:** en el repositorio, *Settings → Pages → Source: GitHub Actions*. Cada cambio en
+   `main` publica el juego en `https://<usuario>.github.io/SumuladorZ/`.
+
+Controles táctiles: joystick a la izquierda (a fondo = correr), arrastrar en la parte derecha para
+mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizontal.
+
+## Controles (teclado y ratón)
 
 | Acción | Tecla |
 | --- | --- |
@@ -44,6 +56,7 @@ npm run build    # versión de producción en dist/
 | `src/camera.js` | Cámara en tercera persona con colisión |
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
 | `src/input.js` | Teclado y ratón |
+| `src/touch.js` | Controles táctiles |
 
 ## Créditos
 

@@ -129,15 +129,13 @@ export class Player {
   /** Antes del paso de física: entrada → movimiento y acciones. */
   update(dt, input, cam, combat) {
     // --- Dirección de movimiento relativa a la cámara ---
-    const ix = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
-    const iz = (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
+    const { x: ix, z: iz, run: running } = input.move();
     const sin = Math.sin(cam.yaw), cos = Math.cos(cam.yaw);
     _v.set(-sin * iz + cos * ix, 0, -cos * iz - sin * ix);
     const moving = _v.lengthSq() > 0;
     if (moving) _v.normalize();
 
     const punching = this.punchT >= 0;
-    const running = input.down('ShiftLeft') || input.down('ShiftRight');
     let speed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
     if (punching) speed *= 0.25;
 
