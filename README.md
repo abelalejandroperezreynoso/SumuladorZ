@@ -68,5 +68,4 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 
 ## Créditos
 
-- Modelo del personaje: *RobotExpressive* de Tomás Laulhé (CC0), con modificaciones de Don McCurdy,
-  distribuido con los ejemplos de Three.js.
+- Modelo del personaje: *Ultimate Animated Character Pack* de Quaternius (CC0), recoloreado.

@@ -14,6 +14,9 @@ const PUNCH_HIT = 0.4; // fracción de la animación en la que conecta
 const FIRE_INTERVAL = 0.14;
 const AIM_HOLD = 0.9; // segundos que mantiene la pose de apuntar tras disparar
 
+// Colores del personaje por material del modelo.
+const PALETTE = { Skin: 0xd9a07a, Shirt: 0x2f7f78, Pants: 0x27324a, Belt: 0x2a1d14, Hair: 0x4a2e1a };
+
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
 const _h = new THREE.Vector3();
@@ -31,10 +34,10 @@ export class Player {
   static async load(scene, physics) {
     // Si la página incrusta el modelo en base64 (hosts que no sirven .glb), se usa ese.
     const loader = new GLTFLoader();
-    const embedded = globalThis.__ROBOT_GLB_B64;
+    const embedded = globalThis.__MODEL_GLB_B64;
     const gltf = embedded
       ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
-      : await loader.loadAsync('models/RobotExpressive.glb');
+      : await loader.loadAsync('models/Character.glb');
     return new Player(scene, physics, gltf);
   }
 
@@ -59,7 +62,14 @@ export class Player {
     const box = new THREE.Box3().setFromObject(model);
     model.scale.setScalar(1.75 / (box.max.y - box.min.y));
     model.traverse((o) => {
-      if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; }
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      o.frustumCulled = false;
+      // El modelo trae materiales por nombre (sin texturas): se colorean aquí.
+      const color = PALETTE[o.material.name];
+      if (color !== undefined) o.material.color.set(color);
+      o.material.roughness = 0.85;
+      o.material.metalness = 0;
     });
     this.model = model;
     scene.add(model);
@@ -70,7 +80,7 @@ export class Player {
       return found;
     };
     this.upperArm = bone('UpperArmR');
-    this.hand = bone('Palm2R') ?? bone('LowerArmR');
+    this.hand = bone('FistR') ?? bone('LowerArmR');
 
     // --- Animaciones ---
     this.mixer = new THREE.AnimationMixer(model);
@@ -78,6 +88,9 @@ export class Player {
     for (const clip of gltf.animations) {
       this.actions[clip.name] = this.mixer.clipAction(clip);
     }
+    // Nombres de estado del juego -> clips del modelo.
+    this.actions.Walking = this.actions.Walk;
+    this.actions.Running = this.actions.Run;
     for (const name of ['Punch', 'Jump']) {
       this.actions[name].setLoop(THREE.LoopOnce);
       this.actions[name].clampWhenFinished = true;
