@@ -25,6 +25,7 @@ self.addEventListener('message', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== location.origin) return;
+  if (request.url.includes('version.json')) return; // siempre de la red, sin caché
   event.respondWith(
     fetch(request)
       .then((response) => {

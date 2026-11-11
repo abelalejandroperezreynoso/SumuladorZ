@@ -87,7 +87,8 @@ export class Input {
     const edge = (i) => now[i] && !prev[i];
     this.padPrev = now;
 
-    if (now.some(Boolean) && !this.padMode) {
+    // Cualquier uso del mando oculta los controles táctiles (touch.js los devuelve al tocar).
+    if (now.some(Boolean) || pad.axes.some((v) => Math.abs(v) > 0.5)) {
       this.padMode = true;
       document.body.classList.add('gamepad');
     }

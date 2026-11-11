@@ -25,6 +25,7 @@
       #horde-btn { position: fixed; left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%); padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; white-space: nowrap; cursor: pointer; touch-action: none; }
       #auto-btn { position: fixed; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
       #bone-btn { position: fixed; left: calc(max(12px, env(safe-area-inset-left)) + 78px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
+      #update-btn { position: fixed; right: calc(max(12px, env(safe-area-inset-right)) + 52px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
       #bone-btn.active { background: rgba(40, 150, 110, 0.75); border-color: rgba(150, 255, 210, 0.7); }
       #auto-btn.active { background: rgba(40, 110, 190, 0.75); border-color: rgba(150, 200, 255, 0.7); }
       #horde-btn.active { background: rgba(150, 30, 30, 0.7); border-color: rgba(255, 140, 140, 0.6); }
@@ -42,6 +43,8 @@
       #touch-ui { display: none; }
       body.touch #touch-ui { display: block; }
       body.touch #controls { display: none; }
+      /* Con mando no hacen falta los controles táctiles (vuelven al tocar la pantalla). */
+      body.gamepad #touch-ui, body.gamepad #rotate { display: none !important; }
       #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.08); left: calc(90px + env(safe-area-inset-left)); top: calc(100% - 100px); opacity: 0.45; pointer-events: none; }
       #stick.active { opacity: 1; }
       #stick-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(255, 255, 255, 0.55); }
@@ -69,6 +72,7 @@
     <button id="horde-btn">▶ Iniciar horda</button>
     <button id="auto-btn">Piloto</button>
     <button id="bone-btn">Esqueleto</button>
+    <button id="update-btn" title="Buscar actualización">⟳</button>
     <div id="health"><div id="health-fill"></div></div>
     <div id="toast"></div>
     <div id="rotate">Gira el teléfono en horizontal para jugar mejor</div>

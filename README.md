@@ -32,10 +32,13 @@ navegador, y tras la primera carga funciona sin conexión. En Android: menú de 
 Controles táctiles: joystick a la izquierda (a fondo = correr), arrastrar en la parte derecha para
 mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizontal.
 
+El botón **⟳** de arriba a la derecha muestra la versión instalada; al pulsarlo comprueba si hay
+una más nueva y, si la hay, recarga el juego con ella.
+
 ## Mando (Xbox, PlayStation…)
 
 Se conecta por Bluetooth y funciona también en iPad/iPhone. Pulsa **Menú** (o cualquier botón)
-para empezar.
+para empezar. Mientras se usa el mando se ocultan los controles táctiles (vuelven al tocar la pantalla).
 
 | Acción | Botón |
 |---|---|

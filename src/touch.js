@@ -32,6 +32,7 @@ export function setupTouch(input) {
   };
 
   addEventListener('touchstart', (e) => {
+    document.body.classList.remove('gamepad'); // se vuelve a jugar con los dedos
     if (!input.touchMode) {
       input.touchMode = true;
       document.body.classList.add('touch');
