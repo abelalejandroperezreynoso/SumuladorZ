@@ -1,0 +1,141 @@
+// Escenas del catálogo de mecánicas: cada una prepara una situación y dice qué pulsar y cuándo.
+// Las usan el catálogo del juego (src/catalog.js, tecla G) y tools/watch.cjs, así que una
+// escena nueva aparece en los dos sitios. Los textos toman sus cifras de los valores reales
+// del juego para no quedar desfasados.
+import { TUNING as T, PLAYER_CLIPS } from './player.js';
+import { ZOMBIE_TUNING as Z, ZOMBIE_CLIPS } from './horde.js';
+import { COMBAT_TUNING as C } from './combat.js';
+import { AUTOPILOT_TUNING as A } from './autopilot.js';
+
+const n = (x, digits = 2) => String(+x.toFixed(digits)).replace('.', ',');
+const jumpHeight = (v) => (v * v) / (2 * T.GRAVITY);
+
+// Acciones de una escena. Reciben `g` (lo mismo que window.__game).
+const key = (k, on = true) => (g) => { if (on) g.input.keys.add(k); else g.input.keys.delete(k); };
+const press = (k) => (g) => { g.input.pressed.add(k); };
+const fire = (on) => (g) => { if (on) g.input.buttons.add(0); else g.input.buttons.delete(0); };
+const all = (...fns) => (g) => { for (const f of fns) f(g); };
+
+/** Deja el mundo limpio y al jugador quieto en (x, z) con la cámara mirando hacia `yaw`. */
+export function place(g, x, z, yaw = 0) {
+  // El piloto de la escena «piloto» seguiría jugando (y matando al zombi) en las siguientes.
+  if (g.autopilot.active) g.autopilot.toggle();
+  g.player.preview(null);
+  g.horde.stop(); g.physics.reset(); g.player.respawn();
+  g.player.body.setTranslation({ x, y: 0.9, z }, true);
+  g.player.body.setNextKinematicTranslation({ x, y: 0.9, z });
+  g.input.keys.clear(); g.input.buttons.clear(); g.input.pressed.clear();
+  g.input.auto = null;
+  g.cam.yaw = yaw; g.cam.pitch = 0.1;
+  for (let i = 0; i < 20; i++) g.tick(1 / 60);
+}
+
+export const GROUPS = [
+  { id: 'movimiento', title: 'Movimiento' },
+  { id: 'combate', title: 'Combate' },
+  { id: 'cobertura', title: 'Cobertura' },
+  { id: 'enemigos', title: 'Enemigos' },
+  { id: 'piloto', title: 'Piloto automático' },
+];
+
+// place: [x, z, rumbo de la cámara]. view: ángulo de la cámara lateral (o función del sujeto).
+// steps: [segundo, acción, rótulo]; los pasos con rótulo son los momentos clave de la ficha.
+export const SCENES = [
+  { id: 'locomocion', group: 'movimiento', title: 'Caminar, correr y carrera rápida',
+    how: 'W A S D caminar · Shift correr · Q carrera rápida',
+    desc: `Tres marchas: ${n(T.WALK_SPEED)}, ${n(T.RUN_SPEED)} y ${n(T.SPRINT_SPEED)} m/s. De caminar a correr se conserva la fase del paso, y ninguna marcha cambia antes de ${n(T.STATE_DWELL)} s para que no parpadee. La carrera rápida se activa con un toque, dura mientras avances y no deja disparar.`,
+    place: [-30, 30, -Math.PI / 2], seconds: 6.4, view: 0,
+    steps: [[0.2, key('KeyW'), 'Empieza a caminar'], [1.8, key('ShiftLeft'), 'Pasa a correr'],
+      [3.4, press('KeyQ'), 'Carrera rápida'], [5.2, all(key('KeyW', false), key('ShiftLeft', false)), 'Suelta y frena']] },
+  { id: 'giro', group: 'movimiento', title: 'Media vuelta en carrera',
+    how: 'W + Shift, luego S',
+    desc: `El cuerpo gira con suavizado y un tope de ${n(T.MAX_TURN)} rad/s: la media vuelta tarda en torno a ${n(Math.PI / T.MAX_TURN)} s en lugar de dar un latigazo.`,
+    place: [0, 30, 0], seconds: 3.2, view: Math.PI / 2,
+    steps: [[0.1, all(key('KeyW'), key('ShiftLeft')), 'Corre hacia delante'],
+      [1.3, all(key('KeyW', false), key('KeyS')), 'Invierte la dirección'], [2.6, key('KeyS', false), 'Suelta']] },
+  { id: 'salto_parado', group: 'movimiento', title: 'Salto parado',
+    how: 'Espacio',
+    desc: `No es instantáneo: flexiona las piernas ${n(T.CROUCH_TIME)} s, despega a ${n(T.JUMP_SPEED)} m/s (unos ${n(jumpHeight(T.JUMP_SPEED))} m de altura) y amortigua la caída con otra flexión de ${n(T.LAND_TIME)} s. El modelo no trae clip de salto: en el aire se usa una zancada de carrera congelada.`,
+    place: [20, 30, 0], seconds: 1.6, view: Math.PI / 2,
+    steps: [[0.1, press('Space'), 'Flexión de impulso'], [0.1 + T.CROUCH_TIME, null, 'Despegue'], [1.0, null, 'Aterrizaje']] },
+  { id: 'salto_carrera', group: 'movimiento', title: 'Salto en carrera',
+    how: 'W + Shift, luego Espacio',
+    desc: `A más velocidad la batida es más corta (hasta ${n(T.SPRINT_CROUCH_TIME)} s a tope) y el salto algo más alto y largo. En el aire casi no se corrige la trayectoria y al caer se conserva el ${n(T.LAND_SLOWDOWN * 100)} % de la velocidad.`,
+    place: [-30, 30, -Math.PI / 2], seconds: 2.6, view: 0,
+    steps: [[0, all(key('KeyW'), key('ShiftLeft')), 'Carrera'], [1.0, press('Space'), 'Batida y salto'], [1.8, null, 'Aterriza y sigue']] },
+
+  { id: 'golpe', group: 'combate', title: 'Puñetazo',
+    how: 'F o clic derecho · mando X',
+    desc: `Dura ${n(T.PUNCH_TIME)} s y conecta al ${n(T.PUNCH_HIT * 100)} % de la animación. Empuja lo que haya delante del personaje y quita 1,5 de vida a un zombi (tienen ${n(Z.HEALTH)}). Mientras golpea se mueve a un cuarto de velocidad.`,
+    place: [20, 30, 0], seconds: 1.2, view: Math.PI * 0.7,
+    steps: [[0.1, press('KeyF'), 'Arranca el golpe'], [0.1 + T.PUNCH_TIME * T.PUNCH_HIT, null, 'Conecta'], [0.1 + T.PUNCH_TIME, null, 'Recupera']] },
+  // Disparo de pie: apuntar y ráfaga parado, y después caminando sin dejar de disparar.
+  { id: 'disparo', group: 'combate', title: 'Apuntar y disparar',
+    how: 'Clic izquierdo (mantener para ráfaga) · mando RT',
+    desc: `El cuerpo gira hacia la mira (hasta ${n(T.AIM_TURN)} rad/s) y el brazo derecho apunta al punto exacto. Una bala cada ${n(T.FIRE_INTERVAL)} s, con retroceso; las balas son cuerpos físicos a ${n(C.BULLET_SPEED)} m/s. Tras soltar mantiene la pose ${n(T.AIM_HOLD)} s. Se puede caminar sin dejar de disparar.`,
+    place: [20, 30, 0], seconds: 3.6, view: Math.PI * 0.7,
+    steps: [[0.3, fire(true), 'Levanta el arma y dispara'], [1.4, key('KeyW'), 'Camina disparando'],
+      [2.6, key('KeyW', false), 'Se detiene'], [3.0, fire(false), 'Deja de disparar']] },
+
+  { id: 'cobertura_baja', group: 'cobertura', title: 'Cobertura baja',
+    how: 'C cubrirse · A / D a lo largo · clic para disparar',
+    desc: `Se desliza hasta el muro (desde ${n(T.COVER_RANGE)} m como mucho), se agacha (la cadera baja ${n(T.COVER_CROUCH)} m) y se desplaza de lado a ${n(T.COVER_CROUCH_SPEED)} m/s con la zancada reducida al ${n(T.STRIDE_CROUCHED * 100)} %. Al disparar se levanta para tirar por encima, o se asoma por el borde si apuntas hacia ese lado.`,
+    place: [-2.8, -3, 0], seconds: 5.2, view: 0.6, dist: 3.2,
+    steps: [[0.1, press('KeyC'), 'Se desliza hasta el muro'], [1.3, key('KeyD'), 'Paso lateral'], [2.2, key('KeyD', false)],
+      [2.6, fire(true), 'Se levanta y dispara'], [3.8, fire(false), 'Vuelve a ocultarse']] },
+  { id: 'cobertura_alta', group: 'cobertura', title: 'Cobertura alta',
+    how: 'C cubrirse · clic para asomarse y disparar',
+    desc: `Tras un muro alto permanece de pie (${n(T.COVER_SPEED)} m/s de lado). Para disparar da un paso corto más allá del borde, si lo hay a menos de ${n(T.PEEK_REACH)} m, e inclina el tronco ${n(T.PEEK_LEAN)} rad. Sin un borde cerca no puede disparar.`,
+    place: [3.3, -3.2, 0], seconds: 4.2, view: -0.5, dist: 3.4,
+    steps: [[0.1, press('KeyC'), 'Se desliza hasta el muro'], [1.4, fire(true), 'Se asoma por el borde y dispara'], [2.8, fire(false), 'Regresa']] },
+  { id: 'cobertura_tumbado', group: 'cobertura', title: 'Cobertura muy baja (tumbado)',
+    how: 'C junto a un objeto de menos de unos 60 cm',
+    desc: `Se tumba boca abajo paralelo al objeto y se arrastra a ${n(T.PRONE_SPEED)} m/s. Para disparar se incorpora de rodillas. No hay clip de arrastre: se usa el de caminar con el modelo girado.`,
+    place: [5.6, -5.5, 0], seconds: 5.6, view: 0.7, dist: 3.4,
+    steps: [[0.1, press('KeyC'), 'Se desliza y se tumba'], [1.6, key('KeyD'), 'Se arrastra'], [2.8, key('KeyD', false)],
+      [3.2, fire(true), 'Se arrodilla y dispara'], [4.4, fire(false), 'Vuelve a tumbarse']] },
+
+  { id: 'zombi', group: 'enemigos', title: 'Zombi: persecución, mordida y muerte',
+    how: 'H inicia la horda',
+    desc: `Persigue a ${n(Z.CHASE_SPEED)} m/s con los brazos extendidos, usando el clip de correr a ritmo lento. A ${n(Z.ATTACK_RANGE)} m muerde: cada mordida dura ${n(Z.ATTACK_TIME)} s y quita ${n(Z.BITE_DAMAGE)} de vida. Un impacto lo aturde ${n(Z.STAGGER)} s; tiene ${n(Z.HEALTH)} de vida (una bala quita 1) y el cadáver queda ${n(Z.CORPSE_TIME)} s.`,
+    place: [20, 20, 0], seconds: 7.5, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
+    before: (g) => {
+      g.horde.start();
+      for (let i = 0; i < 40; i++) g.tick(1 / 60);
+      const z = g.horde.zombies[0];
+      z.body.setTranslation({ x: 20, y: 0.9, z: 31 }, true);
+      z.body.setNextKinematicTranslation({ x: 20, y: 0.9, z: 31 });
+      z.facing = Math.PI;
+      g.tick(1 / 60);
+    },
+    subject: (g) => g.horde.zombies[0],
+    steps: [[0, null, 'Persecución'], [5.2, (g) => g.horde.zombies[0]?.damage(1, g.player), 'Recibe un impacto'],
+      [6.0, (g) => g.horde.zombies[0]?.damage(5, g.player), 'Muere']],
+    keepAlive: true },
+
+  // El piloto automático jugando: se le ve buscar cobertura, asomarse y disparar.
+  { id: 'piloto', group: 'piloto', title: 'Partida del piloto automático',
+    how: 'P o botón «Piloto» · mando: cruceta arriba',
+    desc: `El juego jugándose solo con los mismos controles que un jugador: inicia la horda, busca cobertura (rota entre alta, baja y muy baja), dispara a los zombis que ve a menos de ${n(A.SHOOT_RANGE)} m, huye cuando se acercan a ${n(A.FLEE_START)} m y golpea si lo acorralan. Cada repetición sale distinta.`,
+    place: [0, 0, 0], seconds: 16, view: (s) => s.facing + 2.4, dist: 4.2,
+    before: (g) => { g.input.pressed.add('KeyP'); g.tick(1 / 60); },
+    steps: [], keepAlive: true },
+];
+
+// Para qué usa el juego cada estado de animación (texto de la lista de clips).
+const ROLES = {
+  player: { Idle: 'reposo', Walking: 'caminar y arrastrarse', Running: 'correr', Punch: 'puñetazo',
+    Jump: 'pose de salto (congelado)', CoverLeft: 'paso lateral a cubierto', CoverRight: 'paso lateral a cubierto' },
+  zombie: { Idle: 'quieto', Walk: 'deambular', Run: 'perseguir', Attack: 'morder', Hit: 'aturdido', Death: 'morir' },
+};
+
+/** Todos los clips del modelo con quién los usa y para qué; se calcula del código en uso. */
+export function clipList(animations) {
+  const uses = (map, roles, name) => Object.keys(map).filter((s) => map[s] === name).map((s) => roles[s] ?? s);
+  return animations.map((c) => ({
+    name: c.name,
+    duration: c.duration,
+    player: [...new Set(uses(PLAYER_CLIPS, ROLES.player, c.name))],
+    zombie: [...new Set(uses(ZOMBIE_CLIPS, ROLES.zombie, c.name))],
+  }));
+}

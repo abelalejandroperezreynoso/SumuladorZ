@@ -69,6 +69,7 @@ para empezar. Mientras se usa el mando se ocultan los controles táctiles (vuelv
 | Iniciar / detener la horda | `H` o el botón superior |
 | Piloto automático | `P` o el botón «Piloto» |
 | Ver solo el esqueleto del personaje | `K` o el botón «Esqueleto» |
+| Catálogo de mecánicas y animaciones | `G` o el botón «Catálogo» |
 
 ## Horda de zombis
 
@@ -92,6 +93,26 @@ El botón «Piloto» (o `P`) hace que el juego se juegue solo: inicia la horda, 
 dispara, huye corriendo cuando se le acercan y golpea si lo acorralan. Usa los mismos controles
 que un jugador, así que sirve para ver todas las mecánicas en marcha y para cazar fallos.
 Lleva un registro de la partida en `window.__game.autopilot.log` y `.stats`.
+
+## Catálogo de mecánicas y animaciones
+
+El botón «Catálogo» (o `G`, o el botón de la pantalla de inicio, o añadir `#catalogo` a la
+dirección) abre un catálogo dentro del propio juego. No guarda imágenes: cada ficha ejecuta su
+escena con el motor real y una cámara lateral, así que muestra siempre el juego tal como está.
+
+- **Mecánicas**: locomoción, giro, saltos, golpe, disparo, las tres coberturas, el zombi y el
+  piloto. Cada ficha explica la mecánica con las cifras reales del código, lista sus momentos
+  clave (al pulsarlos se salta a ese instante) y enseña en vivo el estado, los clips que se
+  mezclan con su peso y ritmo, y las poses calculadas por código (flexión, apuntado, retroceso…).
+- **Clips**: los 24 clips del modelo, usados o no, reproducidos sobre el personaje, con quién
+  los usa y para qué.
+- **Mandos**: pausa, avance cuadro a cuadro, velocidad (1×, ½×, ¼×) y vista de esqueleto.
+  Arrastrar sobre la escena gira la cámara y la rueda acerca. Teclado: `←` `→` cambian de
+  ficha, `Espacio` pausa, `K` esqueleto, `Esc` cierra.
+
+Las escenas están en `src/catalog-scenes.js` y las comparte `tools/watch.cjs`: una escena nueva
+aparece en el catálogo y en las tiras de fotogramas. La lista de clips y sus usos sale de
+`PLAYER_CLIPS` y `ZOMBIE_CLIPS`, y las cifras de los textos, de `TUNING`.
 
 ## Observador de animaciones (herramienta de desarrollo)
 
@@ -144,6 +165,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
 | `src/input.js` | Teclado, ratón y mando |
 | `src/touch.js` | Controles táctiles |
+| `src/catalog.js`, `src/catalog-scenes.js` | Catálogo de mecánicas dentro del juego y sus escenas |
 | `src/pwa.js`, `public/sw.js`, `public/manifest.webmanifest` | Instalación como app y modo sin conexión |
 
 ## Créditos

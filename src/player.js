@@ -90,6 +90,20 @@ const _dir = new THREE.Vector3();
 const _pole = new THREE.Vector3();
 const _right = new THREE.Vector3();
 
+// Estado del juego -> clip del modelo. El catálogo lo lee para saber qué clips se usan.
+export const PLAYER_CLIPS = {
+  Idle: 'Idle', Walking: 'Walk', Running: 'Run', Punch: 'Punch_Right',
+  Jump: 'Run', // el modelo no trae salto: zancada de carrera congelada como pose en el aire
+  CoverLeft: 'Run_Left', CoverRight: 'Run_Right', // pasos laterales pegado a una cobertura
+};
+// Valores que el catálogo muestra en sus fichas (así nunca quedan desfasados).
+export const TUNING = {
+  WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
+  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
+  COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
+  PRONE_SPEED, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE,
+};
+
 function dampAngle(a, b, lambda, dt) {
   const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
   return a + d * (1 - Math.exp(-lambda * dt));
@@ -190,18 +204,14 @@ export class Player {
     this.mixer = new THREE.AnimationMixer(model);
     // Nombres de estado del juego -> clips del modelo.
     const clip = (name) => gltf.animations.find((c) => c.name === name);
-    this.actions = {
-      Idle: this.mixer.clipAction(clip('Idle')),
-      Walking: this.mixer.clipAction(clip('Walk')),
-      Running: this.mixer.clipAction(clip('Run')),
-      Punch: this.mixer.clipAction(clip('Punch_Right')),
-      // El modelo no trae salto: se usa una zancada de carrera congelada como pose en el aire.
-      Jump: this.mixer.clipAction(clip('Run').clone()),
-    };
+    this.clips = gltf.animations;
+    this.actions = {};
+    for (const [state, name] of Object.entries(PLAYER_CLIPS)) {
+      // El salto usa una copia del clip de carrera para poder congelarla sin afectar a la carrera.
+      this.actions[state] = this.mixer.clipAction(state === 'Jump' ? clip(name).clone() : clip(name));
+    }
     this.actions.Jump.timeScale = 0;
-    // Pasos laterales para moverse pegado a una cobertura.
-    this.actions.CoverLeft = this.mixer.clipAction(clip('Run_Left'));
-    this.actions.CoverRight = this.mixer.clipAction(clip('Run_Right'));
+    this.previewAction = null; // catálogo: clip suelto que sustituye a las animaciones del juego
     this.actions.CoverLeft.timeScale = this.actions.CoverRight.timeScale = 0.9; // ajustado para que los pies no resbalen a 1,7 m/s
     this.actions.Punch.setLoop(THREE.LoopOnce);
     this.actions.Punch.clampWhenFinished = true;
@@ -696,7 +706,31 @@ export class Player {
     this.updateAnimation(dt, punching);
   }
 
+  /**
+   * Catálogo: reproduce en bucle un clip cualquiera del modelo (aunque el juego no lo use) en
+   * lugar de las animaciones del juego. Sin nombre, vuelve a la animación normal.
+   */
+  preview(name) {
+    const clip = name && this.clips.find((c) => c.name === name);
+    if (!clip && !this.previewAction) return;
+    this.mixer.stopAllAction();
+    this.strideBlend = false;
+    this.previewAction = null;
+    if (clip) {
+      this.previewClips ??= {};
+      this.previewClips[name] ??= clip.clone(); // copia: no hereda el ritmo ni el bucle del juego
+      this.previewAction = this.mixer.clipAction(this.previewClips[name]);
+      this.previewAction.reset().play();
+    }
+    this.current = this.actions.Idle;
+    this.current.reset().setEffectiveWeight(1);
+    if (!clip) this.current.play();
+    this.state = 'Idle';
+    this.stateT = 0;
+  }
+
   updateAnimation(dt, punching) {
+    if (this.previewAction) return this.finishAnimation(dt);
     const s = this.speed;
     let next;
     if (punching) next = 'Punch';
@@ -768,6 +802,10 @@ export class Player {
     // deslizamiento de los pies sin perder naturalidad.
     if (this.state === 'Walking') this.current.timeScale = THREE.MathUtils.clamp(s / 1.25, 0.7, 2);
     if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 4.2, 0.8, 1.9);
+    this.finishAnimation(dt);
+  }
+
+  finishAnimation(dt) {
     // El mezclador no reescribe los valores que no cambian entre fotogramas, así que la
     // flexión del fotograma anterior se deshace a mano antes de animar.
     if (this.neckPosed) {

@@ -26,6 +26,9 @@
       #auto-btn { position: fixed; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
       #bone-btn { position: fixed; left: calc(max(12px, env(safe-area-inset-left)) + 78px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
       #update-btn { position: fixed; right: calc(max(12px, env(safe-area-inset-right)) + 52px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
+      #cat-btn { position: fixed; left: calc(max(12px, env(safe-area-inset-left)) + 182px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
+      @media (max-width: 860px) { #cat-btn { left: max(12px, env(safe-area-inset-left)); top: calc(max(10px, env(safe-area-inset-top)) + 40px); } }
+      #overlay-cat { margin-top: 14px; padding: 9px 18px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.4); background: rgba(20, 26, 34, 0.7); color: #fff; font: 600 14px system-ui, sans-serif; cursor: pointer; }
       #bone-btn.active { background: rgba(40, 150, 110, 0.75); border-color: rgba(150, 255, 210, 0.7); }
       #auto-btn.active { background: rgba(40, 110, 190, 0.75); border-color: rgba(150, 200, 255, 0.7); }
       #horde-btn.active { background: rgba(150, 30, 30, 0.7); border-color: rgba(255, 140, 140, 0.6); }
@@ -39,6 +42,47 @@
       #overlay p { margin: 0; opacity: 0.8; }
       #overlay.hidden { display: none; }
       #rotate { display: none; }
+      /* --- Catálogo de mecánicas (src/catalog.js) --- */
+      body.catalog > :not(canvas):not(#catalog):not(script) { display: none !important; }
+      #catalog { position: fixed; inset: 0; font-size: 13px; line-height: 1.5; }
+      #cat-stage { position: absolute; inset: 0; touch-action: none; cursor: grab; }
+      #cat-stage span { position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); font-size: 11px; opacity: 0.6; text-shadow: 0 1px 2px #000; pointer-events: none; }
+      #cat-panel { position: absolute; left: 0; top: 0; bottom: 0; width: min(340px, 44vw); box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: rgba(12, 16, 22, 0.88); border-right: 1px solid rgba(255, 255, 255, 0.14); }
+      #cat-panel header, .cat-row { display: flex; align-items: center; gap: 6px; }
+      #cat-panel header strong { font-size: 15px; letter-spacing: 0.5px; margin-right: auto; }
+      #catalog button, #cat-select { font: 600 12px system-ui, sans-serif; color: #fff; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; padding: 6px 9px; cursor: pointer; min-height: 30px; }
+      #cat-select { flex: 1; min-width: 0; background: #1a212b; }
+      #catalog button.on { background: #56633c; border-color: #a9bb7c; }
+      .cat-seg { display: flex; }
+      .cat-seg button { border-radius: 0 !important; margin-left: -1px; }
+      .cat-seg button:first-child { border-radius: 6px 0 0 6px !important; margin-left: 0; }
+      .cat-seg button:last-child { border-radius: 0 6px 6px 0 !important; }
+      #cat-bones { margin-left: auto; }
+      #cat-progress { height: 3px; background: rgba(255, 255, 255, 0.15); border-radius: 2px; overflow: hidden; flex: none; }
+      #cat-progress i { display: block; height: 100%; background: #a9bb7c; transform-origin: left center; transform: scaleX(0); }
+      #cat-body { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; }
+      #cat-body p { margin: 0 0 6px; }
+      #cat-body h4 { margin: 8px 0 3px; font: 600 10px ui-monospace, Menlo, monospace; letter-spacing: 1px; text-transform: uppercase; opacity: 0.6; }
+      .cat-state { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; font: 12px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+      .cat-state b { color: #cfe0a4; }
+      .cat-bar { display: grid; grid-template-columns: 108px 1fr 78px; align-items: center; gap: 8px; font: 11px/1.7 ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+      .cat-bar.off { opacity: 0.38; }
+      .cat-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .cat-bar i { height: 5px; background: rgba(255, 255, 255, 0.12); border-radius: 3px; overflow: hidden; }
+      .cat-bar u { display: block; height: 100%; background: #a9bb7c; transform-origin: left center; transform: scaleX(0); }
+      .cat-bar b { font-weight: 400; text-align: right; white-space: nowrap; }
+      .cat-how { font: 12px ui-monospace, Menlo, monospace; opacity: 0.75; }
+      .cat-beats { list-style: none; margin: 4px 0 0; padding: 0; }
+      .cat-beats li { display: flex; gap: 10px; padding: 3px 6px; border-radius: 4px; cursor: pointer; }
+      .cat-beats li b { font: 12px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; color: #a9bb7c; flex: none; width: 48px; }
+      .cat-beats li.on { background: rgba(169, 187, 124, 0.2); }
+      .cat-tag { font: 600 10px ui-monospace, Menlo, monospace; padding: 2px 6px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.3); margin-right: 4px; }
+      .cat-tag.on { background: #56633c; border-color: #a9bb7c; }
+      .cat-tag.zb { color: #8fb277; border-color: #8fb277; }
+      @media (orientation: portrait) {
+        #cat-panel { top: auto; right: 0; width: auto; height: 50%; border-right: 0; border-top: 1px solid rgba(255, 255, 255, 0.14); padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+        #cat-stage span { bottom: calc(50% + 8px); }
+      }
       /* --- Controles táctiles --- */
       #touch-ui { display: none; }
       body.touch #touch-ui { display: block; }
@@ -66,12 +110,13 @@
     <div id="controls" class="panel">
       <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> caminar &nbsp;·&nbsp; <kbd>Shift</kbd> correr &nbsp;·&nbsp; <kbd>Q</kbd> correr rápido &nbsp;·&nbsp; <kbd>Espacio</kbd> saltar<br />
       <kbd>Clic izq.</kbd> disparar &nbsp;·&nbsp; <kbd>Clic der.</kbd> / <kbd>F</kbd> golpear &nbsp;·&nbsp; <kbd>C</kbd> cubrirse<br />
-      <kbd>Ratón</kbd> cámara &nbsp;·&nbsp; <kbd>Rueda</kbd> zoom &nbsp;·&nbsp; <kbd>R</kbd> reiniciar mundo &nbsp;·&nbsp; <kbd>H</kbd> horda &nbsp;·&nbsp; <kbd>P</kbd> piloto &nbsp;·&nbsp; <kbd>K</kbd> esqueleto
+      <kbd>Ratón</kbd> cámara &nbsp;·&nbsp; <kbd>Rueda</kbd> zoom &nbsp;·&nbsp; <kbd>R</kbd> reiniciar mundo &nbsp;·&nbsp; <kbd>H</kbd> horda &nbsp;·&nbsp; <kbd>P</kbd> piloto &nbsp;·&nbsp; <kbd>K</kbd> esqueleto &nbsp;·&nbsp; <kbd>G</kbd> catálogo
     </div>
     <div id="hurt"></div>
     <button id="horde-btn">▶ Iniciar horda</button>
     <button id="auto-btn">Piloto</button>
     <button id="bone-btn">Esqueleto</button>
+    <button id="cat-btn">Catálogo</button>
     <button id="update-btn" title="Buscar actualización">⟳</button>
     <div id="health"><div id="health-fill"></div></div>
     <div id="toast"></div>
@@ -79,6 +124,7 @@
     <div id="overlay">
       <h1>SumuladorZ</h1>
       <p id="overlay-msg">Cargando…</p>
+      <button id="overlay-cat">Catálogo de mecánicas</button>
     </div>
     <script>
       // Diagnóstico de arranque: cualquier error se muestra en pantalla (útil en móviles sin consola).
