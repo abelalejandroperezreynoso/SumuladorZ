@@ -12,10 +12,12 @@ const FOOT = HALF + RADIUS; // del centro del cuerpo a los pies
 const PUNCH_TIME = 0.55; // duración del golpe (s)
 const PUNCH_HIT = 0.4; // fracción de la animación en la que conecta
 const FIRE_INTERVAL = 0.14;
+const JUMP_POSE_TIME = 0.2; // instante del clip de carrera usado como pose de salto
 const AIM_HOLD = 0.9; // segundos que mantiene la pose de apuntar tras disparar
 
-// Colores del personaje por material del modelo.
-const PALETTE = { Skin: 0xd9a07a, Shirt: 0x2f7f78, Pants: 0x27324a, Belt: 0x2a1d14, Hair: 0x4a2e1a };
+// Colores opcionales por nombre de material del modelo (p. ej. { Red_Dark: 0x224488 } para las
+// zapatillas). Vacío = colores originales.
+const PALETTE = {};
 
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
@@ -65,7 +67,6 @@ export class Player {
       if (!o.isMesh) return;
       o.castShadow = true;
       o.frustumCulled = false;
-      // El modelo trae materiales por nombre (sin texturas): se colorean aquí.
       const color = PALETTE[o.material.name];
       if (color !== undefined) o.material.color.set(color);
       o.material.roughness = 0.85;
@@ -80,21 +81,23 @@ export class Player {
       return found;
     };
     this.upperArm = bone('UpperArmR');
-    this.hand = bone('FistR') ?? bone('LowerArmR');
+    this.hand = bone('WristR') ?? bone('LowerArmR');
 
     // --- Animaciones ---
     this.mixer = new THREE.AnimationMixer(model);
-    this.actions = {};
-    for (const clip of gltf.animations) {
-      this.actions[clip.name] = this.mixer.clipAction(clip);
-    }
     // Nombres de estado del juego -> clips del modelo.
-    this.actions.Walking = this.actions.Walk;
-    this.actions.Running = this.actions.Run;
-    for (const name of ['Punch', 'Jump']) {
-      this.actions[name].setLoop(THREE.LoopOnce);
-      this.actions[name].clampWhenFinished = true;
-    }
+    const clip = (name) => gltf.animations.find((c) => c.name === name);
+    this.actions = {
+      Idle: this.mixer.clipAction(clip('Idle')),
+      Walking: this.mixer.clipAction(clip('Walk')),
+      Running: this.mixer.clipAction(clip('Run')),
+      Punch: this.mixer.clipAction(clip('Punch_Right')),
+      // El modelo no trae salto: se usa una zancada de carrera congelada como pose en el aire.
+      Jump: this.mixer.clipAction(clip('Run').clone()),
+    };
+    this.actions.Jump.timeScale = 0;
+    this.actions.Punch.setLoop(THREE.LoopOnce);
+    this.actions.Punch.clampWhenFinished = true;
     this.actions.Punch.timeScale = this.actions.Punch.getClip().duration / PUNCH_TIME;
     this.current = this.actions.Idle;
     this.current.play();
@@ -237,7 +240,7 @@ export class Player {
     if (next !== this.state) {
       const action = this.actions[next];
       action.reset();
-      if (next === 'Jump') action.time = 0.25; // salta la anticipación
+      if (next === 'Jump') action.time = JUMP_POSE_TIME;
       action.crossFadeFrom(this.current, next === 'Punch' ? 0.08 : 0.18, false).play();
       this.current = action;
       this.state = next;

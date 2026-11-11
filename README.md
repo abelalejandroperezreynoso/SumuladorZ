@@ -68,4 +68,4 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 
 ## Créditos
 
-- Modelo del personaje: *Ultimate Animated Character Pack* de Quaternius (CC0), recoloreado.
+- Modelo del personaje: *Ultimate Modular Men Pack* de Quaternius (CC0).
