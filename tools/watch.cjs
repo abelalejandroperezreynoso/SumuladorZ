@@ -1,5 +1,6 @@
 // Observador del juego: reproduce cada mecánica en un navegador sin interfaz, guarda una
-// tira de fotogramas por escena (para revisar las animaciones cuadro a cuadro) y mide la
+// tira de fotogramas por escena a 30 imágenes por segundo (para revisar las animaciones
+// cuadro a cuadro) y mide la
 // calidad del movimiento: pies que resbalan, saltos bruscos de pose y tirones de cámara.
 //
 // Uso:  npx vite --port 5199 &   y luego   node tools/watch.cjs [carpeta de salida] [escena...]
@@ -30,6 +31,7 @@ function install() {
   };
   const NAMES = ['FootL', 'FootR', 'Head', 'WristL', 'WristR', 'Body', 'LowerLegL', 'LowerLegR'];
   const cell = { w: 230, h: 250 };
+  const EVERY = 2; // una imagen cada 2 fotogramas = 30 por segundo
 
   window.W = {
     place(x, z, yaw = 0) {
@@ -44,16 +46,22 @@ function install() {
      * Ejecuta una escena. steps: [{ t, do(g) }] acciones en el segundo t.
      * subject: () => { model, position, facing, state } a observar (jugador por defecto).
      */
-    record({ seconds, steps = [], every = 6, view = 1.2, dist = 3.6, subject, cols = 8 }) {
+    record({ seconds, steps = [], every = EVERY, view = 1.2, dist = 3.6, subject, cols = 8, rowsPerSheet = 6 }) {
       const sub = subject ? subject() : g.player;
       const bones = bonesOf(sub.model, NAMES);
       const frames = Math.round(seconds * 60);
+      // A 30 imágenes por segundo una escena no cabe en una sola lámina: se reparte en varias.
+      const perSheet = cols * rowsPerSheet;
+      const sheets = [];
+      let ctx = null;
+      const newSheet = (cells) => {
+        const sheet = document.createElement('canvas');
+        sheet.width = cols * cell.w; sheet.height = Math.ceil(cells / cols) * cell.h;
+        ctx = sheet.getContext('2d');
+        ctx.fillStyle = '#111'; ctx.fillRect(0, 0, sheet.width, sheet.height);
+        sheets.push(sheet);
+      };
       const shots = Math.ceil(frames / every);
-      const rows = Math.ceil(shots / cols);
-      const sheet = document.createElement('canvas');
-      sheet.width = cols * cell.w; sheet.height = rows * cell.h;
-      const ctx = sheet.getContext('2d');
-      ctx.fillStyle = '#111'; ctx.fillRect(0, 0, sheet.width, sheet.height);
       const cam = g.cam.camera;
       const prev = {}; const p = new THREE_V();
       const feet = [];
@@ -118,7 +126,9 @@ function install() {
           cam.lookAt(root.x, root.y + 0.85, root.z); cam.updateMatrixWorld(true);
           const wasVisible = g.player.model.visible; g.player.model.visible = true;
           realRender(g.scene, cam);
-          const i = f / every, cx = (i % cols) * cell.w, cy = Math.floor(i / cols) * cell.h;
+          const shot = f / every, i = shot % perSheet;
+          if (i === 0) newSheet(Math.min(perSheet, shots - shot));
+          const cx = (i % cols) * cell.w, cy = Math.floor(i / cols) * cell.h;
           const src = g.renderer.domElement, sw = src.height * (cell.w / cell.h);
           ctx.drawImage(src, (src.width - sw) / 2, 0, sw, src.height, cx, cy, cell.w, cell.h);
           ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(cx, cy, cell.w, 16);
@@ -137,7 +147,7 @@ function install() {
         stride[k] = +(m.stride[k] / m.slideN[k]).toFixed(2);
       }
       return {
-        png: sheet.toDataURL('image/png'),
+        pngs: sheets.map((c) => c.toDataURL('image/png')),
         metrics: {
           footSlide: slide, naturalStrideSpeed: stride, maxJointSpeed: +m.maxJoint.toFixed(1), pops: m.pops.slice(0, 12), popCount: m.pops.length,
           rootJerk: +m.rootJerk.toFixed(0), camJerk: +m.camJerk.toFixed(0), maxTurn: +m.turn.toFixed(1),
@@ -152,21 +162,21 @@ const key = (k, on = true) => `g.input.keys.${on ? 'add' : 'delete'}('${k}')`;
 const press = (k) => `g.input.pressed.add('${k}')`;
 const fire = (on) => `g.input.buttons.${on ? 'add' : 'delete'}(0)`;
 const SCENES = {
-  locomocion: { place: [-30, 30, -Math.PI / 2], seconds: 6.4, every: 8, view: 0,
+  locomocion: { place: [-30, 30, -Math.PI / 2], seconds: 6.4, view: 0,
     steps: [[0.2, key('KeyW')], [1.8, key('ShiftLeft')], [3.4, press('KeyQ')], [5.2, key('KeyW', false) + ';' + key('ShiftLeft', false)]] },
-  giro: { place: [0, 30, 0], seconds: 3.2, every: 6, view: Math.PI / 2,
+  giro: { place: [0, 30, 0], seconds: 3.2, view: Math.PI / 2,
     steps: [[0.1, key('KeyW') + ';' + key('ShiftLeft')], [1.3, key('KeyW', false) + ';' + key('KeyS')], [2.6, key('KeyS', false)]] },
-  salto_parado: { place: [20, 30, 0], seconds: 1.6, every: 3, view: Math.PI / 2, steps: [[0.1, press('Space')]] },
-  salto_carrera: { place: [-30, 30, -Math.PI / 2], seconds: 2.6, every: 4, view: 0,
+  salto_parado: { place: [20, 30, 0], seconds: 1.6, view: Math.PI / 2, steps: [[0.1, press('Space')]] },
+  salto_carrera: { place: [-30, 30, -Math.PI / 2], seconds: 2.6, view: 0,
     steps: [[0, key('KeyW') + ';' + key('ShiftLeft')], [1.0, press('Space')]] },
-  golpe: { place: [20, 30, 0], seconds: 1.2, every: 3, view: Math.PI * 0.7, steps: [[0.1, press('KeyF')]] },
-  cobertura_baja: { place: [-2.8, -3, 0], seconds: 5.2, every: 8, view: 0.6, dist: 3.2,
+  golpe: { place: [20, 30, 0], seconds: 1.2, view: Math.PI * 0.7, steps: [[0.1, press('KeyF')]] },
+  cobertura_baja: { place: [-2.8, -3, 0], seconds: 5.2, view: 0.6, dist: 3.2,
     steps: [[0.1, press('KeyC')], [1.3, key('KeyD')], [2.2, key('KeyD', false)], [2.6, fire(true)], [3.8, fire(false)]] },
-  cobertura_alta: { place: [3.3, -3.2, 0], seconds: 4.2, every: 6, view: -0.5, dist: 3.4,
+  cobertura_alta: { place: [3.3, -3.2, 0], seconds: 4.2, view: -0.5, dist: 3.4,
     steps: [[0.1, press('KeyC')], [1.4, fire(true)], [2.8, fire(false)]] },
-  cobertura_tumbado: { place: [5.6, -5.5, 0], seconds: 5.6, every: 8, view: 0.7, dist: 3.4,
+  cobertura_tumbado: { place: [5.6, -5.5, 0], seconds: 5.6, view: 0.7, dist: 3.4,
     steps: [[0.1, press('KeyC')], [1.6, key('KeyD')], [2.8, key('KeyD', false)], [3.2, fire(true)], [4.4, fire(false)]] },
-  zombi: { place: [20, 20, 0], seconds: 7.5, every: 9, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
+  zombi: { place: [20, 20, 0], seconds: 7.5, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
     before: `g.horde.start(); for (let i = 0; i < 40; i++) g.tick(1/60);
       const z = g.horde.zombies[0]; z.body.setTranslation({ x: 20, y: 0.9, z: 31 }, true);
       z.body.setNextKinematicTranslation({ x: 20, y: 0.9, z: 31 }); z.facing = Math.PI; g.tick(1/60);`,
@@ -195,9 +205,12 @@ const SCENES = {
       const view = typeof sc.view === 'string' ? new Function('s', 'return ' + sc.view) : sc.view;
       return W.record({ ...sc, steps, view, subject: sc.subject ? new Function('g', 'return () => ' + sc.subject)(g) : null });
     }, { sc: { ...sc, view: typeof sc.view === 'function' ? sc.view.toString().replace(/^\(s\) => /, '') : sc.view } });
-    fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(res.png.split(',')[1], 'base64'));
+    res.pngs.forEach((png, i) => {
+      const file = res.pngs.length > 1 ? `${name}_${i + 1}.png` : `${name}.png`;
+      fs.writeFileSync(path.join(OUT, file), Buffer.from(png.split(',')[1], 'base64'));
+    });
     report[name] = res.metrics;
-    console.log(name, JSON.stringify(res.metrics));
+    console.log(name, `${res.pngs.length} láminas`, JSON.stringify(res.metrics));
   }
   fs.writeFileSync(path.join(OUT, 'metrics.json'), JSON.stringify(report, null, 2));
   await browser.close();
