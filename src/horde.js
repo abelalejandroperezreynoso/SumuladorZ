@@ -28,6 +28,8 @@ const STAGGER = 0.35;
 const CORPSE_TIME = 4;
 const SPAWN_MIN = 14, SPAWN_MAX = 22; // distancia al jugador al aparecer (m)
 const WAVE_DELAY = 2; // pausa entre oleadas (s)
+const SEPARATION = 0.8; // distancia mínima entre zombis (m)
+const SEPARATION_SPEED = 1.5; // velocidad máxima del empuje que los separa (m/s)
 
 // Colores del modelo para convertirlo en zombi: piel verdosa y ropa sucia.
 const ZOMBIE_PALETTE = {
@@ -62,6 +64,8 @@ class Zombie {
     this.sidestep = 0; // desvío temporal para rodear obstáculos (rad)
     this.sidestepT = 0;
     this.vy = 0;
+    this.pushX = 0; // empuje para separarse de otros zombis (m/s)
+    this.pushZ = 0;
     this.bit = false;
     this.arms = 0; // 0 = brazos caídos, 1 = extendidos hacia la presa
 
@@ -251,17 +255,26 @@ class Zombie {
     // --- Movimiento con colisiones ---
     this.vy = this.grounded ? 0 : this.vy - 9.81 * dt;
     const delta = {
-      x: Math.sin(this.facing) * speed * dt,
+      x: (Math.sin(this.facing) * speed + this.pushX) * dt,
       y: this.grounded ? -0.02 : this.vy * dt,
-      z: Math.cos(this.facing) * speed * dt,
+      z: (Math.cos(this.facing) * speed + this.pushZ) * dt,
     };
     const cc = this.horde.controller;
-    cc.computeColliderMovement(this.collider, delta, undefined, GROUPS.enemy);
+    cc.computeColliderMovement(this.collider, delta, undefined, GROUPS.enemyMove);
     const m = cc.computedMovement();
     this.grounded = cc.computedGrounded();
+    // Pegado a otro cuerpo cinemático, el controlador puede devolver más avance del pedido
+    // (el zombi salía disparado): nunca se mueve más rápido de lo que quería.
+    let mx = m.x, mz = m.z;
+    const want = Math.hypot(delta.x, delta.z), got = Math.hypot(mx, mz);
+    if (got > want) {
+      const k = got > 1e-6 ? want / got : 0;
+      mx *= k;
+      mz *= k;
+    }
     const t = this.body.translation();
-    this.body.setNextKinematicTranslation({ x: t.x + m.x, y: t.y + m.y, z: t.z + m.z });
-    this.moveSpeed = Math.hypot(m.x, m.z) / dt;
+    this.body.setNextKinematicTranslation({ x: t.x + mx, y: t.y + m.y, z: t.z + mz });
+    this.moveSpeed = Math.hypot(mx, mz) / dt;
 
     // Si algo le corta el paso, se desvía un rato hacia un lado para rodearlo.
     this.sidestepT -= dt;
@@ -421,6 +434,22 @@ export class Horde {
           this.zombies.push(new Zombie(this, p.x, p.z));
         }
         this.onWave?.(this.wave);
+      }
+    }
+    // Los zombis no chocan entre sí: un empuje suave evita que se amontonen.
+    const zs = this.zombies;
+    for (const z of zs) z.pushX = z.pushZ = 0;
+    for (let i = 0; i < zs.length; i++) {
+      if (!zs[i].alive) continue;
+      for (let j = i + 1; j < zs.length; j++) {
+        if (!zs[j].alive) continue;
+        let dx = zs[i].position.x - zs[j].position.x, dz = zs[i].position.z - zs[j].position.z;
+        let d = Math.hypot(dx, dz);
+        if (d >= SEPARATION) continue;
+        if (d < 1e-3) { dx = Math.random() - 0.5; dz = Math.random() - 0.5; d = Math.hypot(dx, dz); }
+        const push = Math.min((SEPARATION - d) * 6, SEPARATION_SPEED) / d;
+        zs[i].pushX += dx * push; zs[i].pushZ += dz * push;
+        zs[j].pushX -= dx * push; zs[j].pushZ -= dz * push;
       }
     }
     for (let i = this.zombies.length - 1; i >= 0; i--) {
