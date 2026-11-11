@@ -5,6 +5,7 @@ import { Input } from './input.js';
 import { ThirdPersonCamera } from './camera.js';
 import { Player } from './player.js';
 import { Combat } from './combat.js';
+import { Horde } from './horde.js';
 import { setupTouch } from './touch.js';
 import { setupPWA } from './pwa.js';
 
@@ -12,15 +13,17 @@ setupPWA();
 
 const overlay = document.getElementById('overlay');
 const overlayMsg = document.getElementById('overlay-msg');
-const stats = document.getElementById('stats');
+const hordeBtn = document.getElementById('horde-btn');
+const healthFill = document.getElementById('health-fill');
+const hurt = document.getElementById('hurt');
+const toast = document.getElementById('toast');
 
-const STATE_LABEL = { Idle: 'Quieto', Walking: 'Caminando', Running: 'Corriendo', Jump: 'En el aire', Punch: 'Golpeando' };
-
-function stateLabel(player) {
-  if (player.jumpT >= 0) return 'Tomando impulso';
-  const c = player.cover;
-  if (c) return !c.attached ? 'Deslizándose a cubierto' : c.peek > 0.3 ? 'Asomado' : c.high ? 'Cobertura alta' : 'Cobertura baja';
-  return STATE_LABEL[player.state] ?? player.state;
+let toastTimer = 0;
+function showToast(text) {
+  toast.textContent = text;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
 }
 
 const status = (text) => window.__bootStatus?.(text);
@@ -49,6 +52,20 @@ async function start() {
   status('Cargando personaje…');
   const player = await Player.load(scene, physics);
   const combat = new Combat(scene, physics);
+  combat.player = player;
+  const horde = new Horde(scene, physics, player.assets);
+  horde.onWave = (n) => showToast(`Oleada ${n}`);
+  let shotsHeard = 0, hudKey = '';
+  const toggleHorde = () => {
+    if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
+  };
+  // En táctil el botón se pulsa directamente; con teclado se usa H.
+  hordeBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    input.pressed.add('KeyH');
+  }, { passive: false });
+  hordeBtn.addEventListener('click', () => { toggleHorde(); hordeBtn.blur(); });
   const input = new Input(renderer.domElement);
   const cam = new ThirdPersonCamera(camera);
 
@@ -72,16 +89,23 @@ async function start() {
 
   const sunOffset = new THREE.Vector3(18, 30, 12);
   const timer = new THREE.Timer();
-  let fps = 60, statsT = 0;
 
   function tick(dt) {
     if (input.justPressed('KeyR') || player.position.y < -20) {
       physics.reset();
       player.respawn();
       combat.targetHits = combat.punchHits = 0;
+      if (horde.active) horde.stop();
+    }
+    if (input.justPressed('KeyH')) toggleHorde();
+    if (player.dead) {
+      showToast(horde.active ? `Te comieron en la oleada ${horde.wave}` : 'Te comieron');
+      horde.stop();
+      player.respawn();
     }
 
     player.update(dt, input, cam, combat);
+    horde.update(dt, player);
     physics.step(dt);
     physics.sync(dt);
     combat.update(dt);
@@ -90,6 +114,12 @@ async function start() {
     cam.update(dt, input, { x: t.x, y: t.y - 0.87, z: t.z }, physics);
     camera.updateMatrixWorld(true);
     player.postPhysics(dt, cam, combat);
+    horde.postPhysics();
+    // Los disparos hacen ruido y atraen a los zombis cercanos.
+    if (player.shots !== shotsHeard) {
+      shotsHeard = player.shots;
+      horde.noise(player.position);
+    }
 
     // La sombra del sol sigue al jugador.
     sun.target.position.copy(player.position);
@@ -98,15 +128,18 @@ async function start() {
     renderer.render(scene, camera);
     input.endFrame();
 
-    fps += (1 / Math.max(dt, 1e-4) - fps) * 0.05;
-    statsT -= dt;
-    if (statsT <= 0) {
-      statsT = 0.15;
-      stats.innerHTML =
-        `${stateLabel(player)} · ${player.speed.toFixed(1)} m/s<br>` +
-        `Dianas alcanzadas: <b>${combat.targetHits}</b> · Golpes: <b>${combat.punchHits}</b><br>` +
-        `Disparos: ${player.shots} · ${fps.toFixed(0)} FPS`;
+    // Interfaz: botón de horda, barra de vida y borde rojo al recibir daño.
+    const alive = horde.alive;
+    const key = `${horde.active}|${horde.wave}|${alive}`;
+    if (key !== hudKey) {
+      hudKey = key;
+      hordeBtn.textContent = !horde.active ? '▶ Iniciar horda'
+        : horde.wave ? `■ Detener horda · Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}`
+        : '■ Detener horda';
+      hordeBtn.classList.toggle('active', horde.active);
     }
+    healthFill.style.transform = `scaleX(${player.healthFraction})`;
+    hurt.style.opacity = Math.max(0, 0.75 - player.hurtT * 0.9) * (player.healthFraction < 1 ? 1 : 0);
   }
   renderer.setAnimationLoop(() => {
     timer.update();
@@ -114,7 +147,7 @@ async function start() {
   });
 
   // Para depuración desde la consola.
-  window.__game = { scene, physics, player, combat, cam, input, renderer, tick };
+  window.__game = { scene, physics, player, combat, horde, cam, input, renderer, tick };
 }
 
 start().catch((err) => {

@@ -7,12 +7,16 @@ export { RAPIER };
 const G_WORLD = 0x0001;
 const G_PLAYER = 0x0002;
 const G_BULLET = 0x0004;
+const G_ENEMY = 0x0010;
 const ALL = 0xffff;
 export const GROUPS = {
   player: (G_PLAYER << 16) | (ALL & ~G_BULLET),
   bullet: (G_BULLET << 16) | (ALL & ~(G_PLAYER | G_BULLET)),
   // Consultas (rayos de apuntado, golpes): todo menos jugador y balas.
-  query: (0x0008 << 16) | G_WORLD,
+  query: (0x0008 << 16) | G_WORLD | G_ENEMY,
+  // Zombis: chocan con todo (también reciben balas) salvo al calcular su propio movimiento.
+  enemy: (G_ENEMY << 16) | (ALL & ~G_BULLET),
+  enemyBody: (G_ENEMY << 16) | ALL,
 };
 
 export async function initPhysics() {

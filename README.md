@@ -44,6 +44,23 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 | Cubrirse / salir de la cobertura | `C` (cerca de un muro y de cara a él) |
 | Cámara / zoom | Ratón / rueda |
 | Reiniciar el mundo | `R` |
+| Iniciar / detener la horda | `H` o el botón superior |
+
+## Horda de zombis
+
+El botón superior (o `H`) inicia y detiene la horda. La oleada 1 suelta un zombi; al matarlo
+llegan dos, luego tres, y así sucesivamente.
+
+- **Visión**: cada zombi deambula hasta detectarte. Ve en un cono de 120° hasta 22 m y los
+  muros le tapan la vista, así que una cobertura te oculta. A menos de 2,5 m te nota aunque
+  esté de espaldas, y los disparos atraen a los que estén a menos de 28 m.
+- **Persecución**: al verte te sigue con los brazos extendidos. Si te pierde, va al último
+  lugar donde te vio y, si no te encuentra, vuelve a deambular.
+- **Ataque**: a corta distancia te muerde (15 de vida). La vida se recupera sola tras 5 s sin
+  daño; si llega a cero, la horda termina y reapareces.
+- **Matarlos**: aguantan 3 balas o 2 puñetazos.
+
+El zombi usa el mismo modelo del personaje recoloreado (piel verdosa y ropa oscura).
 
 ## Zonas del mundo de pruebas
 

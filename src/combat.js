@@ -19,6 +19,7 @@ export class Combat {
     this.physics = physics;
     this.bullets = new Map(); // handle de collider -> bala
     this.sparks = [];
+    this.player = null; // lo asigna main.js (a quién persigue un zombi herido)
     this.targetHits = 0;
     this.punchHits = 0;
 
@@ -96,7 +97,8 @@ export class Combat {
       if (!bullet || bullet.dead) return;
       bullet.dead = true;
       const meta = this.physics.meta.get(b1 ? h2 : h1);
-      if (meta?.body.isDynamic()) this.physics.flash(meta);
+      if (meta?.zombie) meta.zombie.damage(1, this.player);
+      else if (meta?.body.isDynamic()) this.physics.flash(meta);
       this.registerHit(meta, 'bullet');
       const p = bullet.body.translation();
       this.spark(_point.set(p.x, p.y, p.z));
