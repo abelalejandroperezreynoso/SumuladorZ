@@ -7,6 +7,7 @@ import { Player } from './player.js';
 import { Combat } from './combat.js';
 import { Horde } from './horde.js';
 import { Autopilot } from './autopilot.js';
+import { Catalog } from './catalog.js';
 import { setupTouch } from './touch.js';
 import { setupPWA, setupUpdateButton } from './pwa.js';
 
@@ -111,6 +112,7 @@ async function start() {
     overlay.classList.toggle('hidden', input.locked);
   });
 
+  let catalog = null; // catálogo de mecánicas (se crea al final, cuando existe tick)
   const sunOffset = new THREE.Vector3(18, 30, 12);
   const timer = new THREE.Timer();
 
@@ -144,6 +146,9 @@ async function start() {
     player.postPhysics(dt, cam, combat);
     // Si un obstáculo empuja la cámara hasta la cabeza, se oculta el modelo para no taparlo todo.
     player.model.visible = cam.current > 0.75;
+    // Con el catálogo abierto se dibuja desde su cámara lateral (la del juego sigue apuntando).
+    const viewing = catalog?.active;
+    if (viewing) catalog.beforeRender();
     player.updateSkeleton();
     horde.postPhysics();
     // Los disparos hacen ruido y atraen a los zombis cercanos.
@@ -156,18 +161,19 @@ async function start() {
     sun.target.position.copy(player.position);
     sun.position.copy(player.position).add(sunOffset);
 
-    renderer.render(scene, camera);
+    if (!catalog?.skipRender) renderer.render(scene, viewing ? catalog.camera : camera);
     input.endFrame();
 
     // Interfaz: botón de horda, barra de vida y borde rojo al recibir daño.
     const alive = horde.alive;
-    const key = `${horde.active}|${horde.wave}|${alive}`;
+    const key = `${horde.active}|${horde.wave}|${alive}|${autopilot.active}`;
     if (key !== hudKey) {
       hudKey = key;
       hordeBtn.textContent = !horde.active ? '▶ Iniciar horda'
         : horde.wave ? `■ Detener horda · Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}`
         : '■ Detener horda';
       hordeBtn.classList.toggle('active', horde.active);
+      autoBtn.classList.toggle('active', autopilot.active);
     }
     // Carrera rápida: el botón queda marcado y la cámara abre un poco el campo de visión.
     if (player.sprinting !== sprintShown) {
@@ -182,14 +188,33 @@ async function start() {
     healthFill.style.transform = `scaleX(${player.healthFraction})`;
     hurt.style.opacity = Math.max(0, 0.75 - player.hurtT * 0.9) * (player.healthFraction < 1 ? 1 : 0);
   }
+  // Para depuración desde la consola (y para el catálogo y las herramientas de tools/).
+  const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick };
+  catalog = new Catalog(game, { toggleSkeleton });
+  game.catalog = catalog;
+  // El catálogo se abre con su botón, con G, desde la pantalla de inicio o con #catalogo en la dirección.
+  const openCatalog = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    catalog.toggle();
+  };
+  for (const id of ['cat-btn', 'overlay-cat']) {
+    const button = document.getElementById(id);
+    button.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+    button.addEventListener('touchend', openCatalog, { passive: false });
+    button.addEventListener('click', (e) => { openCatalog(e); button.blur(); });
+  }
+  addEventListener('keydown', (e) => { if (e.code === 'KeyG' && !e.repeat) catalog.toggle(); });
+  if (location.hash === '#catalogo') catalog.open();
+
   renderer.setAnimationLoop(() => {
     timer.update();
-    tick(Math.min(timer.getDelta(), 1 / 20));
+    const dt = Math.min(timer.getDelta(), 1 / 20);
+    if (catalog.active) catalog.frame(dt); else tick(dt);
   });
 
-  // Para depuración desde la consola.
   try { sessionStorage.removeItem('bootRetry'); } catch { /* sin almacenamiento */ }
-  window.__game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick };
+  window.__game = game;
 }
 
 start().catch((err) => {

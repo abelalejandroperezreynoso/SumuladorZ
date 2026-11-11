@@ -6,6 +6,7 @@ const BULLET_LIFE = 2.5;
 const BULLET_RADIUS = 0.05;
 const BULLET_MASS = 0.12;
 const MAX_RANGE = 120;
+export const COMBAT_TUNING = { BULLET_SPEED }; // lo muestra el catálogo
 
 const _dir = new THREE.Vector3();
 const _origin = new THREE.Vector3();

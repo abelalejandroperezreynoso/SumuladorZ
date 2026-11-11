@@ -39,6 +39,15 @@ const ZOMBIE_PALETTE = {
   Red_Dark: 0x1a1a18, Hair: 0x1c1a14, Eye: 0xd8d2a0, White: 0x9aa08a,
 };
 
+// Estado del zombi -> clip del modelo, y los valores que muestra el catálogo.
+export const ZOMBIE_CLIPS = {
+  Idle: 'Idle', Walk: 'Walk', Run: 'Run', Attack: 'Punch_Left', Hit: 'HitRecieve', Death: 'Death',
+};
+export const ZOMBIE_TUNING = {
+  VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
+  BITE_DAMAGE, HEALTH, STAGGER, CORPSE_TIME, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
+};
+
 const _to = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
@@ -82,10 +91,7 @@ class Zombie {
     horde.scene.add(this.model);
     this.mixer = new THREE.AnimationMixer(this.model);
     const action = (name) => this.mixer.clipAction(horde.clips[name]);
-    this.actions = {
-      Idle: action('Idle'), Walk: action('Walk'), Run: action('Run'), Attack: action('Punch_Left'),
-      Hit: action('HitRecieve'), Death: action('Death'),
-    };
+    this.actions = Object.fromEntries(Object.entries(ZOMBIE_CLIPS).map(([state, name]) => [state, action(name)]));
     for (const name of ['Attack', 'Hit', 'Death']) {
       this.actions[name].setLoop(THREE.LoopOnce);
       this.actions[name].clampWhenFinished = true;

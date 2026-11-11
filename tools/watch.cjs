@@ -37,16 +37,7 @@ function install(skeleton) {
   const EVERY = 2; // una imagen cada 2 fotogramas = 30 por segundo
 
   window.W = {
-    place(x, z, yaw = 0) {
-      // El piloto de la escena «piloto» seguiría jugando (y matando al zombi) en las siguientes.
-      if (g.autopilot.active) g.autopilot.toggle();
-      g.horde.stop(); g.physics.reset(); g.player.respawn();
-      g.player.body.setTranslation({ x, y: 0.9, z }, true);
-      g.player.body.setNextKinematicTranslation({ x, y: 0.9, z });
-      g.input.keys.clear(); g.input.buttons.clear(); g.input.pressed.clear();
-      g.cam.yaw = yaw; g.cam.pitch = 0.1;
-      for (let i = 0; i < 20; i++) g.tick(DT);
-    },
+    place: (x, z, yaw) => g.catalog.place(x, z, yaw), // la misma colocación que usa el catálogo del juego
     /**
      * Ejecuta una escena. steps: [{ t, do(g) }] acciones en el segundo t.
      * subject: () => { model, position, facing, state } a observar (jugador por defecto).
@@ -162,39 +153,8 @@ function install(skeleton) {
   };
 }
 
-// Escenas: cada una prepara la situación y describe qué pulsar y cuándo.
-const key = (k, on = true) => `g.input.keys.${on ? 'add' : 'delete'}('${k}')`;
-const press = (k) => `g.input.pressed.add('${k}')`;
-const fire = (on) => `g.input.buttons.${on ? 'add' : 'delete'}(0)`;
-const SCENES = {
-  locomocion: { place: [-30, 30, -Math.PI / 2], seconds: 6.4, view: 0,
-    steps: [[0.2, key('KeyW')], [1.8, key('ShiftLeft')], [3.4, press('KeyQ')], [5.2, key('KeyW', false) + ';' + key('ShiftLeft', false)]] },
-  giro: { place: [0, 30, 0], seconds: 3.2, view: Math.PI / 2,
-    steps: [[0.1, key('KeyW') + ';' + key('ShiftLeft')], [1.3, key('KeyW', false) + ';' + key('KeyS')], [2.6, key('KeyS', false)]] },
-  salto_parado: { place: [20, 30, 0], seconds: 1.6, view: Math.PI / 2, steps: [[0.1, press('Space')]] },
-  salto_carrera: { place: [-30, 30, -Math.PI / 2], seconds: 2.6, view: 0,
-    steps: [[0, key('KeyW') + ';' + key('ShiftLeft')], [1.0, press('Space')]] },
-  golpe: { place: [20, 30, 0], seconds: 1.2, view: Math.PI * 0.7, steps: [[0.1, press('KeyF')]] },
-  // Disparo de pie: apuntar y ráfaga parado, y después caminando sin dejar de disparar.
-  disparo: { place: [20, 30, 0], seconds: 3.6, view: Math.PI * 0.7,
-    steps: [[0.3, fire(true)], [1.4, key('KeyW')], [2.6, key('KeyW', false)], [3.0, fire(false)]] },
-  cobertura_baja: { place: [-2.8, -3, 0], seconds: 5.2, view: 0.6, dist: 3.2,
-    steps: [[0.1, press('KeyC')], [1.3, key('KeyD')], [2.2, key('KeyD', false)], [2.6, fire(true)], [3.8, fire(false)]] },
-  cobertura_alta: { place: [3.3, -3.2, 0], seconds: 4.2, view: -0.5, dist: 3.4,
-    steps: [[0.1, press('KeyC')], [1.4, fire(true)], [2.8, fire(false)]] },
-  cobertura_tumbado: { place: [5.6, -5.5, 0], seconds: 5.6, view: 0.7, dist: 3.4,
-    steps: [[0.1, press('KeyC')], [1.6, key('KeyD')], [2.8, key('KeyD', false)], [3.2, fire(true)], [4.4, fire(false)]] },
-  // El piloto automático jugando: se le ve buscar cobertura, asomarse y disparar.
-  piloto: { place: [0, 0, 0], seconds: 16, view: (s) => s.facing + 2.4, dist: 4.2,
-    before: `g.input.pressed.add('KeyP'); g.tick(1/60);`, steps: [], keepAlive: true },
-  zombi: { place: [20, 20, 0], seconds: 7.5, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
-    before: `g.horde.start(); for (let i = 0; i < 40; i++) g.tick(1/60);
-      const z = g.horde.zombies[0]; z.body.setTranslation({ x: 20, y: 0.9, z: 31 }, true);
-      z.body.setNextKinematicTranslation({ x: 20, y: 0.9, z: 31 }); z.facing = Math.PI; g.tick(1/60);`,
-    subject: 'g.horde.zombies[0]',
-    steps: [[5.2, `g.horde.zombies[0].damage(1, g.player)`], [6.0, `g.horde.zombies[0].damage(5, g.player)`]],
-    keepAlive: true },
-};
+// Las escenas (qué pulsar y cuándo) están en src/catalog-scenes.js: son las mismas que muestra
+// el catálogo del juego (tecla G).
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
@@ -205,17 +165,18 @@ const SCENES = {
   await page.waitForFunction(() => window.__game, null, { timeout: 60000 });
   await page.evaluate(install, !!process.env.SKELETON);
   const report = {};
-  for (const [name, sc] of Object.entries(SCENES)) {
+  const names = await page.evaluate(() => window.__game.catalog.scenes.map((s) => s.id));
+  for (const name of names) {
     if (ONLY.length && !ONLY.includes(name)) continue;
-    const res = await page.evaluate(({ sc, every }) => {
+    const res = await page.evaluate(({ name, every }) => {
       const g = window.__game;
+      const sc = g.catalog.scenes.find((s) => s.id === name);
       W.place(...sc.place);
-      if (sc.before) new Function('g', sc.before)(g);
-      const steps = sc.steps.map(([t, code]) => ({ t, do: new Function('g', code) }));
+      sc.before?.(g);
+      const steps = sc.steps.filter((s) => s[1]).map(([t, run]) => ({ t, do: run }));
       if (sc.keepAlive) steps.push(...Array.from({ length: 40 }, (_, i) => ({ t: i * 0.25, do: (g) => { g.player.health = 100; } })));
-      const view = typeof sc.view === 'string' ? new Function('s', 'return ' + sc.view) : sc.view;
-      return W.record({ ...sc, ...(every ? { every } : {}), steps, view, subject: sc.subject ? new Function('g', 'return () => ' + sc.subject)(g) : null });
-    }, { every: +process.env.EVERY || 0, sc: { ...sc, view: typeof sc.view === 'function' ? sc.view.toString().replace(/^\(s\) => /, '') : sc.view } });
+      return W.record({ ...sc, ...(every ? { every } : {}), steps, subject: sc.subject ? () => sc.subject(g) : null });
+    }, { name, every: +process.env.EVERY || 0 });
     res.pngs.forEach((png, i) => {
       const file = res.pngs.length > 1 ? `${name}_${i + 1}.png` : `${name}.png`;
       fs.writeFileSync(path.join(OUT, file), Buffer.from(png.split(',')[1], 'base64'));

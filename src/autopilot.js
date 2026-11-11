@@ -14,6 +14,7 @@ const COVER_SEEK = 7; // con los zombis más lejos que esto, busca una cobertura
 const COVER_SCAN = 16; // alcance de esa búsqueda (m)
 const COVER_VARIETY = 6; // metros de más que acepta recorrer por un tipo de cobertura menos usado
 const FRUSTRATION = 2.5; // segundos disparando sin hacer daño antes de recolocarse
+export const AUTOPILOT_TUNING = { SHOOT_RANGE, FLEE_START }; // lo muestra el catálogo
 const AIM_TOLERANCE = 0.05; // error de puntería admitido para apretar el gatillo (rad)
 
 const _dir = new THREE.Vector3();
