@@ -38,6 +38,8 @@ function install(skeleton) {
 
   window.W = {
     place(x, z, yaw = 0) {
+      // El piloto de la escena «piloto» seguiría jugando (y matando al zombi) en las siguientes.
+      if (g.autopilot.active) g.autopilot.toggle();
       g.horde.stop(); g.physics.reset(); g.player.respawn();
       g.player.body.setTranslation({ x, y: 0.9, z }, true);
       g.player.body.setNextKinematicTranslation({ x, y: 0.9, z });
