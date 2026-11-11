@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RAPIER, GROUPS } from './physics.js';
+// Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
+// se confunde con uno antiguo guardado en la caché del navegador.
+import modelUrl from './assets/Character.glb?url';
 
 const WALK_SPEED = 2.2;
 const RUN_SPEED = 6.0;
@@ -39,7 +42,7 @@ export class Player {
     const embedded = globalThis.__MODEL_GLB_B64;
     const gltf = embedded
       ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
-      : await loader.loadAsync('models/Character.glb');
+      : await loader.loadAsync(modelUrl);
     return new Player(scene, physics, gltf);
   }
 
