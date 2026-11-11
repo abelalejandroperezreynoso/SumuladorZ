@@ -1,9 +1,10 @@
 import { RAPIER, GROUPS } from './physics.js';
 
-// Alturas (sobre los pies) a las que se sondea un objeto: si lo hay a media pierna sirve de
-// cobertura baja; si además lo hay por encima de la cabeza, es alta.
-export const COVER_LOW_Y = 0.45;
-export const COVER_HIGH_Y = 1.6;
+// Alturas (sobre los pies) a las que se sondea un objeto. Según hasta dónde llegue, la
+// cobertura es muy baja (solo tapa tumbado), baja (agachado) o alta (de pie).
+export const COVER_BASE_Y = 0.22; // mínimo para que algo cubra
+export const COVER_LOW_Y = 0.62; // por debajo de esto, cobertura muy baja
+export const COVER_HIGH_Y = 1.6; // por encima de esto, cobertura alta
 const MIN_COVER_MASS = 5; // los objetos sueltos más ligeros (latas, ladrillos, dianas) no cubren
 
 // Sirve de cobertura todo lo fijo y los objetos sueltos con peso suficiente (cajas, barriles).

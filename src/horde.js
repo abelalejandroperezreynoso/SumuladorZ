@@ -124,9 +124,9 @@ class Zombie {
       const facingDot = (dx * Math.sin(this.facing) + dz * Math.cos(this.facing)) / dist;
       if (facingDot < VIEW_COS) return false;
     }
-    // Línea de visión de los ojos a la cabeza del jugador (más baja si está agachado a cubierto).
+    // Línea de visión de los ojos a la cabeza del jugador (más baja si está agachado o tumbado a cubierto).
     const eye = { x: this.position.x, y: this.position.y + EYE, z: this.position.z };
-    const headY = player.position.y + 1.45 - 0.6 * player.coverCrouch;
+    const headY = player.position.y + player.headHeight;
     _to.set(dx, headY - eye.y, dz);
     const len = _to.length();
     _to.divideScalar(len);

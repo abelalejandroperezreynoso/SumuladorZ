@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
-import { probeWall, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
+import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
 // se confunde con uno antiguo guardado en la caché del navegador.
 import modelUrl from './assets/Character.glb?url';
@@ -41,6 +41,10 @@ const PEEK_LEAN = 0.3; // inclinación lateral del tronco al asomarse (rad)
 // Cuánto se agacha (0-1) en cada postura de cobertura.
 const CROUCH_HIDE = 1; // oculto tras una cobertura baja
 const CROUCH_OVER = 0.14; // disparando por encima
+const CROUCH_KNEEL = 0.9; // incorporado para disparar por encima de una cobertura muy baja
+const PRONE_SPEED = 0.8; // velocidad arrastrándose (m/s)
+const PRONE_BACK = 0.85; // el cuerpo tumbado se centra sobre la cápsula (m)
+const PRONE_LIFT = 0.14; // altura del eje del cuerpo tumbado sobre el suelo (m)
 const CROUCH_SIDE_LOW = 0.78; // asomado por el borde de una cobertura baja
 const CROUCH_SIDE_HIGH = 0.2; // asomado por el borde de una cobertura alta
 const CROUCH_DEPTH = 0.3;
@@ -117,6 +121,7 @@ export class Player {
     this.dead = false;
     this.cover = null; // { nx, nz, high, attached, peek, peekDir, away } mientras está a cubierto
     this.coverCrouch = 0;
+    this.prone = 0; // 0 = erguido, 1 = tumbado boca abajo tras una cobertura muy baja
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando el arma
     this.canFire = true;
@@ -166,6 +171,9 @@ export class Player {
     this.posed = false;
     this.hand = bone('WristR') ?? bone('LowerArmR');
     this.handL = bone('WristL') ?? bone('LowerArmL');
+    this.neck = bone('Neck');
+    this.neckRest = new THREE.Quaternion();
+    this.neckPosed = false;
 
     // --- Animaciones ---
     this.mixer = new THREE.AnimationMixer(model);
@@ -285,6 +293,11 @@ export class Player {
     this.dead = false;
   }
 
+  /** Altura de la cabeza sobre los pies: baja al agacharse o tumbarse a cubierto. */
+  get headHeight() {
+    return THREE.MathUtils.lerp(1.45 - 0.6 * this.coverCrouch, 0.3, this.prone);
+  }
+
   get healthFraction() {
     return this.health / MAX_HEALTH;
   }
@@ -303,7 +316,7 @@ export class Player {
   tryEnterCover(dirs) {
     const world = this.physics.world;
     const t = this.body.translation();
-    const y = t.y - FOOT + COVER_LOW_Y;
+    const y = t.y - FOOT + COVER_BASE_Y;
     let best = null;
     for (const d of dirs) {
       const hit = probeWall(world, t.x, y, t.z, d.x, d.z, COVER_RANGE);
@@ -319,7 +332,7 @@ export class Player {
     }
     if (!best) return false;
     this.cover = {
-      nx: best.nx, nz: best.nz, high: false, attached: false, away: 0,
+      nx: best.nx, nz: best.nz, high: false, veryLow: false, proneDir: 1, attached: false, away: 0,
       mode: null, // al apuntar: 'over' (por encima), 'side' (por el borde) o 'blocked'
       peek: 0, peekDir: 0, peekGoal: 0,
     };
@@ -342,18 +355,19 @@ export class Player {
     // Mantiene el contacto con el muro (salvo mientras se asoma más allá del borde).
     let gap = 0;
     if (c.peek < 0.02) {
-      const hit = wall(t.x, t.z, COVER_LOW_Y, c.attached ? 1 : COVER_RANGE + 0.6);
+      const hit = wall(t.x, t.z, COVER_BASE_Y, c.attached ? 1 : COVER_RANGE + 0.6);
       if (!hit) return this.leaveCover();
       c.nx = hit.nx;
       c.nz = hit.nz;
       gap = hit.dist - (RADIUS + COVER_GAP);
       if (gap < 0.12) c.attached = true;
       c.high = !!wall(t.x, t.z, COVER_HIGH_Y, hit.dist + 0.5);
+      c.veryLow = !c.high && !wall(t.x, t.z, COVER_LOW_Y, hit.dist + 0.5);
     }
     const tx = c.nz, tz = -c.nx; // tangente al muro
     // ¿Se acaba el muro a esa distancia lateral?
     const ends = (side, reach) =>
-      !wall(t.x + tx * side * reach, t.z + tz * side * reach, COVER_LOW_Y, RADIUS + 0.8);
+      !wall(t.x + tx * side * reach, t.z + tz * side * reach, COVER_BASE_Y, RADIUS + 0.8);
 
     // Desplazamiento lateral; tirar hacia fuera un instante despega del muro.
     let along = 0;
@@ -380,7 +394,8 @@ export class Player {
       if (c.high) {
         const camSide = Math.sign(Math.cos(cam.yaw) * tx - Math.sin(cam.yaw) * tz) || 1;
         dir = left < Infinity && right < Infinity ? camSide : right < Infinity ? 1 : left < Infinity ? -1 : 0;
-      } else if (right < Infinity && aimSide > 0.3) dir = 1;
+      } else if (c.veryLow) dir = 0; // tumbado solo se dispara incorporándose
+      else if (right < Infinity && aimSide > 0.3) dir = 1;
       else if (left < Infinity && aimSide < -0.3) dir = -1;
       c.peekDir = dir;
       // El arma va en la mano derecha (lado +tangente al encarar el muro).
@@ -394,7 +409,8 @@ export class Player {
     c.peek += peekV * dt;
     if (c.peek > 0.02 || peekTarget) along = 0;
 
-    const vt = along * COVER_SPEED + c.peekDir * peekV;
+    if (along) c.proneDir = along; // tumbado, la cabeza apunta hacia donde se arrastra
+    const vt = along * (c.veryLow ? PRONE_SPEED : COVER_SPEED) + c.peekDir * peekV;
     const vn = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
     this.velocity.x = tx * vt - c.nx * vn;
     this.velocity.z = tz * vt - c.nz * vn;
@@ -452,22 +468,24 @@ export class Player {
     }
     // Agachado tras una cobertura baja; al apuntar se levanta para disparar por encima.
     const cover = this.cover;
-    let coverCrouchTarget = 0, leanTarget = 0;
+    let coverCrouchTarget = 0, leanTarget = 0, proneTarget = 0;
     if (cover?.attached) {
       const out = cover.peekGoal ? cover.peek / cover.peekGoal : 0; // 0-1: cuánto se ha asomado
       if (cover.mode === 'side') {
         const rest = cover.high ? 0 : CROUCH_HIDE;
         coverCrouchTarget = THREE.MathUtils.lerp(rest, cover.high ? CROUCH_SIDE_HIGH : CROUCH_SIDE_LOW, out);
         leanTarget = cover.peekDir * PEEK_LEAN * out;
-      } else if (cover.mode === 'over') coverCrouchTarget = CROUCH_OVER;
+      } else if (cover.mode === 'over') coverCrouchTarget = cover.veryLow ? CROUCH_KNEEL : CROUCH_OVER;
+      else if (cover.veryLow) proneTarget = 1;
       else if (!cover.high) coverCrouchTarget = CROUCH_HIDE;
     }
+    this.prone = THREE.MathUtils.damp(this.prone, proneTarget, 9, dt);
     this.coverCrouch = THREE.MathUtils.damp(this.coverCrouch, coverCrouchTarget, 11, dt);
     this.coverLean = THREE.MathUtils.damp(this.coverLean, leanTarget, 11, dt);
     this.coverGrip = THREE.MathUtils.damp(this.coverGrip, cover?.attached && coverAim ? 1 : 0, 10, dt);
     this.canFire = !cover || (cover.attached && (
       cover.mode === 'side' ? cover.peek > cover.peekGoal * 0.8
-        : cover.mode === 'over' && this.coverCrouch < 0.45
+        : cover.mode === 'over' && (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
     ));
 
     // --- Salto y gravedad ---
@@ -539,6 +557,10 @@ export class Player {
     } else if (cover) {
       // De espaldas al muro; durante el deslizamiento de entrada, de cara a él.
       const s = cover.attached ? 1 : -1;
+      if (cover.attached && cover.veryLow) {
+        // Tumbado: el cuerpo queda paralelo a la cobertura.
+        this.facing = dampAngle(this.facing, Math.atan2(cover.nz * cover.proneDir, -cover.nx * cover.proneDir), 10, dt);
+      } else
       this.facing = dampAngle(this.facing, Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
     } else if (moving && !punching) {
       this.facing = dampAngle(this.facing, Math.atan2(_v.x, _v.z), 12, dt);
@@ -592,7 +614,8 @@ export class Player {
     else if (this.cover?.attached) {
       // Paso lateral según hacia qué lado del personaje se desplaza.
       const side = this.velocity.x * -Math.cos(this.facing) + this.velocity.z * Math.sin(this.facing);
-      next = s < 0.3 ? 'Idle' : side > 0 ? 'CoverRight' : 'CoverLeft';
+      if (this.cover.veryLow) next = s < 0.15 || this.cover.mode ? 'Idle' : 'Walking'; // arrastrarse
+      else next = s < 0.3 ? 'Idle' : side > 0 ? 'CoverRight' : 'CoverLeft';
     }
     else if (s > (WALK_SPEED + RUN_SPEED) / 2) next = 'Running';
     else if (s > 0.35) next = 'Walking';
@@ -611,6 +634,10 @@ export class Player {
     if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 5.2, 0.7, 1.6);
     // El mezclador no reescribe los valores que no cambian entre fotogramas, así que la
     // flexión del fotograma anterior se deshace a mano antes de animar.
+    if (this.neckPosed) {
+      this.neck.quaternion.copy(this.neckRest);
+      this.neckPosed = false;
+    }
     if (this.posed) {
       for (const p of this.poseBones) {
         p.bone.position.copy(p.pos);
@@ -743,7 +770,21 @@ export class Player {
     const t = this.body.translation();
     this.position.set(t.x, t.y - FOOT - 0.02, t.z);
     this.model.position.copy(this.position);
-    this.model.rotation.y = this.facing;
+    // Tumbado: el modelo gira hasta quedar boca abajo y se centra sobre la cápsula.
+    const prone = this.prone > 0.005 ? this.prone : 0;
+    this.model.rotation.set(prone * Math.PI / 2, this.facing, 0, 'YXZ');
+    if (prone) {
+      this.model.position.x -= Math.sin(this.facing) * PRONE_BACK * prone;
+      this.model.position.z -= Math.cos(this.facing) * PRONE_BACK * prone;
+      this.model.position.y += PRONE_LIFT * prone;
+      // Levanta la cabeza para mirar al frente en vez de al suelo.
+      if (this.neck) {
+        this.neckRest.copy(this.neck.quaternion);
+        this.neckPosed = true;
+        this.model.updateMatrixWorld(true);
+        this.turnBone(this.neck, _right.set(Math.cos(this.facing), 0, -Math.sin(this.facing)), -0.9 * prone);
+      }
+    }
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
     if (jc > 0.01 || cc > 0.01 || Math.abs(this.coverLean) > 0.005 || this.coverGrip > 0.01) {
