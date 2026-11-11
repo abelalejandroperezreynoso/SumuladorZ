@@ -14,6 +14,8 @@ export const GROUPS = {
   bullet: (G_BULLET << 16) | (ALL & ~(G_PLAYER | G_BULLET)),
   // Consultas (rayos de apuntado, golpes): todo menos jugador y balas.
   query: (0x0008 << 16) | G_WORLD | G_ENEMY,
+  // Sondeo de coberturas: solo el escenario (ni jugador, ni balas, ni zombis).
+  cover: (0x0008 << 16) | G_WORLD,
   // Zombis: chocan con todo (también reciben balas) salvo al calcular su propio movimiento.
   enemy: (G_ENEMY << 16) | (ALL & ~G_BULLET),
   enemyBody: (G_ENEMY << 16) | ALL,
