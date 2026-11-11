@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RAPIER, GROUPS } from './physics.js';
-import { probeWall, COVER_BASE_Y } from './cover.js';
+import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 
 // Piloto automático: juega solo usando los mismos controles que un jugador (movimiento,
 // cámara y botones), para observar las mecánicas en tiempo real y cazar fallos.
@@ -10,8 +10,9 @@ const FLEE_END = 10; // ...hasta alejarse esta distancia
 const PUNCH_RANGE = 1.4;
 const COVER_LEAVE = 4; // abandona la cobertura si un zombi llega tan cerca (m)
 const ARENA_EDGE = 30; // cerca de los muros, la huida se curva hacia el centro
-const COVER_SEEK = 11; // con los zombis más lejos que esto, busca una cobertura (m)
-const COVER_SCAN = 12; // alcance de esa búsqueda (m)
+const COVER_SEEK = 7; // con los zombis más lejos que esto, busca una cobertura (m)
+const COVER_SCAN = 16; // alcance de esa búsqueda (m)
+const COVER_VARIETY = 6; // metros de más que acepta recorrer por un tipo de cobertura menos usado
 const FRUSTRATION = 2.5; // segundos disparando sin hacer daño antes de recolocarse
 const AIM_TOLERANCE = 0.05; // error de puntería admitido para apretar el gatillo (rad)
 
@@ -29,7 +30,9 @@ export class Autopilot {
     this.time = 0;
     this.action = 'idle';
     this.log = []; // sucesos con marca de tiempo, para revisar la partida
-    this.stats = { waves: 0, kills: 0, deaths: 0, shots: 0, covers: 0, stuck: 0, damage: 0 };
+    this.stats = { waves: 0, kills: 0, deaths: 0, shots: 0, covers: 0, stuck: 0, damage: 0, coverTypes: { alta: 0, baja: 0, 'muy baja': 0 } };
+    this.shuffleT = 0;
+    this.shuffleSide = 1;
     this.cooldown = {};
     this.fleeing = false;
     this.fleeTurn = 0;
@@ -77,21 +80,29 @@ export class Autopilot {
     );
   }
 
-  /** Busca alrededor una cobertura que quede entre el jugador y el zombi. */
+  /**
+   * Busca alrededor una cobertura que quede entre el jugador y el zombi. Prefiere los tipos
+   * (alta, baja, muy baja) que menos ha usado, para ir pasando por todos.
+   */
   findCover(target) {
-    const P = this.player.position;
+    const P = this.player.position, world = this.physics.world;
     let best = null;
-    for (let i = 0; i < 24; i++) {
-      const a = (i / 24) * Math.PI * 2, dx = Math.sin(a), dz = Math.cos(a);
-      const hit = probeWall(this.physics.world, P.x, P.y + COVER_BASE_Y, P.z, dx, dz, COVER_SCAN);
+    for (let i = 0; i < 32; i++) {
+      const a = (i / 32) * Math.PI * 2, dx = Math.sin(a), dz = Math.cos(a);
+      const hit = probeWall(world, P.x, P.y + COVER_BASE_Y, P.z, dx, dz, COVER_SCAN);
       if (!hit || hit.dist < 0.5) continue;
       const hx = P.x + dx * hit.dist, hz = P.z + dz * hit.dist;
       const zx = target.position.x - hx, zz = target.position.z - hz;
       const zd = Math.hypot(zx, zz);
       // La cara alcanzada debe dar la espalda al zombi, y este no estar ya encima.
-      if (zd < 7 || (hit.nx * zx + hit.nz * zz) / zd > -0.4) continue;
+      if (zd < 5 || (hit.nx * zx + hit.nz * zz) / zd > -0.4) continue;
       if (Math.max(Math.abs(hx), Math.abs(hz)) > 36) continue; // los muros del perímetro no
-      if (!best || hit.dist < best.dist) best = { dist: hit.dist, x: hx + hit.nx * 0.6, z: hz + hit.nz * 0.6 };
+      // Tipo de cobertura, sondeando el objeto desde el punto donde se colocaría.
+      const sx = hx + hit.nx * 0.6, sz = hz + hit.nz * 0.6;
+      const at = (h) => probeWall(world, sx, P.y + h, sz, -hit.nx, -hit.nz, 1.2);
+      const type = at(COVER_HIGH_Y) ? 'alta' : at(COVER_LOW_Y) ? 'baja' : 'muy baja';
+      const score = hit.dist + COVER_VARIETY * this.stats.coverTypes[type];
+      if (!best || score < best.score) best = { score, dist: hit.dist, x: sx, z: sz, type };
     }
     return best;
   }
@@ -137,7 +148,9 @@ export class Autopilot {
     if (inCover && !last.cover) {
       stats.covers++;
       const c = player.cover;
-      this.note(`a cubierto (${c.high ? 'alta' : c.veryLow ? 'muy baja' : 'baja'})`);
+      const type = c.high ? 'alta' : c.veryLow ? 'muy baja' : 'baja';
+      stats.coverTypes[type]++;
+      this.note(`a cubierto (${type})`);
     }
     last.cover = inCover;
     stats.shots = player.shots;
@@ -171,8 +184,7 @@ export class Autopilot {
     if (!target) {
       this.action = 'entre oleadas';
       I.buttons.delete(0);
-      if (P.cover && this.ready('cover', dt)) this.press('KeyC', 'cover', 1);
-      return;
+      return; // si está a cubierto, espera ahí la siguiente oleada
     }
     const dx = target.position.x - P.position.x, dz = target.position.z - P.position.z;
     const chestY = target.position.y + 1.15;
@@ -206,6 +218,12 @@ export class Autopilot {
         this.action = 'disparando a cubierto';
         const err = this.aimAt(target.position.x, chestY, target.position.z, dt);
         fire = best < SHOOT_RANGE + 4 && err < 0.4;
+        // Sin nadie a tiro, se desplaza a lo largo de la cobertura de un lado a otro.
+        if (!fire) {
+          this.shuffleT -= dt;
+          if (this.shuffleT <= 0) { this.shuffleT = 1.2; this.shuffleSide = -this.shuffleSide; }
+          this.moveWorld(c.nz * this.shuffleSide, -c.nx * this.shuffleSide);
+        }
         // Si no consigue tiro (cobertura alta sin borde cerca), se desplaza por el muro.
         this.coverFireT = fire && !P.canFire ? this.coverFireT + dt : 0;
         if (this.coverFireT > 1.2) {
@@ -268,7 +286,7 @@ export class Autopilot {
         this.cooldown.scan = 1;
         this.coverSpot = this.findCover(target);
       }
-      if (best <= COVER_SEEK - 3) this.coverSpot = null;
+      if (best <= COVER_SEEK - 2.5) this.coverSpot = null;
       const spot = this.coverSpot;
       if (spot) {
         const sx = spot.x - P.position.x, sz = spot.z - P.position.z;
@@ -284,7 +302,7 @@ export class Autopilot {
         if (P.sprinting && this.ready('sprint', dt)) this.press('KeyQ', 'sprint', 0.4);
         const err = this.aimAt(target.position.x, chestY, target.position.z, dt);
         fire = err < AIM_TOLERANCE;
-      } else if (best < COVER_SEEK - 2) {
+      } else if (best < 9) {
         // Cerca pero sin tiro: espera a que asome en vez de ir a su encuentro.
         this.action = 'esperando tiro';
         this.aimAt(target.position.x, chestY, target.position.z, dt);
