@@ -7,8 +7,19 @@ import modelUrl from './assets/Character.glb?url';
 
 const WALK_SPEED = 2.2;
 const RUN_SPEED = 6.0;
-const JUMP_SPEED = 7.0;
-const GRAVITY = 20;
+// Salto con medidas humanas: gravedad real y un despegue de ~3,3 m/s, que eleva el cuerpo
+// ~0,55 m parado y ~0,65 m en carrera (unos 4 m de longitud corriendo a 6 m/s).
+const GRAVITY = 9.81;
+const JUMP_SPEED = 3.3; // velocidad vertical de despegue parado (m/s)
+const RUN_JUMP_BONUS = 0.04; // la carrera añade algo de altura (m/s por cada m/s)
+const LEAP_SPEED = 2.8; // empuje horizontal mínimo al saltar con dirección (salto de longitud parado ≈ 1,8 m)
+const CROUCH_TIME = 0.24; // impulso: tiempo flexionando las piernas antes de despegar (s)
+const RUN_CROUCH_TIME = 0.11; // en carrera la batida es mucho más corta
+const JUMP_BUFFER = 0.12; // margen para pulsar salto justo antes de aterrizar (s)
+const AIR_CONTROL = 1.2; // en el aire apenas se puede corregir la trayectoria
+const LAND_TIME = 0.32; // duración de la flexión que amortigua la caída (s)
+const LAND_SLOWDOWN = 0.8; // fracción de velocidad horizontal que se conserva al caer
+const CROUCH_DEPTH = 0.3; // cuánto baja la cadera en la flexión completa (m)
 const RADIUS = 0.35;
 const HALF = 0.5; // semialtura del tramo recto de la cápsula
 const FOOT = HALF + RADIUS; // del centro del cuerpo a los pies
@@ -33,7 +44,11 @@ const _h = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _pq = new THREE.Quaternion();
-const UP = new THREE.Vector3(0, 1, 0);
+const _hip = new THREE.Vector3();
+const _knee = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _pole = new THREE.Vector3();
+const _right = new THREE.Vector3();
 
 function dampAngle(a, b, lambda, dt) {
   const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
@@ -58,6 +73,12 @@ export class Player {
     this.facing = Math.PI; // mira hacia -Z
     this.grounded = true;
     this.airTime = 0;
+    this.jumpT = -1; // >= 0 mientras toma impulso
+    this.jumpTime = CROUCH_TIME;
+    this.jumpBuffer = 0;
+    this.crouch = 0; // 0 = erguido, 1 = flexión completa
+    this.landT = 0;
+    this.landAmount = 0;
     this.state = 'Idle';
     this.punchT = -1;
     this.punchDone = false;
@@ -90,6 +111,18 @@ export class Player {
     };
     this.addCargoPants(bone);
     this.upperArm = bone('UpperArmR');
+    this.upperArmL = bone('UpperArmL');
+    this.bodyBone = bone('Body');
+    this.abdomen = bone('Abdomen');
+    this.legs = ['L', 'R']
+      .map((s) => ({ upper: bone('UpperLeg' + s), lower: bone('LowerLeg' + s), foot: bone('Foot' + s), end: new THREE.Vector3() }))
+      .filter((l) => l.upper && l.lower && l.foot);
+    // Huesos que modifica la flexión, con su pose de animación guardada para restaurarla.
+    this.poseBones = [this.bodyBone, this.abdomen, this.upperArmL, this.upperArm,
+      ...this.legs.flatMap((l) => [l.upper, l.lower])]
+      .filter(Boolean)
+      .map((b) => ({ bone: b, pos: new THREE.Vector3(), quat: new THREE.Quaternion() }));
+    this.posed = false;
     this.hand = bone('WristR') ?? bone('LowerArmR');
 
     // --- Animaciones ---
@@ -198,6 +231,8 @@ export class Player {
     this.body.setTranslation({ x: 0, y: FOOT + 0.05, z: 0 }, true);
     this.body.setNextKinematicTranslation({ x: 0, y: FOOT + 0.05, z: 0 });
     this.velocity.set(0, 0, 0);
+    this.jumpT = -1;
+    this.jumpBuffer = this.landT = this.crouch = 0;
   }
 
   get speed() {
@@ -217,26 +252,55 @@ export class Player {
     let speed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
     if (punching) speed *= 0.25;
 
-    // Aceleración suave en el plano horizontal (menos control en el aire).
-    const k = 1 - Math.exp(-(this.grounded ? 14 : 4) * dt);
+    // Aceleración suave en el plano horizontal. En el aire se conserva la inercia:
+    // sin entrada no se frena y con ella solo se corrige un poco la trayectoria.
+    const k = this.grounded ? 1 - Math.exp(-14 * dt) : moving ? 1 - Math.exp(-AIR_CONTROL * dt) : 0;
     this.velocity.x += (_v.x * speed - this.velocity.x) * k;
     this.velocity.z += (_v.z * speed - this.velocity.z) * k;
 
     // --- Salto y gravedad ---
     // En el suelo no se acumula gravedad: un empuje mínimo hacia abajo mantiene el contacto
     // (uno mayor frenaría la subida por rampas) y el "snap" se encarga de las bajadas.
+    // El salto no es instantáneo: primero se flexionan las piernas (impulso) y al
+    // extenderlas se despega. En carrera la batida es más corta y se salta más lejos.
+    this.jumpBuffer = input.justPressed('Space') ? JUMP_BUFFER : this.jumpBuffer - dt;
     if (this.grounded && this.velocity.y <= 0) {
       this.velocity.y = 0;
-      if (input.justPressed('Space') && !punching) {
-        this.velocity.y = JUMP_SPEED;
-        this.grounded = false;
-        this.airTime = 1; // fuerza la animación de salto
+      if (this.jumpT < 0 && this.jumpBuffer > 0 && !punching) {
+        this.jumpBuffer = 0;
+        this.jumpT = 0;
+        this.jumpTime = THREE.MathUtils.lerp(
+          CROUCH_TIME, RUN_CROUCH_TIME, THREE.MathUtils.clamp(this.speed / RUN_SPEED, 0, 1),
+        );
       }
+      if (this.jumpT >= 0) {
+        this.jumpT += dt;
+        if (this.jumpT >= this.jumpTime) {
+          const hs = this.speed;
+          this.velocity.y = JUMP_SPEED + RUN_JUMP_BONUS * hs;
+          if (moving && hs < LEAP_SPEED) {
+            this.velocity.x = _v.x * LEAP_SPEED;
+            this.velocity.z = _v.z * LEAP_SPEED;
+          }
+          this.jumpT = -1;
+          this.landT = 0;
+          this.grounded = false;
+          this.airTime = 1; // fuerza la animación de salto
+        }
+      }
+    } else {
+      this.jumpT = -1; // se quedó sin suelo mientras tomaba impulso
     }
     if (!this.grounded) this.velocity.y -= GRAVITY * dt;
 
+    // Flexión de piernas: sube durante el impulso y amortigua el aterrizaje.
+    this.landT = Math.max(0, this.landT - dt);
+    const charging = this.jumpT >= 0;
+    const crouchTarget = charging ? 1 : this.landAmount * (this.landT / LAND_TIME);
+    this.crouch = THREE.MathUtils.damp(this.crouch, crouchTarget, charging ? 3.5 / this.jumpTime : 22, dt);
+
     // --- Golpe ---
-    if (!punching && this.grounded && (input.justPressed('KeyF') || input.justPressed('Mouse2'))) {
+    if (!punching && !charging && this.grounded && (input.justPressed('KeyF') || input.justPressed('Mouse2'))) {
       this.punchT = 0;
       this.punchDone = false;
       this.aimT = 0;
@@ -280,7 +344,18 @@ export class Player {
     this.grounded = this.controller.computedGrounded() && this.velocity.y <= 0;
     if (this.velocity.y > 0 && m.y < delta.y * 0.5) this.velocity.y = 0; // golpe contra el techo
     this.airTime = this.grounded ? 0 : this.airTime + dt;
-    if (this.grounded && !wasGrounded) this.velocity.y = 0;
+    if (this.grounded && !wasGrounded) {
+      // Aterrizaje: cuanto más fuerte la caída, más se flexiona y más velocidad se pierde.
+      const impact = -this.velocity.y;
+      if (impact > 1.5) {
+        this.landAmount = THREE.MathUtils.clamp(impact / 5.5, 0.3, 1);
+        this.landT = LAND_TIME;
+        this.crouch = Math.max(this.crouch, this.landAmount * 0.5);
+        this.velocity.x *= LAND_SLOWDOWN;
+        this.velocity.z *= LAND_SLOWDOWN;
+      }
+      this.velocity.y = 0;
+    }
 
     this.updateAnimation(dt, punching);
   }
@@ -305,7 +380,93 @@ export class Player {
     // Sincroniza el ritmo de los pasos con la velocidad real.
     if (this.state === 'Walking') this.current.timeScale = THREE.MathUtils.clamp(s / 1.6, 0.6, 2);
     if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 5.2, 0.7, 1.4);
+    // El mezclador no reescribe los valores que no cambian entre fotogramas, así que la
+    // flexión del fotograma anterior se deshace a mano antes de animar.
+    if (this.posed) {
+      for (const p of this.poseBones) {
+        p.bone.position.copy(p.pos);
+        p.bone.quaternion.copy(p.quat);
+      }
+      this.posed = false;
+    }
     this.mixer.update(dt);
+  }
+
+  // Gira un hueso en espacio mundial para llevar la dirección `from` hasta `to`.
+  aimBone(bone, from, to) {
+    _q.setFromUnitVectors(from, to);
+    bone.getWorldQuaternion(_q2);
+    _q.multiply(_q2);
+    bone.parent.getWorldQuaternion(_pq);
+    bone.quaternion.copy(_q.premultiply(_pq.invert()));
+    bone.updateMatrixWorld(true);
+  }
+
+  // Gira un hueso un ángulo alrededor de un eje dado en espacio mundial.
+  turnBone(bone, axis, angle) {
+    _q.setFromAxisAngle(axis, angle);
+    bone.getWorldQuaternion(_q2);
+    _q.multiply(_q2);
+    bone.parent.getWorldQuaternion(_pq);
+    bone.quaternion.copy(_q.premultiply(_pq.invert()));
+    bone.updateMatrixWorld(true);
+  }
+
+  /**
+   * Flexión procedimental sobre la animación en curso: baja la cadera, dobla las rodillas
+   * (IK de dos huesos, con los pies fijos en el suelo), inclina el tronco y lleva los
+   * brazos hacia atrás, como al tomar impulso o al amortiguar una caída.
+   */
+  applyCrouch(amount) {
+    if (!this.bodyBone || !this.legs.length) return;
+    for (const p of this.poseBones) {
+      p.pos.copy(p.bone.position);
+      p.quat.copy(p.bone.quaternion);
+    }
+    this.posed = true;
+    this.model.updateMatrixWorld(true);
+    // El extremo de cada pierna (tobillo) en coordenadas de su hueso, antes de agacharse.
+    for (const leg of this.legs) {
+      leg.foot.getWorldPosition(leg.end);
+      leg.lower.worldToLocal(leg.end);
+    }
+
+    // Baja la cadera.
+    const parent = this.bodyBone.parent;
+    this.bodyBone.getWorldPosition(_v);
+    _v.y -= CROUCH_DEPTH * amount;
+    this.bodyBone.position.copy(parent.worldToLocal(_v));
+    this.bodyBone.updateMatrixWorld(true);
+
+    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+    for (const leg of this.legs) {
+      const target = leg.foot.getWorldPosition(_a);
+      for (let i = 0; i < 3; i++) {
+        leg.upper.getWorldPosition(_hip);
+        leg.lower.getWorldPosition(_knee);
+        const l1 = _hip.distanceTo(_knee);
+        const l2 = _knee.distanceTo(_h.copy(leg.end).applyMatrix4(leg.lower.matrixWorld));
+        _dir.subVectors(target, _hip);
+        const d = Math.min(_dir.length(), (l1 + l2) * 0.999);
+        _dir.normalize();
+        // La rodilla se dobla hacia delante.
+        _pole.set(fx, 0, fz).addScaledVector(_dir, -(fx * _dir.x + fz * _dir.z)).normalize();
+        const along = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+        const out = Math.sqrt(Math.max(l1 * l1 - along * along, 0));
+        _v.copy(_hip).addScaledVector(_dir, along).addScaledVector(_pole, out); // rodilla deseada
+        this.aimBone(leg.upper, _knee.sub(_hip).normalize(), _h.copy(_v).sub(_hip).normalize());
+        leg.lower.getWorldPosition(_knee);
+        _h.copy(leg.end).applyMatrix4(leg.lower.matrixWorld).sub(_knee).normalize();
+        this.aimBone(leg.lower, _h, _v.copy(target).sub(_knee).normalize());
+      }
+    }
+
+    // Tronco hacia delante y brazos atrás.
+    _right.set(fz, 0, -fx);
+    if (this.abdomen) this.turnBone(this.abdomen, _right, 0.45 * amount);
+    for (const arm of [this.upperArmL, this.upperArm]) {
+      if (arm) this.turnBone(arm, _right, 0.7 * amount);
+    }
   }
 
   // Empuja todo lo que esté delante del personaje.
@@ -341,6 +502,7 @@ export class Player {
     this.position.set(t.x, t.y - FOOT - 0.02, t.z);
     this.model.position.copy(this.position);
     this.model.rotation.y = this.facing;
+    if (this.crouch > 0.01) this.applyCrouch(this.crouch);
 
     this.gun.visible = this.aimWeight > 0.05;
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);

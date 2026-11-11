@@ -38,7 +38,7 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 | --- | --- |
 | Caminar | `W` `A` `S` `D` |
 | Correr | `Shift` |
-| Saltar | `Espacio` |
+| Saltar | `Espacio` (flexiona las piernas para tomar impulso y despega) |
 | Disparar | Clic izquierdo (mantener para ráfaga) |
 | Golpear | Clic derecho o `F` |
 | Cámara / zoom | Ratón / rueda |

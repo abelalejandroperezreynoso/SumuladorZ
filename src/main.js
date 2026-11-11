@@ -96,7 +96,7 @@ async function start() {
     if (statsT <= 0) {
       statsT = 0.15;
       stats.innerHTML =
-        `${STATE_LABEL[player.state] ?? player.state} · ${player.speed.toFixed(1)} m/s<br>` +
+        `${player.jumpT >= 0 ? 'Tomando impulso' : STATE_LABEL[player.state] ?? player.state} · ${player.speed.toFixed(1)} m/s<br>` +
         `Dianas alcanzadas: <b>${combat.targetHits}</b> · Golpes: <b>${combat.punchHits}</b><br>` +
         `Disparos: ${player.shots} · ${fps.toFixed(0)} FPS`;
     }
