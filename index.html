@@ -24,6 +24,8 @@
       kbd { background: rgba(255, 255, 255, 0.14); border-radius: 4px; padding: 1px 6px; font-family: inherit; font-size: 12px; }
       #horde-btn { position: fixed; left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%); padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; white-space: nowrap; cursor: pointer; touch-action: none; }
       #auto-btn { position: fixed; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
+      #bone-btn { position: fixed; left: calc(max(12px, env(safe-area-inset-left)) + 78px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
+      #bone-btn.active { background: rgba(40, 150, 110, 0.75); border-color: rgba(150, 255, 210, 0.7); }
       #auto-btn.active { background: rgba(40, 110, 190, 0.75); border-color: rgba(150, 200, 255, 0.7); }
       #horde-btn.active { background: rgba(150, 30, 30, 0.7); border-color: rgba(255, 140, 140, 0.6); }
       #health { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 40px); width: 200px; height: 8px; margin-left: -100px; border-radius: 4px; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.25); overflow: hidden; pointer-events: none; }
@@ -61,11 +63,12 @@
     <div id="controls" class="panel">
       <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> caminar &nbsp;·&nbsp; <kbd>Shift</kbd> correr &nbsp;·&nbsp; <kbd>Q</kbd> correr rápido &nbsp;·&nbsp; <kbd>Espacio</kbd> saltar<br />
       <kbd>Clic izq.</kbd> disparar &nbsp;·&nbsp; <kbd>Clic der.</kbd> / <kbd>F</kbd> golpear &nbsp;·&nbsp; <kbd>C</kbd> cubrirse<br />
-      <kbd>Ratón</kbd> cámara &nbsp;·&nbsp; <kbd>Rueda</kbd> zoom &nbsp;·&nbsp; <kbd>R</kbd> reiniciar mundo &nbsp;·&nbsp; <kbd>H</kbd> horda &nbsp;·&nbsp; <kbd>P</kbd> piloto
+      <kbd>Ratón</kbd> cámara &nbsp;·&nbsp; <kbd>Rueda</kbd> zoom &nbsp;·&nbsp; <kbd>R</kbd> reiniciar mundo &nbsp;·&nbsp; <kbd>H</kbd> horda &nbsp;·&nbsp; <kbd>P</kbd> piloto &nbsp;·&nbsp; <kbd>K</kbd> esqueleto
     </div>
     <div id="hurt"></div>
     <button id="horde-btn">▶ Iniciar horda</button>
     <button id="auto-btn">Piloto</button>
+    <button id="bone-btn">Esqueleto</button>
     <div id="health"><div id="health-fill"></div></div>
     <div id="toast"></div>
     <div id="rotate">Gira el teléfono en horizontal para jugar mejor</div>

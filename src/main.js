@@ -56,6 +56,14 @@ async function start() {
   combat.player = player;
   const horde = new Horde(scene, physics, player.assets);
   horde.onWave = (n) => showToast(`Oleada ${n}`);
+  const boneBtn = document.getElementById('bone-btn');
+  const toggleSkeleton = () => boneBtn.classList.toggle('active', player.toggleSkeleton());
+  boneBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    input.pressed.add('KeyK');
+  }, { passive: false });
+  boneBtn.addEventListener('click', () => { toggleSkeleton(); boneBtn.blur(); });
   let shotsHeard = 0, hudKey = '', sprintShown = false;
   const toggleHorde = () => {
     if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
@@ -112,6 +120,7 @@ async function start() {
       if (horde.active) horde.stop();
     }
     if (input.justPressed('KeyP')) toggleAuto();
+    if (input.justPressed('KeyK')) toggleSkeleton();
     autopilot.update(dt);
     if (input.justPressed('KeyH')) toggleHorde();
     if (player.dead) {
@@ -132,6 +141,7 @@ async function start() {
     player.postPhysics(dt, cam, combat);
     // Si un obstáculo empuja la cámara hasta la cabeza, se oculta el modelo para no taparlo todo.
     player.model.visible = cam.current > 0.75;
+    player.updateSkeleton();
     horde.postPhysics();
     // Los disparos hacen ruido y atraen a los zombis cercanos.
     if (player.shots !== shotsHeard) {

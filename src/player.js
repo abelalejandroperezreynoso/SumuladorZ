@@ -33,6 +33,7 @@ const COVER_RANGE = 2.4; // distancia máxima desde la que se desliza a cubierto
 const COVER_GAP = 0.05; // separación entre la cápsula y el muro
 const COVER_SLIDE_SPEED = 7; // velocidad del deslizamiento de entrada (m/s)
 const COVER_SPEED = 1.7; // velocidad pegado al muro (m/s)
+const COVER_CROUCH_SPEED = 1.3; // ...y agachado tras una cobertura baja
 const COVER_EXIT_TIME = 0.2; // tiempo tirando hacia fuera para despegarse (s)
 const COVER_CROUCH = 0.46; // cuánto baja la cadera tras una cobertura baja (m)
 const COVER_NEAR = 1.5; // radio en el que se busca cobertura en cualquier dirección (m)
@@ -49,7 +50,10 @@ const PRONE_SPEED = 0.8; // velocidad arrastrándose (m/s)
 const PRONE_BACK = 0.85; // el cuerpo tumbado se centra sobre la cápsula (m)
 const PRONE_LIFT = 0.14; // altura del eje del cuerpo tumbado sobre el suelo (m)
 const CROUCH_SIDE_LOW = 0.78; // asomado por el borde de una cobertura baja
-const CROUCH_SIDE_HIGH = 0.2; // asomado por el borde de una cobertura alta
+const CROUCH_SIDE_HIGH = 0.1; // asomado por el borde de una cobertura alta
+const STRIDE_CROUCHED = 0.35; // amplitud del paso lateral cuando va agachado (1 = zancada completa)
+const STRIDE_PEEK = 0.4; // ...y en el paso corto de asomarse
+const RECOIL_KICK = 0.07; // cuánto sube el arma en cada disparo (rad)
 const CROUCH_DEPTH = 0.3;
 const MAX_HEALTH = 100;
 const REGEN_DELAY = 5; // segundos sin recibir daño antes de empezar a recuperarse
@@ -132,6 +136,7 @@ export class Player {
     this.canFire = true;
     this.state = 'Idle';
     this.stateT = 0;
+    this.strideBlend = false;
     this.punchT = -1;
     this.punchDone = false;
     this.fireCooldown = 0;
@@ -216,6 +221,40 @@ export class Player {
     this.flash.position.z = 0.4;
     this.gun.add(this.flash);
     this.gun.visible = false;
+    this.recoil = 0; // 1 justo al disparar; decae enseguida
+
+    // Vista de esqueleto: oculta las mallas y dibuja huesos gruesos y articulaciones, que se
+    // leen mucho mejor que las líneas de un píxel de SkeletonHelper.
+    this.skeleton = new THREE.Group();
+    this.skeleton.visible = false;
+    scene.add(this.skeleton);
+    const boneMat = new THREE.MeshBasicMaterial({ color: 0xffd34d, depthTest: false, transparent: true });
+    const jointMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true });
+    const boneGeo = new THREE.CylinderGeometry(0.02, 0.02, 1, 6);
+    const jointGeo = new THREE.SphereGeometry(0.035, 10, 8);
+    const SKIP = /Index|Middle|Ring|Pinky|Thumb|^PT|^Root$/; // dedos y huesos auxiliares
+    this.stick = { links: [], joints: [] };
+    const addLink = (from, to) => {
+      const mesh = new THREE.Mesh(boneGeo, boneMat);
+      mesh.renderOrder = 10;
+      this.skeleton.add(mesh);
+      this.stick.links.push({ from, to, mesh });
+    };
+    model.traverse((o) => {
+      if (!o.isBone || SKIP.test(o.name)) return;
+      const joint = new THREE.Mesh(jointGeo, jointMat);
+      joint.renderOrder = 11;
+      if (o.name === 'Head') joint.scale.setScalar(3); // la cabeza, más grande
+      this.skeleton.add(joint);
+      this.stick.joints.push({ bone: o, mesh: joint });
+      if (o.parent?.isBone && !SKIP.test(o.parent.name)) addLink(o.parent, o);
+    });
+    // Los pies no cuelgan de la pierna en este modelo: se unen a mano.
+    for (const side of ['L', 'R']) {
+      const shin = bone('LowerLeg' + side), foot = bone('Foot' + side);
+      if (shin && foot) addLink(shin, foot);
+    }
+    this.skeletonOnly = false;
     scene.add(this.gun);
     this.muzzle = new THREE.Vector3();
 
@@ -410,13 +449,13 @@ export class Player {
     }
     if (!aiming && c.peek < 0.02) c.mode = null;
     const peekTarget = aiming && c.mode === 'side' ? c.peekGoal : 0;
-    let peekV = THREE.MathUtils.clamp((peekTarget - c.peek) * 9, -4, 4);
+    let peekV = THREE.MathUtils.clamp((peekTarget - c.peek) * 8, -2.8, 2.8);
     if (c.peek + peekV * dt < 0) peekV = -c.peek / dt;
     c.peek += peekV * dt;
     if (c.peek > 0.02 || peekTarget) along = 0;
 
     if (along) c.proneDir = along; // tumbado, la cabeza apunta hacia donde se arrastra
-    const vt = along * (c.veryLow ? PRONE_SPEED : COVER_SPEED) + c.peekDir * peekV;
+    const vt = along * (c.veryLow ? PRONE_SPEED : c.high ? COVER_SPEED : COVER_CROUCH_SPEED) + c.peekDir * peekV;
     // El deslizamiento hacia el muro acelera en vez de arrancar de golpe.
     const vnTarget = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
     c.vn = Math.min(vnTarget, (c.vn ?? Math.max(0, -(this.velocity.x * c.nx + this.velocity.z * c.nz))) + 45 * dt);
@@ -430,6 +469,31 @@ export class Player {
     const turned = dampAngle(this.facing, angle, lambda, dt);
     const step = Math.atan2(Math.sin(turned - this.facing), Math.cos(turned - this.facing));
     this.facing += THREE.MathUtils.clamp(step, -max * dt, max * dt);
+  }
+
+  /** Alterna entre el personaje normal y solo su esqueleto. */
+  toggleSkeleton() {
+    this.skeletonOnly = !this.skeletonOnly;
+    this.skeleton.visible = this.skeletonOnly;
+    this.model.traverse((o) => { if (o.isMesh) o.visible = !this.skeletonOnly; });
+    return this.skeletonOnly;
+  }
+
+  /** Coloca los huesos y articulaciones dibujados sobre la pose final de este fotograma. */
+  updateSkeleton() {
+    if (!this.skeletonOnly) return;
+    this.model.updateMatrixWorld(true);
+    for (const j of this.stick.joints) j.bone.getWorldPosition(j.mesh.position);
+    for (const l of this.stick.links) {
+      l.from.getWorldPosition(_a);
+      l.to.getWorldPosition(_h);
+      const len = _a.distanceTo(_h);
+      l.mesh.visible = len > 1e-4;
+      if (!l.mesh.visible) continue;
+      l.mesh.position.copy(_a).add(_h).multiplyScalar(0.5);
+      l.mesh.quaternion.setFromUnitVectors(_v.set(0, 1, 0), _h.sub(_a).divideScalar(len));
+      l.mesh.scale.set(1, len, 1);
+    }
   }
 
   get speed() {
@@ -644,21 +708,53 @@ export class Player {
     this.stateT += dt;
     const gait = (n) => n === 'Idle' || n === 'Walking' || n === 'Running';
     if (next !== this.state && !(gait(next) && gait(this.state) && this.stateT < STATE_DWELL)) {
-      const action = this.actions[next];
       const stride = (n) => n === 'Walking' || n === 'Running';
-      // De caminar a correr (y viceversa) se conserva la fase del paso en vez de reiniciarlo.
-      const phase = stride(next) && stride(this.state)
-        ? this.current.time / this.current.getClip().duration : 0;
-      action.reset();
-      if (next === 'Jump') action.time = JUMP_POSE_TIME;
-      else if (phase) action.time = phase * action.getClip().duration;
-      const fade = next === 'Punch' ? 0.08 : gait(next) && gait(this.state) ? 0.25 : 0.18;
-      action.crossFadeFrom(this.current, fade, false).play();
+      const strafe = (n) => n === 'CoverLeft' || n === 'CoverRight';
+      const idle = this.actions.Idle;
+      let action = this.actions[next];
+      if (strafe(next)) {
+        // El paso lateral se mezcla con la pose de reposo desde el primer fotograma (ver más
+        // abajo): aquí solo se arranca con peso cero y se retira la animación anterior.
+        if (this.current !== idle) this.current.fadeOut(0.18);
+        action.reset();
+        action.setEffectiveWeight(0);
+        action.play();
+        idle.enabled = true;
+        if (!idle.isRunning()) idle.reset().play();
+        this.strideBlend = true;
+      } else if (this.strideBlend && next === 'Idle') {
+        // Se detiene: el paso se desvanece y queda la pose de reposo que ya estaba mezclada.
+        this.current.fadeOut(0.2);
+        idle.setEffectiveWeight(1);
+        action = idle;
+        this.strideBlend = false;
+      } else {
+        if (this.strideBlend) idle.fadeOut(0.18);
+        this.strideBlend = false;
+        // De caminar a correr (y viceversa) se conserva la fase del paso en vez de reiniciarlo.
+        const phase = stride(next) && stride(this.state)
+          ? this.current.time / this.current.getClip().duration : 0;
+        action.reset();
+        action.setEffectiveWeight(1);
+        if (next === 'Jump') action.time = JUMP_POSE_TIME;
+        else if (phase) action.time = phase * action.getClip().duration;
+        const fade = next === 'Punch' ? 0.08 : gait(next) && gait(this.state) ? 0.25 : 0.18;
+        action.crossFadeFrom(this.current, fade, false).play();
+      }
       this.current = action;
       this.state = next;
       this.stateT = 0;
     }
-    // Sincroniza el ritmo de los pasos con la velocidad real.
+    // Paso lateral a cubierto: el clip es una zancada de carrera, demasiado amplia para ir
+    // agachado o para el paso corto de asomarse (las piernas se enredaban). Se mezcla con la
+    // pose de reposo para reducir su amplitud.
+    if (this.strideBlend) {
+      const reduced = this.cover?.peek > 0.02 || this.cover?.mode === 'side'
+        ? STRIDE_PEEK : THREE.MathUtils.lerp(1, STRIDE_CROUCHED, this.coverCrouch);
+      const w = reduced * THREE.MathUtils.smoothstep(this.stateT, 0, 0.2);
+      this.current.setEffectiveWeight(w);
+      this.actions.Idle.setEffectiveWeight(1 - w);
+    }
     // Medido con tools/watch.cjs: a ritmo 1 el clip de caminar avanza ~0,8 m/s y el de correr
     // ~3,1 m/s. Igualarlos del todo daría pasos frenéticos; estos valores reducen el
     // deslizamiento de los pies sin perder naturalidad.
@@ -848,6 +944,11 @@ export class Player {
     this.hand.getWorldPosition(_h);
     const cur = _h.sub(_a).normalize();
     const want = _v.copy(this.aimPoint).sub(_a).normalize();
+    // Retroceso: el brazo y el arma suben un instante con cada disparo.
+    this.recoil = Math.max(0, this.recoil - dt * 9);
+    const kick = RECOIL_KICK * this.recoil * this.recoil;
+    want.y += kick;
+    want.normalize();
     _q.setFromUnitVectors(cur, want);
     this.upperArm.getWorldQuaternion(_q2);
     _q.multiply(_q2); // orientación mundial deseada
@@ -872,7 +973,9 @@ export class Player {
     }
 
     this.hand.getWorldPosition(this.gun.position);
-    this.gun.lookAt(this.aimPoint);
+    this.gun.lookAt(_knee.copy(this.aimPoint).setY(
+      this.aimPoint.y + kick * 1.6 * this.gun.position.distanceTo(this.aimPoint),
+    ));
     this.gun.updateMatrixWorld(true);
     this.muzzle.set(0, 0, 0.4).applyMatrix4(this.gun.matrixWorld);
 
@@ -880,6 +983,7 @@ export class Player {
       this.fireCooldown = FIRE_INTERVAL;
       this.shots++;
       this.flash.intensity = 30;
+      this.recoil = 1;
       combat.fire(this.muzzle, this.aimPoint);
     }
   }

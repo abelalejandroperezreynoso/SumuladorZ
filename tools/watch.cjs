@@ -4,6 +4,7 @@
 // calidad del movimiento: pies que resbalan, saltos bruscos de pose y tirones de cámara.
 //
 // Uso:  npx vite --port 5199 &   y luego   node tools/watch.cjs [carpeta de salida] [escena...]
+// Con SKELETON=1 las tiras muestran solo el esqueleto del personaje.
 // Requiere Playwright con Chromium disponible en el entorno.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -14,7 +15,7 @@ const ONLY = process.argv.slice(3);
 const URL = process.env.GAME_URL || 'http://localhost:5199/';
 
 // Código que se ejecuta dentro de la página.
-function install() {
+function install(skeleton) {
   const g = window.__game;
   const DT = 1 / 60;
   g.renderer.setAnimationLoop(null);
@@ -23,6 +24,7 @@ function install() {
   document.querySelectorAll('body > div, body > button').forEach((e) => { e.style.display = 'none'; });
   const realRender = g.renderer.render.bind(g.renderer);
   g.renderer.render = () => {};
+  if (skeleton) g.player.toggleSkeleton(); // SKELETON=1: tiras con solo el esqueleto
   const THREE_V = g.player.position.constructor;
   const bonesOf = (model, names) => {
     const out = {};
@@ -192,7 +194,7 @@ const SCENES = {
   page.on('pageerror', (e) => console.log('ERROR', e.message));
   await page.goto(URL);
   await page.waitForFunction(() => window.__game, null, { timeout: 60000 });
-  await page.evaluate(install);
+  await page.evaluate(install, !!process.env.SKELETON);
   const report = {};
   for (const [name, sc] of Object.entries(SCENES)) {
     if (ONLY.length && !ONLY.includes(name)) continue;
