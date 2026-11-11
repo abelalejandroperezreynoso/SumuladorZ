@@ -22,6 +22,13 @@ El juego detecta la pantalla táctil y muestra un joystick y botones. Dos formas
 2. **GitHub Pages:** en el repositorio, *Settings → Pages → Source: GitHub Actions*. Cada cambio en
    `main` publica el juego en `https://<usuario>.github.io/SumuladorZ/`.
 
+### Instalarlo como app (PWA)
+
+Con el juego publicado por HTTPS (GitHub Pages), ábrelo en **Safari** en el iPhone →
+botón **Compartir** → **Añadir a pantalla de inicio**. Se abre a pantalla completa, sin barras del
+navegador, y tras la primera carga funciona sin conexión. En Android: menú de Chrome →
+*Instalar aplicación*.
+
 Controles táctiles: joystick a la izquierda (a fondo = correr), arrastrar en la parte derecha para
 mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizontal.
 
@@ -57,6 +64,7 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
 | `src/input.js` | Teclado y ratón |
 | `src/touch.js` | Controles táctiles |
+| `src/pwa.js`, `public/sw.js`, `public/manifest.webmanifest` | Instalación como app y modo sin conexión |
 
 ## Créditos
 

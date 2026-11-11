@@ -6,6 +6,9 @@ import { ThirdPersonCamera } from './camera.js';
 import { Player } from './player.js';
 import { Combat } from './combat.js';
 import { setupTouch } from './touch.js';
+import { setupPWA } from './pwa.js';
+
+setupPWA();
 
 const overlay = document.getElementById('overlay');
 const overlayMsg = document.getElementById('overlay-msg');
