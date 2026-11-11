@@ -13,6 +13,7 @@ export function setupTouch(input) {
     <button id="t-jump" data-key="Space">Saltar</button>
     <button id="t-punch" data-key="KeyF">Golpe</button>
     <button id="t-cover" data-key="KeyC">Cubrir</button>
+    <button id="t-sprint" data-key="KeyQ">Correr</button>
     <button id="t-fire">Disparo</button>`;
   document.body.append(ui);
   const stick = ui.querySelector('#stick');

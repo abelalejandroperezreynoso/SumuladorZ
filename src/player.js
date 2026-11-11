@@ -9,6 +9,8 @@ import modelUrl from './assets/Character.glb?url';
 
 const WALK_SPEED = 2.2;
 const RUN_SPEED = 6.0;
+const SPRINT_SPEED = 8.0; // carrera rápida: no permite disparar, pero sí saltar
+const SPRINT_STOP_TIME = 0.2; // tiempo sin moverse que cancela la carrera rápida (s)
 // Salto con medidas humanas: gravedad real y un despegue de ~3,3 m/s, que eleva el cuerpo
 // ~0,55 m parado y ~0,65 m en carrera (unos 4 m de longitud corriendo a 6 m/s).
 const GRAVITY = 9.81;
@@ -16,7 +18,7 @@ const JUMP_SPEED = 3.3; // velocidad vertical de despegue parado (m/s)
 const RUN_JUMP_BONUS = 0.04; // la carrera añade algo de altura (m/s por cada m/s)
 const LEAP_SPEED = 2.8; // empuje horizontal mínimo al saltar con dirección (salto de longitud parado ≈ 1,8 m)
 const CROUCH_TIME = 0.24; // impulso: tiempo flexionando las piernas antes de despegar (s)
-const RUN_CROUCH_TIME = 0.11; // en carrera la batida es mucho más corta
+const SPRINT_CROUCH_TIME = 0.09; // a máxima velocidad la batida es mucho más corta
 const JUMP_BUFFER = 0.12; // margen para pulsar salto justo antes de aterrizar (s)
 const AIR_CONTROL = 1.2; // en el aire apenas se puede corregir la trayectoria
 const LAND_TIME = 0.32; // duración de la flexión que amortigua la caída (s)
@@ -99,6 +101,8 @@ export class Player {
     this.crouch = 0; // 0 = erguido, 1 = flexión completa
     this.landT = 0;
     this.landAmount = 0;
+    this.sprinting = false;
+    this.sprintIdle = 0;
     this.health = MAX_HEALTH;
     this.hurtT = 0; // tiempo desde el último daño
     this.dead = false;
@@ -264,6 +268,7 @@ export class Player {
     this.jumpT = -1;
     this.jumpBuffer = this.landT = this.crouch = 0;
     this.cover = null;
+    this.sprinting = false;
     this.health = MAX_HEALTH;
     this.dead = false;
   }
@@ -370,7 +375,11 @@ export class Player {
     if (this.hurtT > REGEN_DELAY) this.health = Math.min(MAX_HEALTH, this.health + REGEN_RATE * dt);
 
     const punching = this.punchT >= 0;
-    let speed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
+    // Carrera rápida: se activa con un toque y dura mientras se siga avanzando.
+    if (input.justPressed('KeyQ')) this.sprinting = !this.sprinting && moving && !this.cover;
+    this.sprintIdle = moving ? 0 : this.sprintIdle + dt;
+    if (this.sprintIdle > SPRINT_STOP_TIME || punching || this.cover) this.sprinting = false;
+    let speed = moving ? (this.sprinting ? SPRINT_SPEED : running ? RUN_SPEED : WALK_SPEED) : 0;
     if (punching) speed *= 0.25;
     this.jumpBuffer = input.justPressed('Space') ? JUMP_BUFFER : this.jumpBuffer - dt;
     const wantsPunch = input.justPressed('KeyF') || input.justPressed('Mouse2');
@@ -388,7 +397,7 @@ export class Player {
     } else if (this.cover && (!this.grounded || this.jumpBuffer > 0 || wantsPunch)) {
       this.leaveCover(); // saltar, golpear o quedarse sin suelo saca de la cobertura
     }
-    const coverAim = this.aimT > 0 || input.mouseDown(0);
+    const coverAim = this.aimT > 0 || (input.mouseDown(0) && !this.sprinting);
     if (this.cover) this.coverMove(dt, _v, moving, coverAim, cam);
 
     if (!this.cover) {
@@ -416,7 +425,7 @@ export class Player {
         this.jumpBuffer = 0;
         this.jumpT = 0;
         this.jumpTime = THREE.MathUtils.lerp(
-          CROUCH_TIME, RUN_CROUCH_TIME, THREE.MathUtils.clamp(this.speed / RUN_SPEED, 0, 1),
+          CROUCH_TIME, SPRINT_CROUCH_TIME, THREE.MathUtils.clamp(this.speed / SPRINT_SPEED, 0, 1),
         );
       }
       if (this.jumpT >= 0) {
@@ -462,7 +471,7 @@ export class Player {
 
     // --- Disparo ---
     this.fireCooldown -= dt;
-    this.wantsFire = input.mouseDown(0) && this.punchT < 0;
+    this.wantsFire = input.mouseDown(0) && this.punchT < 0 && !this.sprinting;
     if (this.wantsFire) this.aimT = AIM_HOLD;
     this.aimT -= dt;
     const aiming = this.aimT > 0;
@@ -543,7 +552,7 @@ export class Player {
     }
     // Sincroniza el ritmo de los pasos con la velocidad real.
     if (this.state === 'Walking') this.current.timeScale = THREE.MathUtils.clamp(s / 1.6, 0.6, 2);
-    if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 5.2, 0.7, 1.4);
+    if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 5.2, 0.7, 1.6);
     // El mezclador no reescribe los valores que no cambian entre fotogramas, así que la
     // flexión del fotograma anterior se deshace a mano antes de animar.
     if (this.posed) {

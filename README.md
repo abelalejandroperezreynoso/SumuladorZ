@@ -38,6 +38,7 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 | --- | --- |
 | Caminar | `W` `A` `S` `D` |
 | Correr | `Shift` |
+| Correr rápido | `Q` (un toque; dura mientras sigas avanzando; no permite disparar) |
 | Saltar | `Espacio` (flexiona las piernas para tomar impulso y despega) |
 | Disparar | Clic izquierdo (mantener para ráfaga) |
 | Golpear | Clic derecho o `F` |
