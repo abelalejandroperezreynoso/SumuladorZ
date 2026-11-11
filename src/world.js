@@ -103,6 +103,7 @@ export function buildWorld(scene, physics) {
   // Pieza mixta: tramo alto y tramo bajo seguidos.
   physics.add({ size: [1.4, 2.4, 0.45], pos: [-0.9, 1.2, -7.5], color: concrete });
   physics.add({ size: [1.8, 1.1, 0.45], pos: [0.7, 0.55, -7.5], color: concrete });
+  physics.add({ size: [3.2, 0.45, 0.5], pos: [5.6, 0.225, -7.5], color: concrete }); // muy baja
 
   // --- Cajas apiladas (izquierda, -X) ---
   const crateColors = [0xc98f4a, 0xb97f3d, 0xd6a05c];

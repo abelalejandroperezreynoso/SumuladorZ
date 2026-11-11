@@ -71,6 +71,8 @@ El zombi usa el mismo modelo del personaje recoloreado (piel verdosa y ropa oscu
   casi cualquier objeto: muros, postes, bloques, el parapeto y también cajas y barriles.
   Al disparar se asoma: por encima de una cobertura baja, o inclinándose por el borde si hay
   uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
+  Tras una cobertura muy baja (menos de unos 60 cm) se tumba boca abajo, se arrastra a lo
+  largo de ella y se incorpora de rodillas para disparar.
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
 - **Cajas, muro de bloques y barriles** (izquierda): para empujar, golpear y derribar.
 - **Sacos de boxeo** (derecha): tres sacos de distinto peso colgados con articulaciones.
