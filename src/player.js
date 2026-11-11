@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
 import { probeWall, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
@@ -31,7 +32,10 @@ const COVER_EXIT_TIME = 0.2; // tiempo tirando hacia fuera para despegarse (s)
 const COVER_CROUCH = 0.46; // cuánto baja la cadera tras una cobertura baja (m)
 const PEEK_REACH = 0.3; // margen hasta el borde para poder asomarse (m, además del radio)
 const PEEK_DISTANCE = 0.95; // paso lateral al asomarse desde una cobertura alta (m)
-const CROUCH_DEPTH = 0.3; // cuánto baja la cadera en la flexión completa (m)
+const CROUCH_DEPTH = 0.3;
+const MAX_HEALTH = 100;
+const REGEN_DELAY = 5; // segundos sin recibir daño antes de empezar a recuperarse
+const REGEN_RATE = 12; // vida por segundo // cuánto baja la cadera en la flexión completa (m)
 const RADIUS = 0.35;
 const HALF = 0.5; // semialtura del tramo recto de la cápsula
 const FOOT = HALF + RADIUS; // del centro del cuerpo a los pies
@@ -75,7 +79,11 @@ export class Player {
     const gltf = embedded
       ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
       : await loader.loadAsync(modelUrl);
-    return new Player(scene, physics, gltf);
+    // Copia intacta del modelo (antes de vestir al jugador) para crear los zombis.
+    const assets = { scene: cloneSkinned(gltf.scene), animations: gltf.animations };
+    const player = new Player(scene, physics, gltf);
+    player.assets = assets;
+    return player;
   }
 
   constructor(scene, physics, gltf) {
@@ -91,6 +99,9 @@ export class Player {
     this.crouch = 0; // 0 = erguido, 1 = flexión completa
     this.landT = 0;
     this.landAmount = 0;
+    this.health = MAX_HEALTH;
+    this.hurtT = 0; // tiempo desde el último daño
+    this.dead = false;
     this.cover = null; // { nx, nz, high, attached, peek, peekDir, away } mientras está a cubierto
     this.coverCrouch = 0;
     this.canFire = true;
@@ -253,6 +264,19 @@ export class Player {
     this.jumpT = -1;
     this.jumpBuffer = this.landT = this.crouch = 0;
     this.cover = null;
+    this.health = MAX_HEALTH;
+    this.dead = false;
+  }
+
+  get healthFraction() {
+    return this.health / MAX_HEALTH;
+  }
+
+  damage(amount) {
+    if (this.dead) return;
+    this.health = Math.max(0, this.health - amount);
+    this.hurtT = 0;
+    if (this.health <= 0) this.dead = true;
   }
 
   /** Busca un muro en las direcciones dadas y, si lo hay, empieza a deslizarse hacia él. */
@@ -340,6 +364,10 @@ export class Player {
     _v.set(-sin * iz + cos * ix, 0, -cos * iz - sin * ix);
     const moving = _v.lengthSq() > 0;
     if (moving) _v.normalize();
+
+    // La vida se recupera sola tras unos segundos sin recibir daño.
+    this.hurtT += dt;
+    if (this.hurtT > REGEN_DELAY) this.health = Math.min(MAX_HEALTH, this.health + REGEN_RATE * dt);
 
     const punching = this.punchT >= 0;
     let speed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
@@ -611,7 +639,16 @@ export class Player {
     let hits = 0;
     for (const collider of found) {
       const body = collider.parent();
-      if (!body || !body.isDynamic() || seen.has(body.handle)) continue;
+      if (!body || seen.has(body.handle)) continue;
+      const zombie = this.physics.meta.get(collider.handle)?.zombie;
+      if (zombie) {
+        seen.add(body.handle);
+        zombie.damage(1.5, this);
+        combat.punchHits++;
+        hits++;
+        continue;
+      }
+      if (!body.isDynamic()) continue;
       seen.add(body.handle);
       const strength = Math.min(body.mass(), 25) * 4.5 + 5;
       body.applyImpulse({ x: fx * strength, y: strength * 0.3, z: fz * strength }, true);
