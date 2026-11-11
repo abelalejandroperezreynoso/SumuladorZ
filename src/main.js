@@ -55,7 +55,7 @@ async function start() {
   combat.player = player;
   const horde = new Horde(scene, physics, player.assets);
   horde.onWave = (n) => showToast(`Oleada ${n}`);
-  let shotsHeard = 0, hudKey = '';
+  let shotsHeard = 0, hudKey = '', sprintShown = false;
   const toggleHorde = () => {
     if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
   };
@@ -137,6 +137,16 @@ async function start() {
         : horde.wave ? `■ Detener horda · Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}`
         : '■ Detener horda';
       hordeBtn.classList.toggle('active', horde.active);
+    }
+    // Carrera rápida: el botón queda marcado y la cámara abre un poco el campo de visión.
+    if (player.sprinting !== sprintShown) {
+      sprintShown = player.sprinting;
+      document.getElementById('t-sprint')?.classList.toggle('held', sprintShown);
+    }
+    const fov = THREE.MathUtils.damp(camera.fov, player.sprinting ? 67 : 60, 6, dt);
+    if (Math.abs(fov - camera.fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
     }
     healthFill.style.transform = `scaleX(${player.healthFraction})`;
     hurt.style.opacity = Math.max(0, 0.75 - player.hurtT * 0.9) * (player.healthFraction < 1 ? 1 : 0);
