@@ -32,6 +32,24 @@ navegador, y tras la primera carga funciona sin conexión. En Android: menú de 
 Controles táctiles: joystick a la izquierda (a fondo = correr), arrastrar en la parte derecha para
 mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizontal.
 
+## Mando (Xbox, PlayStation…)
+
+Se conecta por Bluetooth y funciona también en iPad/iPhone. Pulsa **Menú** (o cualquier botón)
+para empezar.
+
+| Acción | Botón |
+|---|---|
+| Moverse / correr | Stick izquierdo (a fondo o pulsado = correr) |
+| Cámara | Stick derecho |
+| Disparar | RT |
+| Saltar | A |
+| Golpe | X |
+| Cubrirse | B |
+| Carrera rápida | Y |
+| Horda | LB / RB |
+| Piloto automático | Cruceta arriba |
+| Reiniciar | Vista |
+
 ## Controles (teclado y ratón)
 
 | Acción | Tecla |
@@ -121,7 +139,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/player.js` | Personaje: movimiento, animaciones, golpe y pose de apuntado |
 | `src/camera.js` | Cámara en tercera persona con colisión |
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
-| `src/input.js` | Teclado y ratón |
+| `src/input.js` | Teclado, ratón y mando |
 | `src/touch.js` | Controles táctiles |
 | `src/pwa.js`, `public/sw.js`, `public/manifest.webmanifest` | Instalación como app y modo sin conexión |
 

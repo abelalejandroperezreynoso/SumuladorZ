@@ -103,6 +103,7 @@ async function start() {
     input.lock();
     if (input.touchMode) overlay.classList.add('hidden');
   };
+  input.onPadStart = () => { input.lock(); overlay.classList.add('hidden'); };
   overlay.addEventListener('click', begin);
   overlay.addEventListener('touchend', begin, { passive: false });
   document.addEventListener('pointerlockchange', () => {
@@ -113,6 +114,7 @@ async function start() {
   const timer = new THREE.Timer();
 
   function tick(dt) {
+    input.pollGamepad(dt);
     if (input.justPressed('KeyR') || player.position.y < -20) {
       physics.reset();
       player.respawn();
