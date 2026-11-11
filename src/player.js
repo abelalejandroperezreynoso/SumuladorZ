@@ -29,7 +29,12 @@ function dampAngle(a, b, lambda, dt) {
 
 export class Player {
   static async load(scene, physics) {
-    const gltf = await new GLTFLoader().loadAsync('models/RobotExpressive.glb');
+    // Si la página incrusta el modelo en base64 (hosts que no sirven .glb), se usa ese.
+    const loader = new GLTFLoader();
+    const embedded = globalThis.__ROBOT_GLB_B64;
+    const gltf = embedded
+      ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
+      : await loader.loadAsync('models/RobotExpressive.glb');
     return new Player(scene, physics, gltf);
   }
 
