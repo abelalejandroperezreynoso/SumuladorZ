@@ -188,6 +188,7 @@ async function start() {
   });
 
   // Para depuración desde la consola.
+  try { sessionStorage.removeItem('bootRetry'); } catch { /* sin almacenamiento */ }
   window.__game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick };
 }
 

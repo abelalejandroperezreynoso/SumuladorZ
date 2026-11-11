@@ -91,7 +91,18 @@
           msg.style.cssText = 'color:#ffb4a8;max-width:90%;font-size:13px;word-break:break-word;user-select:text;-webkit-user-select:text';
         };
         addEventListener('error', function (e) {
-          if (e.target && e.target.tagName === 'SCRIPT') __bootError('no se pudo descargar ' + e.target.src);
+          if (e.target && e.target.tagName === 'SCRIPT') {
+            // Suele ser pasajero (una publicación a medias o la red): se reintenta un par de veces.
+            var n = 0;
+            try { n = +sessionStorage.getItem('bootRetry') || 0; sessionStorage.setItem('bootRetry', n + 1); } catch (err) { n = 9; }
+            if (n < 3) { __bootStatus('Reintentando la descarga…'); setTimeout(function () { location.reload(); }, 1500 * (n + 1)); }
+            else {
+              __bootError('no se pudo descargar ' + e.target.src + ' — toca para reintentar');
+              var again = function () { try { sessionStorage.removeItem('bootRetry'); } catch (err) {} location.reload(); };
+              document.getElementById('overlay').addEventListener('click', again);
+              document.getElementById('overlay').addEventListener('touchend', again);
+            }
+          }
           else if (!window.__game) __bootError((e.message || 'desconocido') + ' (' + (e.filename || '').split('/').pop() + ':' + e.lineno + ')');
         }, true);
         addEventListener('unhandledrejection', function (e) {
