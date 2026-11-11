@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SumuladorZ — Mundo de pruebas</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f14; font-family: system-ui, sans-serif; color: #e8eef5; }
+      canvas { display: block; }
+      #crosshair { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none; }
+      #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 2px #000; }
+      #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; clip-path: polygon(0 0, 100% 0, 100% 35%, 0 35%, 0 65%, 100% 65%, 100% 100%, 0 100%); }
+      #crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; clip-path: polygon(0 0, 35% 0, 35% 100%, 0 100%, 0 0, 65% 0, 100% 0, 100% 100%, 65% 100%, 65% 0); }
+      .panel { position: fixed; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.6; pointer-events: none; }
+      #controls { left: 12px; bottom: 12px; }
+      #stats { right: 12px; top: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+      kbd { background: rgba(255, 255, 255, 0.14); border-radius: 4px; padding: 1px 6px; font-family: inherit; font-size: 12px; }
+      #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(5, 8, 12, 0.72); cursor: pointer; text-align: center; }
+      #overlay h1 { margin: 0; font-size: 40px; letter-spacing: 2px; }
+      #overlay p { margin: 0; opacity: 0.8; }
+      #overlay.hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="crosshair"></div>
+    <div id="controls" class="panel">
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> caminar &nbsp;·&nbsp; <kbd>Shift</kbd> correr &nbsp;·&nbsp; <kbd>Espacio</kbd> saltar<br />
+      <kbd>Clic izq.</kbd> disparar &nbsp;·&nbsp; <kbd>Clic der.</kbd> / <kbd>F</kbd> golpear<br />
+      <kbd>Ratón</kbd> cámara &nbsp;·&nbsp; <kbd>Rueda</kbd> zoom &nbsp;·&nbsp; <kbd>R</kbd> reiniciar mundo
+    </div>
+    <div id="stats" class="panel"></div>
+    <div id="overlay">
+      <h1>SumuladorZ</h1>
+      <p id="overlay-msg">Cargando…</p>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
