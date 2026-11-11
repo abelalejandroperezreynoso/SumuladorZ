@@ -178,6 +178,9 @@ const SCENES = {
     steps: [[0.1, press('KeyC')], [1.4, fire(true)], [2.8, fire(false)]] },
   cobertura_tumbado: { place: [5.6, -5.5, 0], seconds: 5.6, view: 0.7, dist: 3.4,
     steps: [[0.1, press('KeyC')], [1.6, key('KeyD')], [2.8, key('KeyD', false)], [3.2, fire(true)], [4.4, fire(false)]] },
+  // El piloto automático jugando: se le ve buscar cobertura, asomarse y disparar.
+  piloto: { place: [0, 0, 0], seconds: 16, view: (s) => s.facing + 2.4, dist: 4.2,
+    before: `g.input.pressed.add('KeyP'); g.tick(1/60);`, steps: [], keepAlive: true },
   zombi: { place: [20, 20, 0], seconds: 7.5, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
     before: `g.horde.start(); for (let i = 0; i < 40; i++) g.tick(1/60);
       const z = g.horde.zombies[0]; z.body.setTranslation({ x: 20, y: 0.9, z: 31 }, true);

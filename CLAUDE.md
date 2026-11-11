@@ -28,7 +28,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   Juega una partida larga y resume cada oleada. Comparar los tres estilos: si quedarse quieto
   disparando (`stand`) llega lejos, el juego es demasiado fácil.
 - **Piloto automático** — tecla `P` en el juego (`src/autopilot.js`). Su registro está en
-  `window.__game.autopilot.log` y `.stats`.
+  `window.__game.autopilot.log` y `.stats`. Busca cobertura de forma activa y va rotando
+  entre alta, baja y muy baja (`stats.coverTypes`). La escena `piloto` de `tools/watch.cjs`
+  graba 16 s de su partida.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 
