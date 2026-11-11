@@ -13,6 +13,7 @@ export class Input {
     this.touchMode = false; // se activa al primer toque (ver touch.js)
     this.started = false;
     this.stick = { x: 0, y: 0 }; // joystick táctil
+    this.auto = null; // movimiento dictado por el piloto automático ({ x, z, run })
 
     addEventListener('keydown', (e) => {
       if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
@@ -49,6 +50,7 @@ export class Input {
 
   /** Movimiento deseado: x (derecha), z (adelante) en [-1, 1] y si se quiere correr. */
   move() {
+    if (this.auto) return this.auto;
     const sx = this.stick.x, sy = this.stick.y;
     if (Math.hypot(sx, sy) > 0.15) {
       return { x: sx, z: sy, run: Math.hypot(sx, sy) > RUN_THRESHOLD };

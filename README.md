@@ -46,6 +46,7 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 | Cámara / zoom | Ratón / rueda |
 | Reiniciar el mundo | `R` |
 | Iniciar / detener la horda | `H` o el botón superior |
+| Piloto automático | `P` o el botón «Piloto» |
 
 ## Horda de zombis
 
@@ -62,6 +63,13 @@ llegan dos, luego tres, y así sucesivamente.
 - **Matarlos**: aguantan 3 balas o 2 puñetazos.
 
 El zombi usa el mismo modelo del personaje recoloreado (piel verdosa y ropa oscura).
+
+## Piloto automático
+
+El botón «Piloto» (o `P`) hace que el juego se juegue solo: inicia la horda, busca cobertura,
+dispara, huye corriendo cuando se le acercan y golpea si lo acorralan. Usa los mismos controles
+que un jugador, así que sirve para ver todas las mecánicas en marcha y para cazar fallos.
+Lleva un registro de la partida en `window.__game.autopilot.log` y `.stats`.
 
 ## Zonas del mundo de pruebas
 

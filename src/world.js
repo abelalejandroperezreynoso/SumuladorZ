@@ -162,10 +162,25 @@ export function buildWorld(scene, physics) {
 
   // --- Circuito de movimiento (detrás, +Z): escaleras, plataforma y rampa ---
   const PH = 2; // altura de la plataforma
-  physics.add({ size: [6, 0.4, 6], pos: [0, PH - 0.2, 16], color: 0x7d8a99 });
+  // Losa delgada: deja 1,88 m libres para pasar por debajo (el personaje mide 1,75 m). Con
+  // menos altura, las cápsulas se quedaban encajadas contra el borde inferior.
+  const SLAB = 0.12;
+  physics.add({ size: [6, SLAB, 6], pos: [0, PH - SLAB / 2, 16], color: 0x7d8a99 });
   for (const [x, z] of [[-2.8, 13.2], [2.8, 13.2], [-2.8, 18.8], [2.8, 18.8]]) {
-    physics.add({ size: [0.3, PH - 0.4, 0.3], pos: [x, (PH - 0.4) / 2, z], color: 0x4b5561 });
+    physics.add({ size: [0.3, PH - SLAB, 0.3], pos: [x, (PH - SLAB) / 2, z], color: 0x4b5561 });
   }
+  // Relleno bajo una rampa: bloques escalonados que tapan el hueco en cuña de debajo, donde
+  // un personaje quedaría atrapado entre el suelo y la cara inferior. `at(s)` da el centro
+  // [x, z] del tramo a distancia horizontal s del pie de la rampa.
+  const fillUnder = (run, size, at, options = {}) => {
+    const N = 8;
+    for (let i = 0; i < N; i++) {
+      const h = (PH * i) / N - 0.3; // por debajo de la superficie de la rampa
+      if (h < 0.15) continue;
+      const [x, z] = at(((i + 0.5) * run) / N);
+      physics.add({ size: size(run / N, h), pos: [x, h / 2, z], ...options });
+    }
+  };
   // Escaleras: peldaños visuales + una rampa invisible como colisión (subida suave y fiable).
   const STEPS = 10, RISE = PH / STEPS, RUN = 0.4;
   for (let i = 0; i < STEPS; i++) {
@@ -185,6 +200,7 @@ export function buildWorld(scene, physics) {
     pos: [-1.5, PH / 2 - 0.1 * Math.cos(sAng), 13 - sRun / 2 + 0.1 * Math.sin(sAng)],
     euler: [-sAng, 0, 0],
   });
+  fillUnder(sRun, (len, h) => [3, h, len], (s) => [-1.5, 13 - sRun + s], { visible: false, shadow: false });
   const ang = THREE.MathUtils.degToRad(20);
   const run = PH / Math.tan(ang);
   const len = PH / Math.sin(ang);
@@ -193,6 +209,7 @@ export function buildWorld(scene, physics) {
     pos: [3 + run / 2 - 0.1 * Math.sin(ang), PH / 2 - 0.1 * Math.cos(ang), 16],
     euler: [0, 0, -ang],
   });
+  fillUnder(run, (len, h) => [len, h, 4], (s) => [3 + run - s, 16], { color: 0xa8842e });
   // Rampa empinada (no escalable: > 45°) y bloques de salto
   physics.add({ size: [3, 0.2, 4], pos: [-9, 1.2, 12], euler: [THREE.MathUtils.degToRad(-55), 0, 0], color: 0x9c3d3d });
   [[8, 0.5, 8], [10, 1.0, 9.5], [12, 1.5, 8], [14, 2.0, 9.5]].forEach(([x, h, z]) => {

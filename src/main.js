@@ -6,6 +6,7 @@ import { ThirdPersonCamera } from './camera.js';
 import { Player } from './player.js';
 import { Combat } from './combat.js';
 import { Horde } from './horde.js';
+import { Autopilot } from './autopilot.js';
 import { setupTouch } from './touch.js';
 import { setupPWA } from './pwa.js';
 
@@ -68,6 +69,19 @@ async function start() {
   hordeBtn.addEventListener('click', () => { toggleHorde(); hordeBtn.blur(); });
   const input = new Input(renderer.domElement);
   const cam = new ThirdPersonCamera(camera);
+  const autopilot = new Autopilot({ player, horde, cam, input, physics });
+  const autoBtn = document.getElementById('auto-btn');
+  const toggleAuto = () => {
+    autopilot.toggle();
+    autoBtn.classList.toggle('active', autopilot.active);
+    showToast(autopilot.active ? 'Piloto automático' : 'Control manual');
+  };
+  autoBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    input.pressed.add('KeyP');
+  }, { passive: false });
+  autoBtn.addEventListener('click', () => { toggleAuto(); autoBtn.blur(); });
 
   setupTouch(input);
   overlayMsg.textContent = 'Haz clic o toca para jugar';
@@ -97,6 +111,8 @@ async function start() {
       combat.targetHits = combat.punchHits = 0;
       if (horde.active) horde.stop();
     }
+    if (input.justPressed('KeyP')) toggleAuto();
+    autopilot.update(dt);
     if (input.justPressed('KeyH')) toggleHorde();
     if (player.dead) {
       showToast(horde.active ? `Te comieron en la oleada ${horde.wave}` : 'Te comieron');
@@ -114,6 +130,8 @@ async function start() {
     cam.update(dt, input, { x: t.x, y: t.y - 0.87, z: t.z }, physics);
     camera.updateMatrixWorld(true);
     player.postPhysics(dt, cam, combat);
+    // Si un obstáculo empuja la cámara hasta la cabeza, se oculta el modelo para no taparlo todo.
+    player.model.visible = cam.current > 0.75;
     horde.postPhysics();
     // Los disparos hacen ruido y atraen a los zombis cercanos.
     if (player.shots !== shotsHeard) {
@@ -157,7 +175,7 @@ async function start() {
   });
 
   // Para depuración desde la consola.
-  window.__game = { scene, physics, player, combat, horde, cam, input, renderer, tick };
+  window.__game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick };
 }
 
 start().catch((err) => {
