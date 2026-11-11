@@ -5,6 +5,7 @@
 //
 // Uso:  npx vite --port 5199 &   y luego   node tools/watch.cjs [carpeta de salida] [escena...]
 // Con SKELETON=1 las tiras muestran solo el esqueleto del personaje.
+// Con EVERY=4 guarda una imagen cada 4 fotogramas (15 por segundo): tiras más cortas para un catálogo.
 // Requiere Playwright con Chromium disponible en el entorno.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -172,6 +173,9 @@ const SCENES = {
   salto_carrera: { place: [-30, 30, -Math.PI / 2], seconds: 2.6, view: 0,
     steps: [[0, key('KeyW') + ';' + key('ShiftLeft')], [1.0, press('Space')]] },
   golpe: { place: [20, 30, 0], seconds: 1.2, view: Math.PI * 0.7, steps: [[0.1, press('KeyF')]] },
+  // Disparo de pie: apuntar y ráfaga parado, y después caminando sin dejar de disparar.
+  disparo: { place: [20, 30, 0], seconds: 3.6, view: Math.PI * 0.7,
+    steps: [[0.3, fire(true)], [1.4, key('KeyW')], [2.6, key('KeyW', false)], [3.0, fire(false)]] },
   cobertura_baja: { place: [-2.8, -3, 0], seconds: 5.2, view: 0.6, dist: 3.2,
     steps: [[0.1, press('KeyC')], [1.3, key('KeyD')], [2.2, key('KeyD', false)], [2.6, fire(true)], [3.8, fire(false)]] },
   cobertura_alta: { place: [3.3, -3.2, 0], seconds: 4.2, view: -0.5, dist: 3.4,
@@ -201,15 +205,15 @@ const SCENES = {
   const report = {};
   for (const [name, sc] of Object.entries(SCENES)) {
     if (ONLY.length && !ONLY.includes(name)) continue;
-    const res = await page.evaluate(({ sc }) => {
+    const res = await page.evaluate(({ sc, every }) => {
       const g = window.__game;
       W.place(...sc.place);
       if (sc.before) new Function('g', sc.before)(g);
       const steps = sc.steps.map(([t, code]) => ({ t, do: new Function('g', code) }));
       if (sc.keepAlive) steps.push(...Array.from({ length: 40 }, (_, i) => ({ t: i * 0.25, do: (g) => { g.player.health = 100; } })));
       const view = typeof sc.view === 'string' ? new Function('s', 'return ' + sc.view) : sc.view;
-      return W.record({ ...sc, steps, view, subject: sc.subject ? new Function('g', 'return () => ' + sc.subject)(g) : null });
-    }, { sc: { ...sc, view: typeof sc.view === 'function' ? sc.view.toString().replace(/^\(s\) => /, '') : sc.view } });
+      return W.record({ ...sc, ...(every ? { every } : {}), steps, view, subject: sc.subject ? new Function('g', 'return () => ' + sc.subject)(g) : null });
+    }, { every: +process.env.EVERY || 0, sc: { ...sc, view: typeof sc.view === 'function' ? sc.view.toString().replace(/^\(s\) => /, '') : sc.view } });
     res.pngs.forEach((png, i) => {
       const file = res.pngs.length > 1 ? `${name}_${i + 1}.png` : `${name}.png`;
       fs.writeFileSync(path.join(OUT, file), Buffer.from(png.split(',')[1], 'base64'));
