@@ -16,7 +16,10 @@ const stats = document.getElementById('stats');
 
 const STATE_LABEL = { Idle: 'Quieto', Walking: 'Caminando', Running: 'Corriendo', Jump: 'En el aire', Punch: 'Golpeando' };
 
+const status = (text) => window.__bootStatus?.(text);
+
 async function start() {
+  status('Iniciando gráficos…');
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -32,9 +35,11 @@ async function start() {
     renderer.setSize(innerWidth, innerHeight);
   });
 
+  status('Cargando físicas…');
   await initPhysics();
   const physics = new Physics(scene);
   const { sun } = buildWorld(scene, physics);
+  status('Cargando personaje…');
   const player = await Player.load(scene, physics);
   const combat = new Combat(scene, physics);
   const input = new Input(renderer.domElement);
@@ -42,10 +47,18 @@ async function start() {
 
   setupTouch(input);
   overlayMsg.textContent = 'Haz clic o toca para jugar';
-  overlay.addEventListener('click', () => {
+  // En móviles se arranca con el propio toque (iOS no siempre genera "click" en un div).
+  const begin = (e) => {
+    if (e.type === 'touchend') {
+      e.preventDefault();
+      input.touchMode = true;
+      document.body.classList.add('touch');
+    }
     input.lock();
     if (input.touchMode) overlay.classList.add('hidden');
-  });
+  };
+  overlay.addEventListener('click', begin);
+  overlay.addEventListener('touchend', begin, { passive: false });
   document.addEventListener('pointerlockchange', () => {
     overlay.classList.toggle('hidden', input.locked);
   });
@@ -99,5 +112,6 @@ async function start() {
 
 start().catch((err) => {
   console.error(err);
-  overlayMsg.textContent = 'Error al iniciar: ' + err.message;
+  if (window.__bootError) window.__bootError(err.stack || err.message);
+  else overlayMsg.textContent = 'Error al iniciar: ' + err.message;
 });

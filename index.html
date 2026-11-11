@@ -60,6 +60,28 @@
       <h1>SumuladorZ</h1>
       <p id="overlay-msg">Cargando…</p>
     </div>
+    <script>
+      // Diagnóstico de arranque: cualquier error se muestra en pantalla (útil en móviles sin consola).
+      (function () {
+        var msg = document.getElementById('overlay-msg');
+        window.__bootStatus = function (text) { if (!window.__bootFailed) msg.textContent = text; };
+        window.__bootError = function (text) {
+          window.__bootFailed = true;
+          msg.textContent = 'Error: ' + text;
+          msg.style.cssText = 'color:#ffb4a8;max-width:90%;font-size:13px;word-break:break-word;user-select:text;-webkit-user-select:text';
+        };
+        addEventListener('error', function (e) {
+          if (e.target && e.target.tagName === 'SCRIPT') __bootError('no se pudo descargar ' + e.target.src);
+          else if (!window.__game) __bootError((e.message || 'desconocido') + ' (' + (e.filename || '').split('/').pop() + ':' + e.lineno + ')');
+        }, true);
+        addEventListener('unhandledrejection', function (e) {
+          if (!window.__game) __bootError(String((e.reason && (e.reason.stack || e.reason.message)) || e.reason));
+        });
+        setTimeout(function () {
+          if (!window.__game && !window.__bootFailed) msg.textContent += ' (está tardando; la primera descarga pesa unos 2 MB)';
+        }, 15000);
+      })();
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
