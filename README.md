@@ -47,6 +47,7 @@ mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizo
 | Reiniciar el mundo | `R` |
 | Iniciar / detener la horda | `H` o el botón superior |
 | Piloto automático | `P` o el botón «Piloto» |
+| Ver solo el esqueleto del personaje | `K` o el botón «Esqueleto» |
 
 ## Horda de zombis
 
@@ -82,6 +83,7 @@ cámara, y velocidad de giro.
 npx vite --port 5199 &
 node tools/watch.cjs salida            # todas las escenas
 node tools/watch.cjs salida zombi giro # solo algunas
+SKELETON=1 node tools/watch.cjs salida # tiras con solo el esqueleto
 ```
 
 `tools/gameplay.cjs` hace jugar una partida larga con un estilo (`bot`, `stand` o `punch`) y

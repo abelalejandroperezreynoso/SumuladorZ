@@ -22,6 +22,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   Guarda tiras de fotogramas a 30 imágenes por segundo de cada mecánica y mide pies que
   resbalan, saltos bruscos de pose, tirones del personaje y de la cámara y velocidad de giro.
   Mirar las láminas y comparar las medidas antes y después de un cambio.
+  Con `SKELETON=1` las tiras muestran solo el esqueleto: es la forma más clara de juzgar
+  una pose (piernas enredadas, articulaciones forzadas). En el juego, tecla `K`.
 - **Equilibrio del juego** — `node tools/gameplay.cjs <bot|stand|punch> [segundos]`
   Juega una partida larga y resume cada oleada. Comparar los tres estilos: si quedarse quieto
   disparando (`stand`) llega lejos, el juego es demasiado fácil.
