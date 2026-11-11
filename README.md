@@ -74,7 +74,7 @@ Lleva un registro de la partida en `window.__game.autopilot.log` y `.stats`.
 ## Observador de animaciones (herramienta de desarrollo)
 
 `tools/watch.cjs` reproduce cada mecánica en un navegador sin interfaz y, por escena, guarda
-una tira de fotogramas (para revisar la animación cuadro a cuadro) y un informe con medidas
+tiras de fotogramas a 30 imágenes por segundo (para revisar la animación cuadro a cuadro) y un informe con medidas
 del movimiento: pies que resbalan, saltos bruscos de pose, tirones del personaje y de la
 cámara, y velocidad de giro.
 
