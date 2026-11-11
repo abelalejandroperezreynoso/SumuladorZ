@@ -18,9 +18,12 @@ const FIRE_INTERVAL = 0.14;
 const JUMP_POSE_TIME = 0.2; // instante del clip de carrera usado como pose de salto
 const AIM_HOLD = 0.9; // segundos que mantiene la pose de apuntar tras disparar
 
-// Colores opcionales por nombre de material del modelo (p. ej. { Red_Dark: 0x224488 } para las
-// zapatillas). Vacío = colores originales.
-const PALETTE = {};
+// Colores por nombre de material del modelo (los no listados conservan el original).
+// LightBlue = pantalón, LightBrown = camiseta, Red_Dark = zapatillas, Hair = pelo.
+const PALETTE = { LightBlue: 0x4f5b37 };
+const POCKET_COLOR = 0x444f30;
+const POCKET_OFFSET = 0.068; // distancia del eje del muslo a su cara exterior (m)
+const LEG_WIDTH = 1.22; // pantalón holgado: ensancha los huesos de las piernas
 
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
@@ -83,6 +86,7 @@ export class Player {
       model.traverse((o) => { if (!found && o.isBone && o.name === name) found = o; });
       return found;
     };
+    this.addCargoPants(bone);
     this.upperArm = bone('UpperArmR');
     this.hand = bone('WristR') ?? bone('LowerArmR');
 
@@ -138,6 +142,33 @@ export class Player {
     cc.setApplyImpulsesToDynamicBodies(true);
     cc.setCharacterMass(70);
     this.controller = cc;
+  }
+
+  // Pantalón tipo cargo: piernas más anchas y un bolsillo con solapa en cada muslo.
+  addCargoPants(bone) {
+    const pocketMat = new THREE.MeshStandardMaterial({ color: POCKET_COLOR, roughness: 0.9 });
+    const flapMat = new THREE.MeshStandardMaterial({ color: PALETTE.LightBlue, roughness: 0.9 });
+    const hip = new THREE.Vector3(), knee = new THREE.Vector3();
+    for (const side of ['L', 'R']) {
+      const upper = bone('UpperLeg' + side), lower = bone('LowerLeg' + side);
+      if (!upper || !lower) continue;
+      upper.scale.set(LEG_WIDTH, 1, LEG_WIDTH); // el eje Y del hueso es su longitud
+      this.model.updateMatrixWorld(true);
+      upper.getWorldPosition(hip);
+      lower.getWorldPosition(knee);
+      const out = Math.sign(hip.x - this.model.position.x) || (side === 'L' ? 1 : -1);
+
+      const pocket = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.13), pocketMat);
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.14), flapMat);
+      flap.position.y = 0.06;
+      body.castShadow = flap.castShadow = true;
+      pocket.add(body, flap);
+      pocket.position.lerpVectors(hip, knee, 0.62);
+      pocket.position.x += out * POCKET_OFFSET;
+      this.model.add(pocket);
+      upper.attach(pocket); // conserva la posición y sigue al muslo al animarse
+    }
   }
 
   respawn() {
