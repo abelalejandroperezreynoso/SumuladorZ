@@ -20,10 +20,12 @@ const AIM_HOLD = 0.9; // segundos que mantiene la pose de apuntar tras disparar
 
 // Colores por nombre de material del modelo (los no listados conservan el original).
 // LightBlue = pantalón, LightBrown = camiseta, Red_Dark = zapatillas, Hair = pelo.
-const PALETTE = { LightBlue: 0x4f5b37 };
-const POCKET_COLOR = 0x444f30;
-const POCKET_OFFSET = 0.068; // distancia del eje del muslo a su cara exterior (m)
-const LEG_WIDTH = 1.22; // pantalón holgado: ensancha los huesos de las piernas
+const PALETTE = { LightBlue: 0x56633c, Red_Dark: 0x1c2338 }; // pantalón oliva, tenis azul marino
+const POCKET_COLOR = 0x4a5634;
+const THIGH_WIDTH = 1.5; // pantalón holgado: ensancha los huesos de las piernas
+const SHIN_WIDTH = 1.22; // ensanche extra de la pernera (se suma al del muslo)
+const SHOE_SIZE = 1.25; // tenis más voluminosos
+const POCKET_OFFSET = 0.095; // distancia del eje del muslo a su cara exterior (m)
 
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
@@ -146,28 +148,49 @@ export class Player {
 
   // Pantalón tipo cargo: piernas más anchas y un bolsillo con solapa en cada muslo.
   addCargoPants(bone) {
+    const pantsMat = new THREE.MeshStandardMaterial({ color: PALETTE.LightBlue, roughness: 0.9 });
     const pocketMat = new THREE.MeshStandardMaterial({ color: POCKET_COLOR, roughness: 0.9 });
-    const flapMat = new THREE.MeshStandardMaterial({ color: PALETTE.LightBlue, roughness: 0.9 });
     const hip = new THREE.Vector3(), knee = new THREE.Vector3();
+    const add = (mesh, parentBone) => {
+      mesh.traverse((o) => { o.castShadow = true; });
+      this.model.add(mesh);
+      parentBone.attach(mesh); // conserva la posición y sigue al hueso al animarse
+    };
     for (const side of ['L', 'R']) {
-      const upper = bone('UpperLeg' + side), lower = bone('LowerLeg' + side);
+      const upper = bone('UpperLeg' + side), lower = bone('LowerLeg' + side), foot = bone('Foot' + side);
       if (!upper || !lower) continue;
-      upper.scale.set(LEG_WIDTH, 1, LEG_WIDTH); // el eje Y del hueso es su longitud
+      // El eje Y de cada hueso es su longitud: solo se ensancha el grosor.
+      upper.scale.set(THIGH_WIDTH, 1, THIGH_WIDTH);
+      lower.scale.set(SHIN_WIDTH, 1, SHIN_WIDTH);
+      foot?.scale.setScalar(SHOE_SIZE);
       this.model.updateMatrixWorld(true);
       upper.getWorldPosition(hip);
       lower.getWorldPosition(knee);
       const out = Math.sign(hip.x - this.model.position.x) || (side === 'L' ? 1 : -1);
 
+      // Bolsillo plano con solapa en el lateral del muslo.
       const pocket = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.15, 0.13), pocketMat);
-      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.045, 0.14), flapMat);
-      flap.position.y = 0.06;
-      body.castShadow = flap.castShadow = true;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.19, 0.17), pocketMat);
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.055, 0.18), pantsMat);
+      flap.position.y = 0.075;
       pocket.add(body, flap);
-      pocket.position.lerpVectors(hip, knee, 0.62);
+      pocket.position.lerpVectors(hip, knee, 0.6);
       pocket.position.x += out * POCKET_OFFSET;
-      this.model.add(pocket);
-      upper.attach(pocket); // conserva la posición y sigue al muslo al animarse
+      add(pocket, upper);
+
+      // Bajo ancho y arrugado que cae sobre el tenis, al final de la pernera.
+      const dir = new THREE.Vector3().setFromMatrixColumn(lower.matrixWorld, 1).normalize();
+      if (dir.y > 0) dir.negate(); // hacia el tobillo
+      const ankleY = this.model.position.y + 0.1;
+      const hem = new THREE.Group();
+      [[0.112, 0.07, 0.045], [0.124, 0.05, 0]].forEach(([r, h, y]) => {
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.94, r, h, 10), pantsMat);
+        ring.position.y = y;
+        hem.add(ring);
+      });
+      hem.position.copy(knee).addScaledVector(dir, (knee.y - ankleY) / -dir.y);
+      hem.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+      add(hem, lower);
     }
   }
 
