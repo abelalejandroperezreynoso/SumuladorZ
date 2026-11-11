@@ -83,7 +83,7 @@ class Zombie {
     this.mixer = new THREE.AnimationMixer(this.model);
     const action = (name) => this.mixer.clipAction(horde.clips[name]);
     this.actions = {
-      Idle: action('Idle'), Walk: action('Walk'), Attack: action('Punch_Left'),
+      Idle: action('Idle'), Walk: action('Walk'), Run: action('Run'), Attack: action('Punch_Left'),
       Hit: action('HitRecieve'), Death: action('Death'),
     };
     for (const name of ['Attack', 'Hit', 'Death']) {
@@ -246,7 +246,16 @@ class Zombie {
         this.bit = true;
         if (dist < BITE_REACH && Math.abs(player.position.y - this.position.y) < 1.2) player.damage(BITE_DAMAGE);
       }
-      if (this.timer >= ATTACK_TIME) this.state = 'chase';
+      if (this.timer >= ATTACK_TIME) {
+        if (this.sees && dist < ATTACK_RANGE) {
+          // Sigue a tiro: encadena otra mordida sin pasar un fotograma por la carrera.
+          this.timer = 0;
+          this.bit = false;
+          this.current.reset().play();
+        } else {
+          this.state = 'chase';
+        }
+      }
     } else if (this.state === 'chase') {
       const tx = this.target.x - this.position.x, tz = this.target.z - this.position.z;
       const td = Math.hypot(tx, tz);
@@ -274,14 +283,15 @@ class Zombie {
       }
     }
     if (wantFacing !== null) this.facing = dampAngle(this.facing, wantFacing, 6, dt);
-    const hunting = this.state === 'chase' || this.state === 'attack';
-    this.arms = THREE.MathUtils.damp(this.arms, hunting ? 1 : 0, 6, dt);
+    // Brazos al frente al perseguir; al morder bajan para que mande la animación de ataque.
+    const armsTarget = this.state === 'chase' ? 1 : this.state === 'attack' ? 0.35 : 0;
+    this.arms = THREE.MathUtils.damp(this.arms, armsTarget, 6, dt);
 
     // --- Movimiento con colisiones ---
     this.vy = this.grounded ? 0 : this.vy - 9.81 * dt;
     const delta = {
       x: (Math.sin(this.facing) * speed + this.pushX) * dt,
-      y: this.grounded ? -0.02 : this.vy * dt,
+      y: this.grounded ? 0 : this.vy * dt,
       z: (Math.cos(this.facing) * speed + this.pushZ) * dt,
     };
     const cc = this.horde.controller;
@@ -331,9 +341,18 @@ class Zombie {
     this.sidestep = this.detour * DETOUR_ANGLE;
 
     if (this.state === 'chase' || this.state === 'wander') {
-      if (this.moveSpeed > 0.15) {
-        this.play('Walk');
-        this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 1.6, 0.5, 1.9);
+      // Histéresis: una parada de un instante no corta la animación de caminar.
+      this.stillT = this.moveSpeed > 0.15 ? 0 : (this.stillT ?? 0) + dt;
+      if (this.stillT < 0.2) {
+        // Al perseguir usa el clip de correr a ritmo lento (zancada larga y pesada); el de
+        // caminar a esa velocidad hacía que los pies patinaran. Ritmos medidos con tools/watch.cjs.
+        if (this.state === 'chase') {
+          this.play('Run', 0.3);
+          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 3.1, 0.6, 1.2);
+        } else {
+          this.play('Walk', 0.3);
+          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 0.85, 0.6, 1.4);
+        }
       } else {
         this.play('Idle');
       }
