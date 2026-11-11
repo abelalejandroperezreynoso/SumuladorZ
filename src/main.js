@@ -16,6 +16,13 @@ const stats = document.getElementById('stats');
 
 const STATE_LABEL = { Idle: 'Quieto', Walking: 'Caminando', Running: 'Corriendo', Jump: 'En el aire', Punch: 'Golpeando' };
 
+function stateLabel(player) {
+  if (player.jumpT >= 0) return 'Tomando impulso';
+  const c = player.cover;
+  if (c) return !c.attached ? 'Deslizándose a cubierto' : c.peek > 0.3 ? 'Asomado' : c.high ? 'Cobertura alta' : 'Cobertura baja';
+  return STATE_LABEL[player.state] ?? player.state;
+}
+
 const status = (text) => window.__bootStatus?.(text);
 
 async function start() {
@@ -96,7 +103,7 @@ async function start() {
     if (statsT <= 0) {
       statsT = 0.15;
       stats.innerHTML =
-        `${player.jumpT >= 0 ? 'Tomando impulso' : STATE_LABEL[player.state] ?? player.state} · ${player.speed.toFixed(1)} m/s<br>` +
+        `${stateLabel(player)} · ${player.speed.toFixed(1)} m/s<br>` +
         `Dianas alcanzadas: <b>${combat.targetHits}</b> · Golpes: <b>${combat.punchHits}</b><br>` +
         `Disparos: ${player.shots} · ${fps.toFixed(0)} FPS`;
     }

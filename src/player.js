@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RAPIER, GROUPS } from './physics.js';
+import { probeWall, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
 // se confunde con uno antiguo guardado en la caché del navegador.
 import modelUrl from './assets/Character.glb?url';
@@ -19,6 +20,17 @@ const JUMP_BUFFER = 0.12; // margen para pulsar salto justo antes de aterrizar (
 const AIR_CONTROL = 1.2; // en el aire apenas se puede corregir la trayectoria
 const LAND_TIME = 0.32; // duración de la flexión que amortigua la caída (s)
 const LAND_SLOWDOWN = 0.8; // fracción de velocidad horizontal que se conserva al caer
+// Cobertura: el personaje se desliza hasta el muro, se pega de espaldas y se mueve a lo
+// largo de él. Tras un muro bajo se agacha y se levanta para disparar por encima; tras
+// uno alto permanece de pie y se asoma por el borde.
+const COVER_RANGE = 2.4; // distancia máxima desde la que se desliza a cubierto (m)
+const COVER_GAP = 0.05; // separación entre la cápsula y el muro
+const COVER_SLIDE_SPEED = 7; // velocidad del deslizamiento de entrada (m/s)
+const COVER_SPEED = 1.7; // velocidad pegado al muro (m/s)
+const COVER_EXIT_TIME = 0.2; // tiempo tirando hacia fuera para despegarse (s)
+const COVER_CROUCH = 0.46; // cuánto baja la cadera tras una cobertura baja (m)
+const PEEK_REACH = 0.3; // margen hasta el borde para poder asomarse (m, además del radio)
+const PEEK_DISTANCE = 0.95; // paso lateral al asomarse desde una cobertura alta (m)
 const CROUCH_DEPTH = 0.3; // cuánto baja la cadera en la flexión completa (m)
 const RADIUS = 0.35;
 const HALF = 0.5; // semialtura del tramo recto de la cápsula
@@ -79,6 +91,9 @@ export class Player {
     this.crouch = 0; // 0 = erguido, 1 = flexión completa
     this.landT = 0;
     this.landAmount = 0;
+    this.cover = null; // { nx, nz, high, attached, peek, peekDir, away } mientras está a cubierto
+    this.coverCrouch = 0;
+    this.canFire = true;
     this.state = 'Idle';
     this.punchT = -1;
     this.punchDone = false;
@@ -138,6 +153,10 @@ export class Player {
       Jump: this.mixer.clipAction(clip('Run').clone()),
     };
     this.actions.Jump.timeScale = 0;
+    // Pasos laterales para moverse pegado a una cobertura.
+    this.actions.CoverLeft = this.mixer.clipAction(clip('Run_Left'));
+    this.actions.CoverRight = this.mixer.clipAction(clip('Run_Right'));
+    this.actions.CoverLeft.timeScale = this.actions.CoverRight.timeScale = 0.55;
     this.actions.Punch.setLoop(THREE.LoopOnce);
     this.actions.Punch.clampWhenFinished = true;
     this.actions.Punch.timeScale = this.actions.Punch.getClip().duration / PUNCH_TIME;
@@ -233,6 +252,80 @@ export class Player {
     this.velocity.set(0, 0, 0);
     this.jumpT = -1;
     this.jumpBuffer = this.landT = this.crouch = 0;
+    this.cover = null;
+  }
+
+  /** Busca un muro en las direcciones dadas y, si lo hay, empieza a deslizarse hacia él. */
+  tryEnterCover(dirs) {
+    const t = this.body.translation();
+    const y = t.y - FOOT + COVER_LOW_Y;
+    for (const d of dirs) {
+      const hit = probeWall(this.physics.world, t.x, y, t.z, d.x, d.z, COVER_RANGE);
+      if (!hit || hit.nx * d.x + hit.nz * d.z > -0.5) continue; // hay que encararlo
+      this.cover = { nx: hit.nx, nz: hit.nz, high: false, attached: false, peek: 0, peekDir: 0, away: 0 };
+      this.jumpT = -1;
+      return true;
+    }
+    return false;
+  }
+
+  leaveCover() {
+    this.cover = null;
+  }
+
+  /** Movimiento mientras está a cubierto: fija la velocidad horizontal. */
+  coverMove(dt, dir, moving, aiming, cam) {
+    const c = this.cover;
+    const world = this.physics.world;
+    const t = this.body.translation();
+    const feet = t.y - FOOT;
+    const wall = (x, z, y, dist) => probeWall(world, x, feet + y, z, -c.nx, -c.nz, dist);
+
+    // Mantiene el contacto con el muro (salvo mientras se asoma más allá del borde).
+    let gap = 0;
+    if (c.peek < 0.02) {
+      const hit = wall(t.x, t.z, COVER_LOW_Y, c.attached ? 1 : COVER_RANGE + 0.6);
+      if (!hit) return this.leaveCover();
+      c.nx = hit.nx;
+      c.nz = hit.nz;
+      gap = hit.dist - (RADIUS + COVER_GAP);
+      if (gap < 0.12) c.attached = true;
+      c.high = !!wall(t.x, t.z, COVER_HIGH_Y, hit.dist + 0.5);
+    }
+    const tx = c.nz, tz = -c.nx; // tangente al muro
+    // ¿Se acaba el muro a esa distancia lateral?
+    const ends = (side, reach) =>
+      !wall(t.x + tx * side * reach, t.z + tz * side * reach, COVER_LOW_Y, RADIUS + 0.8);
+
+    // Desplazamiento lateral; tirar hacia fuera un instante despega del muro.
+    let along = 0;
+    if (c.attached && moving) {
+      const away = dir.x * c.nx + dir.z * c.nz;
+      c.away = away > 0.7 ? c.away + dt : 0;
+      if (c.away > COVER_EXIT_TIME) return this.leaveCover();
+      const s = dir.x * tx + dir.z * tz;
+      if (Math.abs(s) > 0.3 && !ends(Math.sign(s), RADIUS + 0.1)) along = Math.sign(s);
+    } else {
+      c.away = 0;
+    }
+
+    // Cobertura alta: al apuntar junto a un borde da un paso lateral para asomarse.
+    if (c.high && c.attached && aiming && c.peek < 0.02) {
+      const left = ends(-1, RADIUS + PEEK_REACH), right = ends(1, RADIUS + PEEK_REACH);
+      // Con borde a ambos lados, el del hombro de la cámara.
+      const camSide = Math.sign(Math.cos(cam.yaw) * tx - Math.sin(cam.yaw) * tz) || 1;
+      c.peekDir = left && right ? camSide : right ? 1 : left ? -1 : 0;
+    }
+    const peekTarget = aiming && c.peekDir ? PEEK_DISTANCE : 0;
+    let peekV = THREE.MathUtils.clamp((peekTarget - c.peek) * 12, -5, 5);
+    if (c.peek + peekV * dt < 0) peekV = -c.peek / dt;
+    c.peek += peekV * dt;
+    if (c.peek > 0.02 || peekTarget) along = 0;
+
+    const vt = along * COVER_SPEED + c.peekDir * peekV;
+    const vn = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
+    this.velocity.x = tx * vt - c.nx * vn;
+    this.velocity.z = tz * vt - c.nz * vn;
   }
 
   get speed() {
@@ -251,22 +344,47 @@ export class Player {
     const punching = this.punchT >= 0;
     let speed = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
     if (punching) speed *= 0.25;
+    this.jumpBuffer = input.justPressed('Space') ? JUMP_BUFFER : this.jumpBuffer - dt;
+    const wantsPunch = input.justPressed('KeyF') || input.justPressed('Mouse2');
 
-    // Aceleración suave en el plano horizontal. En el aire se conserva la inercia:
-    // sin entrada no se frena y con ella solo se corrige un poco la trayectoria.
-    const k = this.grounded ? 1 - Math.exp(-14 * dt) : moving ? 1 - Math.exp(-AIR_CONTROL * dt) : 0;
-    this.velocity.x += (_v.x * speed - this.velocity.x) * k;
-    this.velocity.z += (_v.z * speed - this.velocity.z) * k;
+    // --- Cobertura ---
+    // Se busca muro hacia donde se empuja, hacia donde mira la cámara o de frente.
+    if (input.justPressed('KeyC')) {
+      if (this.cover) this.leaveCover();
+      else if (this.grounded && !punching) {
+        const dirs = [];
+        if (moving) dirs.push({ x: _v.x, z: _v.z });
+        dirs.push({ x: -sin, z: -cos }, { x: Math.sin(this.facing), z: Math.cos(this.facing) });
+        this.tryEnterCover(dirs);
+      }
+    } else if (this.cover && (!this.grounded || this.jumpBuffer > 0 || wantsPunch)) {
+      this.leaveCover(); // saltar, golpear o quedarse sin suelo saca de la cobertura
+    }
+    const coverAim = this.aimT > 0 || input.mouseDown(0);
+    if (this.cover) this.coverMove(dt, _v, moving, coverAim, cam);
+
+    if (!this.cover) {
+      // Aceleración suave en el plano horizontal. En el aire se conserva la inercia:
+      // sin entrada no se frena y con ella solo se corrige un poco la trayectoria.
+      const k = this.grounded ? 1 - Math.exp(-14 * dt) : moving ? 1 - Math.exp(-AIR_CONTROL * dt) : 0;
+      this.velocity.x += (_v.x * speed - this.velocity.x) * k;
+      this.velocity.z += (_v.z * speed - this.velocity.z) * k;
+    }
+    // Agachado tras una cobertura baja; al apuntar se levanta para disparar por encima.
+    const cover = this.cover;
+    const hide = cover && cover.attached && !cover.high && !coverAim;
+    this.coverCrouch = THREE.MathUtils.damp(this.coverCrouch, hide ? 1 : 0, 12, dt);
+    this.canFire = !cover
+      || (cover.high ? cover.peek > PEEK_DISTANCE * 0.6 : cover.attached && this.coverCrouch < 0.35);
 
     // --- Salto y gravedad ---
     // En el suelo no se acumula gravedad: un empuje mínimo hacia abajo mantiene el contacto
     // (uno mayor frenaría la subida por rampas) y el "snap" se encarga de las bajadas.
     // El salto no es instantáneo: primero se flexionan las piernas (impulso) y al
     // extenderlas se despega. En carrera la batida es más corta y se salta más lejos.
-    this.jumpBuffer = input.justPressed('Space') ? JUMP_BUFFER : this.jumpBuffer - dt;
     if (this.grounded && this.velocity.y <= 0) {
       this.velocity.y = 0;
-      if (this.jumpT < 0 && this.jumpBuffer > 0 && !punching) {
+      if (this.jumpT < 0 && this.jumpBuffer > 0 && !punching && !cover) {
         this.jumpBuffer = 0;
         this.jumpT = 0;
         this.jumpTime = THREE.MathUtils.lerp(
@@ -300,7 +418,7 @@ export class Player {
     this.crouch = THREE.MathUtils.damp(this.crouch, crouchTarget, charging ? 3.5 / this.jumpTime : 22, dt);
 
     // --- Golpe ---
-    if (!punching && !charging && this.grounded && (input.justPressed('KeyF') || input.justPressed('Mouse2'))) {
+    if (!punching && !charging && this.grounded && wantsPunch) {
       this.punchT = 0;
       this.punchDone = false;
       this.aimT = 0;
@@ -325,6 +443,10 @@ export class Player {
     // --- Orientación: hacia la mira al apuntar/golpear, si no hacia el movimiento ---
     if (aiming) {
       this.facing = dampAngle(this.facing, Math.atan2(cam.forward.x, cam.forward.z), 22, dt);
+    } else if (cover) {
+      // De espaldas al muro; durante el deslizamiento de entrada, de cara a él.
+      const s = cover.attached ? 1 : -1;
+      this.facing = dampAngle(this.facing, Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
     } else if (moving && !punching) {
       this.facing = dampAngle(this.facing, Math.atan2(_v.x, _v.z), 12, dt);
     }
@@ -365,6 +487,11 @@ export class Player {
     let next;
     if (punching) next = 'Punch';
     else if (this.airTime > 0.18) next = 'Jump';
+    else if (this.cover?.attached) {
+      // Paso lateral según hacia qué lado del personaje se desplaza.
+      const side = this.velocity.x * -Math.cos(this.facing) + this.velocity.z * Math.sin(this.facing);
+      next = s < 0.3 || this.cover.peek > 0.02 ? 'Idle' : side > 0 ? 'CoverRight' : 'CoverLeft';
+    }
     else if (s > (WALK_SPEED + RUN_SPEED) / 2) next = 'Running';
     else if (s > 0.35) next = 'Walking';
     else next = 'Idle';
@@ -417,7 +544,7 @@ export class Player {
    * (IK de dos huesos, con los pies fijos en el suelo), inclina el tronco y lleva los
    * brazos hacia atrás, como al tomar impulso o al amortiguar una caída.
    */
-  applyCrouch(amount) {
+  applyCrouch(depth, lean, arms) {
     if (!this.bodyBone || !this.legs.length) return;
     for (const p of this.poseBones) {
       p.pos.copy(p.bone.position);
@@ -434,7 +561,7 @@ export class Player {
     // Baja la cadera.
     const parent = this.bodyBone.parent;
     this.bodyBone.getWorldPosition(_v);
-    _v.y -= CROUCH_DEPTH * amount;
+    _v.y -= depth;
     this.bodyBone.position.copy(parent.worldToLocal(_v));
     this.bodyBone.updateMatrixWorld(true);
 
@@ -463,9 +590,9 @@ export class Player {
 
     // Tronco hacia delante y brazos atrás.
     _right.set(fz, 0, -fx);
-    if (this.abdomen) this.turnBone(this.abdomen, _right, 0.45 * amount);
+    if (this.abdomen) this.turnBone(this.abdomen, _right, lean);
     for (const arm of [this.upperArmL, this.upperArm]) {
-      if (arm) this.turnBone(arm, _right, 0.7 * amount);
+      if (arm && arms) this.turnBone(arm, _right, arms);
     }
   }
 
@@ -502,7 +629,13 @@ export class Player {
     this.position.set(t.x, t.y - FOOT - 0.02, t.z);
     this.model.position.copy(this.position);
     this.model.rotation.y = this.facing;
-    if (this.crouch > 0.01) this.applyCrouch(this.crouch);
+    // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
+    const jc = this.crouch, cc = this.coverCrouch;
+    if (jc > 0.01 || cc > 0.01) {
+      this.applyCrouch(
+        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc), Math.max(0.45 * jc, 0.3 * cc), 0.7 * jc,
+      );
+    }
 
     this.gun.visible = this.aimWeight > 0.05;
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
@@ -529,7 +662,7 @@ export class Player {
     this.gun.updateMatrixWorld(true);
     this.muzzle.set(0, 0, 0.4).applyMatrix4(this.gun.matrixWorld);
 
-    if (this.wantsFire && this.fireCooldown <= 0 && this.aimWeight > 0.6) {
+    if (this.wantsFire && this.canFire && this.fireCooldown <= 0 && this.aimWeight > 0.6) {
       this.fireCooldown = FIRE_INTERVAL;
       this.shots++;
       this.flash.intensity = 30;
