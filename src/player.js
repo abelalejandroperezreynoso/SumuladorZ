@@ -9,6 +9,9 @@ import modelUrl from './assets/Character.glb?url';
 
 const WALK_SPEED = 2.2;
 const RUN_SPEED = 6.0;
+const MAX_TURN = 13; // velocidad máxima de giro del cuerpo (rad/s)
+const AIM_TURN = 24; // al apuntar gira más rápido, pero sin latigazo (rad/s)
+const STATE_DWELL = 0.12; // tiempo mínimo en una animación de locomoción antes de cambiar (s)
 const SPRINT_SPEED = 8.0; // carrera rápida: no permite disparar, pero sí saltar
 const SPRINT_STOP_TIME = 0.2; // tiempo sin moverse que cancela la carrera rápida (s)
 // Salto con medidas humanas: gravedad real y un despegue de ~3,3 m/s, que eleva el cuerpo
@@ -75,6 +78,8 @@ const _h = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _pq = new THREE.Quaternion();
+const _qa = new THREE.Quaternion();
+const _qb = new THREE.Quaternion();
 const _hip = new THREE.Vector3();
 const _knee = new THREE.Vector3();
 const _dir = new THREE.Vector3();
@@ -126,6 +131,7 @@ export class Player {
     this.coverGrip = 0; // 0-1: mano izquierda sujetando el arma
     this.canFire = true;
     this.state = 'Idle';
+    this.stateT = 0;
     this.punchT = -1;
     this.punchDone = false;
     this.fireCooldown = 0;
@@ -191,7 +197,7 @@ export class Player {
     // Pasos laterales para moverse pegado a una cobertura.
     this.actions.CoverLeft = this.mixer.clipAction(clip('Run_Left'));
     this.actions.CoverRight = this.mixer.clipAction(clip('Run_Right'));
-    this.actions.CoverLeft.timeScale = this.actions.CoverRight.timeScale = 0.55;
+    this.actions.CoverLeft.timeScale = this.actions.CoverRight.timeScale = 0.9; // ajustado para que los pies no resbalen a 1,7 m/s
     this.actions.Punch.setLoop(THREE.LoopOnce);
     this.actions.Punch.clampWhenFinished = true;
     this.actions.Punch.timeScale = this.actions.Punch.getClip().duration / PUNCH_TIME;
@@ -411,9 +417,19 @@ export class Player {
 
     if (along) c.proneDir = along; // tumbado, la cabeza apunta hacia donde se arrastra
     const vt = along * (c.veryLow ? PRONE_SPEED : COVER_SPEED) + c.peekDir * peekV;
-    const vn = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
+    // El deslizamiento hacia el muro acelera en vez de arrancar de golpe.
+    const vnTarget = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
+    c.vn = Math.min(vnTarget, (c.vn ?? Math.max(0, -(this.velocity.x * c.nx + this.velocity.z * c.nz))) + 45 * dt);
+    const vn = c.vn;
     this.velocity.x = tx * vt - c.nx * vn;
     this.velocity.z = tz * vt - c.nz * vn;
+  }
+
+  /** Gira el cuerpo hacia un rumbo con suavizado y velocidad máxima de giro. */
+  turnToward(angle, lambda, dt, max = MAX_TURN) {
+    const turned = dampAngle(this.facing, angle, lambda, dt);
+    const step = Math.atan2(Math.sin(turned - this.facing), Math.cos(turned - this.facing));
+    this.facing += THREE.MathUtils.clamp(step, -max * dt, max * dt);
   }
 
   get speed() {
@@ -526,7 +542,9 @@ export class Player {
     this.landT = Math.max(0, this.landT - dt);
     const charging = this.jumpT >= 0;
     const crouchTarget = charging ? 1 : this.landAmount * (this.landT / LAND_TIME);
-    this.crouch = THREE.MathUtils.damp(this.crouch, crouchTarget, charging ? 3.5 / this.jumpTime : 22, dt);
+    // Durante el impulso la flexión sigue una curva suave (arranca y termina sin brusquedad).
+    if (charging) this.crouch = Math.max(this.crouch, THREE.MathUtils.smootherstep(this.jumpT / this.jumpTime, 0, 1));
+    else this.crouch = THREE.MathUtils.damp(this.crouch, crouchTarget, 18, dt);
 
     // --- Golpe ---
     if (!punching && !charging && this.grounded && wantsPunch) {
@@ -553,23 +571,24 @@ export class Player {
 
     // --- Orientación: hacia la mira al apuntar/golpear, si no hacia el movimiento ---
     if (aiming) {
-      this.facing = dampAngle(this.facing, Math.atan2(cam.forward.x, cam.forward.z), 22, dt);
+      this.turnToward(Math.atan2(cam.forward.x, cam.forward.z), 22, dt, AIM_TURN);
     } else if (cover) {
       // De espaldas al muro; durante el deslizamiento de entrada, de cara a él.
       const s = cover.attached ? 1 : -1;
       if (cover.attached && cover.veryLow) {
         // Tumbado: el cuerpo queda paralelo a la cobertura.
-        this.facing = dampAngle(this.facing, Math.atan2(cover.nz * cover.proneDir, -cover.nx * cover.proneDir), 10, dt);
+        this.turnToward(Math.atan2(cover.nz * cover.proneDir, -cover.nx * cover.proneDir), 10, dt);
       } else
-      this.facing = dampAngle(this.facing, Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
+      this.turnToward(Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
     } else if (moving && !punching) {
-      this.facing = dampAngle(this.facing, Math.atan2(_v.x, _v.z), 12, dt);
+      // Giro suave con velocidad máxima: una media vuelta tarda ~0,25 s en vez de un latigazo.
+      this.turnToward(Math.atan2(_v.x, _v.z), 12, dt);
     }
 
     // --- Mover la cápsula con colisiones ---
     const delta = {
       x: this.velocity.x * dt,
-      y: this.grounded ? -0.002 : this.velocity.y * dt,
+      y: this.grounded ? 0 : this.velocity.y * dt,
       z: this.velocity.z * dt,
     };
     this.controller.computeColliderMovement(this.collider, delta, undefined, GROUPS.player);
@@ -596,7 +615,6 @@ export class Player {
       if (impact > 1.5) {
         this.landAmount = THREE.MathUtils.clamp(impact / 5.5, 0.3, 1);
         this.landT = LAND_TIME;
-        this.crouch = Math.max(this.crouch, this.landAmount * 0.5);
         this.velocity.x *= LAND_SLOWDOWN;
         this.velocity.z *= LAND_SLOWDOWN;
       }
@@ -621,17 +639,31 @@ export class Player {
     else if (s > 0.35) next = 'Walking';
     else next = 'Idle';
 
-    if (next !== this.state) {
+    // Entre quieto, caminar y correr no se cambia más de una vez cada STATE_DWELL: al pasar
+    // por velocidad cero (media vuelta) las animaciones parpadeaban y daban saltos.
+    this.stateT += dt;
+    const gait = (n) => n === 'Idle' || n === 'Walking' || n === 'Running';
+    if (next !== this.state && !(gait(next) && gait(this.state) && this.stateT < STATE_DWELL)) {
       const action = this.actions[next];
+      const stride = (n) => n === 'Walking' || n === 'Running';
+      // De caminar a correr (y viceversa) se conserva la fase del paso en vez de reiniciarlo.
+      const phase = stride(next) && stride(this.state)
+        ? this.current.time / this.current.getClip().duration : 0;
       action.reset();
       if (next === 'Jump') action.time = JUMP_POSE_TIME;
-      action.crossFadeFrom(this.current, next === 'Punch' ? 0.08 : 0.18, false).play();
+      else if (phase) action.time = phase * action.getClip().duration;
+      const fade = next === 'Punch' ? 0.08 : gait(next) && gait(this.state) ? 0.25 : 0.18;
+      action.crossFadeFrom(this.current, fade, false).play();
       this.current = action;
       this.state = next;
+      this.stateT = 0;
     }
     // Sincroniza el ritmo de los pasos con la velocidad real.
-    if (this.state === 'Walking') this.current.timeScale = THREE.MathUtils.clamp(s / 1.6, 0.6, 2);
-    if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 5.2, 0.7, 1.6);
+    // Medido con tools/watch.cjs: a ritmo 1 el clip de caminar avanza ~0,8 m/s y el de correr
+    // ~3,1 m/s. Igualarlos del todo daría pasos frenéticos; estos valores reducen el
+    // deslizamiento de los pies sin perder naturalidad.
+    if (this.state === 'Walking') this.current.timeScale = THREE.MathUtils.clamp(s / 1.25, 0.7, 2);
+    if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 4.2, 0.8, 1.9);
     // El mezclador no reescribe los valores que no cambian entre fotogramas, así que la
     // flexión del fotograma anterior se deshace a mano antes de animar.
     if (this.neckPosed) {
@@ -695,8 +727,13 @@ export class Player {
     this.bodyBone.updateMatrixWorld(true);
 
     const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    for (const leg of this.legs) {
+    // La pose de piernas calculada entra de forma gradual con la profundidad: aplicarla de
+    // golpe hacía que las rodillas dieran un salto al empezar o terminar de agacharse.
+    const ik = THREE.MathUtils.smoothstep(depth, 0, 0.08);
+    for (const leg of ik > 0 ? this.legs : []) {
       const target = leg.foot.getWorldPosition(_a);
+      _qa.copy(leg.upper.quaternion);
+      _qb.copy(leg.lower.quaternion);
       for (let i = 0; i < 3; i++) {
         leg.upper.getWorldPosition(_hip);
         leg.lower.getWorldPosition(_knee);
@@ -714,6 +751,11 @@ export class Player {
         leg.lower.getWorldPosition(_knee);
         _h.copy(leg.end).applyMatrix4(leg.lower.matrixWorld).sub(_knee).normalize();
         this.aimBone(leg.lower, _h, _v.copy(target).sub(_knee).normalize());
+      }
+      if (ik < 1) {
+        leg.upper.quaternion.copy(_qa.slerp(leg.upper.quaternion, ik));
+        leg.lower.quaternion.copy(_qb.slerp(leg.lower.quaternion, ik));
+        leg.upper.updateMatrixWorld(true);
       }
     }
 

@@ -71,6 +71,21 @@ dispara, huye corriendo cuando se le acercan y golpea si lo acorralan. Usa los m
 que un jugador, así que sirve para ver todas las mecánicas en marcha y para cazar fallos.
 Lleva un registro de la partida en `window.__game.autopilot.log` y `.stats`.
 
+## Observador de animaciones (herramienta de desarrollo)
+
+`tools/watch.cjs` reproduce cada mecánica en un navegador sin interfaz y, por escena, guarda
+una tira de fotogramas (para revisar la animación cuadro a cuadro) y un informe con medidas
+del movimiento: pies que resbalan, saltos bruscos de pose, tirones del personaje y de la
+cámara, y velocidad de giro.
+
+```bash
+npx vite --port 5199 &
+node tools/watch.cjs salida            # todas las escenas
+node tools/watch.cjs salida zombi giro # solo algunas
+```
+
+Necesita Playwright con Chromium instalado en el entorno; no es una dependencia del juego.
+
 ## Zonas del mundo de pruebas
 
 - **Campo de tiro** (al frente): dianas a 10, 18 y 27 m y latas sobre una mesa.
