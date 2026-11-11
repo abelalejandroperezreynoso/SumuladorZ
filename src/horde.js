@@ -28,6 +28,8 @@ const STAGGER = 0.35;
 const CORPSE_TIME = 4;
 const SPAWN_MIN = 14, SPAWN_MAX = 22; // distancia al jugador al aparecer (m)
 const WAVE_DELAY = 2; // pausa entre oleadas (s)
+const DETOUR_ANGLE = 1.45; // al rodear avanza casi paralelo al obstáculo (rad)
+const DETOUR_PROBE = 1.6; // distancia libre hacia el objetivo para dar por terminado el rodeo (m)
 const SEPARATION = 0.8; // distancia mínima entre zombis (m)
 const SEPARATION_SPEED = 1.5; // velocidad máxima del empuje que los separa (m/s)
 
@@ -61,8 +63,13 @@ class Zombie {
     this.timer = 0;
     this.wanderT = 0;
     this.blockedT = 0;
-    this.sidestep = 0; // desvío temporal para rodear obstáculos (rad)
-    this.sidestepT = 0;
+    this.sidestep = 0; // desvío respecto al rumbo directo mientras rodea un obstáculo (rad)
+    this.detour = 0; // lado por el que rodea: -1, 0 (sin rodeo) o 1
+    this.detourT = 0;
+    this.clearT = 0;
+    this.probeT = 0;
+    this.lastSide = 1;
+    this.lastSideT = 0;
     this.vy = 0;
     this.pushX = 0; // empuje para separarse de otros zombis (m/s)
     this.pushZ = 0;
@@ -134,6 +141,24 @@ class Zombie {
       new RAPIER.Ray(eye, _to), len, true, RAPIER.QueryFilterFlags.ONLY_FIXED,
     );
     return !hit;
+  }
+
+  /** ¿Está libre el tramo inmediato hacia su objetivo? Sondea a la altura de las piernas y de la cabeza. */
+  pathClear() {
+    const dx = this.target.x - this.position.x, dz = this.target.z - this.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.3) return true;
+    const dir = { x: dx / d, y: 0, z: dz / d };
+    const world = this.horde.physics.world;
+    for (const h of [0.5, 1.68]) {
+      const origin = { x: this.position.x, y: this.position.y + h, z: this.position.z };
+      const hit = world.castRay(
+        new RAPIER.Ray(origin, dir), Math.min(d, DETOUR_PROBE), true,
+        RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC, GROUPS.cover,
+      );
+      if (hit) return false;
+    }
+    return true;
   }
 
   /** Algo llamó su atención (un disparo, un golpe): va a investigar. */
@@ -276,19 +301,34 @@ class Zombie {
     this.body.setNextKinematicTranslation({ x: t.x + mx, y: t.y + m.y, z: t.z + mz });
     this.moveSpeed = Math.hypot(mx, mz) / dt;
 
-    // Si algo le corta el paso, se desvía un rato hacia un lado para rodearlo.
-    this.sidestepT -= dt;
-    if (this.sidestepT <= 0) this.sidestep = 0;
-    if (speed > 0 && this.moveSpeed < speed * 0.35) {
-      this.blockedT += dt;
-      if (this.blockedT > 0.5) {
-        this.blockedT = 0;
-        this.sidestep = (Math.random() < 0.5 ? -1 : 1) * 1.35;
-        this.sidestepT = 0.9 + Math.random() * 0.6;
+    // Rodeo de obstáculos: si algo le corta el paso, elige un lado y lo bordea hasta que el
+    // camino hacia su objetivo vuelve a estar libre.
+    this.lastSideT -= dt;
+    const blocked = speed > 0 && this.moveSpeed < speed * 0.35;
+    this.blockedT = blocked ? this.blockedT + dt : 0;
+    if (this.detour) {
+      this.detourT += dt;
+      this.probeT -= dt;
+      if (this.probeT <= 0) {
+        this.probeT = 0.15;
+        this.clearT = this.pathClear() ? this.clearT + 0.15 : 0;
       }
-    } else {
-      this.blockedT = 0;
+      if (this.clearT > 0.3) {
+        this.lastSide = this.detour;
+        this.lastSideT = 3;
+        this.detour = 0;
+      } else if (this.blockedT > 0.5 || this.detourT > 8) {
+        this.detour = -this.detour; // rincón o rodeo demasiado largo: prueba por el otro lado
+        this.detourT = 0;
+        this.blockedT = 0;
+      }
+    } else if (this.blockedT > 0.4) {
+      // Si acaba de rodear por un lado, insiste por el mismo (esquinas).
+      this.detour = this.lastSideT > 0 ? this.lastSide : Math.random() < 0.5 ? -1 : 1;
+      this.detourT = this.clearT = this.blockedT = 0;
+      this.probeT = 0.3;
     }
+    this.sidestep = this.detour * DETOUR_ANGLE;
 
     if (this.state === 'chase' || this.state === 'wander') {
       if (this.moveSpeed > 0.15) {
