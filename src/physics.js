@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import { url as wasmUrl, bytes as wasmBytes } from 'virtual:rapier-wasm';
+import { download } from './download.js';
 
 export { RAPIER };
 
@@ -24,7 +26,11 @@ export const GROUPS = {
 };
 
 export async function initPhysics() {
+  // En la versión publicada el motor (wasm) va en un archivo aparte en vez de incrustado en el
+  // script: pesa menos al descargar y se puede mostrar el progreso (ver vite.config.js).
+  if (wasmUrl) globalThis.__rapierWasm = await download(wasmUrl, wasmBytes);
   await RAPIER.init();
+  delete globalThis.__rapierWasm;
 }
 
 // Envuelve el mundo de Rapier y mantiene sincronizadas las mallas de Three.

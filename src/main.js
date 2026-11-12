@@ -3,13 +3,14 @@ import { initPhysics, Physics } from './physics.js';
 import { buildWorld } from './world.js';
 import { Input } from './input.js';
 import { ThirdPersonCamera } from './camera.js';
-import { Player } from './player.js';
+import { Player, preloadModel } from './player.js';
+import { onDownloadProgress } from './download.js';
 import { Combat } from './combat.js';
 import { Horde } from './horde.js';
 import { Autopilot } from './autopilot.js';
 import { Catalog } from './catalog.js';
 import { setupTouch } from './touch.js';
-import { setupPWA, setupUpdateButton } from './pwa.js';
+import { setupPWA, setupUpdateButton, cacheLoadedFiles } from './pwa.js';
 
 setupPWA();
 
@@ -47,7 +48,10 @@ async function start() {
     renderer.setSize(innerWidth, innerHeight);
   });
 
-  status('Cargando físicas…');
+  // El motor de físicas y el modelo son casi todo el peso: se bajan a la vez y con porcentaje.
+  status('Descargando el juego…');
+  onDownloadProgress((f) => status(`Descargando el juego… ${Math.round(f * 100)} %`));
+  if (!globalThis.__MODEL_GLB_B64) preloadModel().catch(() => {}); // el error sale en Player.load
   await initPhysics();
   const physics = new Physics(scene);
   const { sun } = buildWorld(scene, physics);
@@ -215,6 +219,7 @@ async function start() {
 
   try { sessionStorage.removeItem('bootRetry'); } catch { /* sin almacenamiento */ }
   window.__game = game;
+  cacheLoadedFiles();
 }
 
 start().catch((err) => {

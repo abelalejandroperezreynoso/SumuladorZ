@@ -6,6 +6,14 @@ import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
 // se confunde con uno antiguo guardado en la caché del navegador.
 import modelUrl from './assets/Character.glb?url';
+import { download } from './download.js';
+
+let modelData = null;
+/** Empieza a descargar el modelo (para hacerlo a la vez que el motor de físicas). */
+export function preloadModel() {
+  modelData ??= download(modelUrl, __MODEL_BYTES__);
+  return modelData;
+}
 
 const WALK_SPEED = 2.2;
 const RUN_SPEED = 6.0;
@@ -116,7 +124,7 @@ export class Player {
     const embedded = globalThis.__MODEL_GLB_B64;
     const gltf = embedded
       ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
-      : await loader.loadAsync(modelUrl);
+      : await loader.parseAsync(await preloadModel(), '');
     // Copia intacta del modelo (antes de vestir al jugador) para crear los zombis.
     const assets = { scene: cloneSkinned(gltf.scene), animations: gltf.animations };
     const player = new Player(scene, physics, gltf);
