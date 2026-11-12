@@ -96,12 +96,14 @@ export const SCENES = [
     desc: `Tras un muro alto permanece de pie (${n(T.COVER_SPEED)} m/s de lado). Para disparar da un paso corto más allá del borde, si lo hay a menos de ${n(T.PEEK_REACH)} m, e inclina el tronco ${n(T.PEEK_LEAN)} rad. Sin un borde cerca no puede disparar.`,
     place: [3.3, -3.2, 0], seconds: 4.2, view: -0.5, dist: 3.4,
     steps: [[0.1, press('KeyC'), 'Se desliza hasta el muro'], [1.4, fire(true), 'Se asoma por el borde y dispara'], [2.8, fire(false), 'Regresa']] },
-  { id: 'cobertura_tumbado', group: 'cobertura', title: 'Cobertura muy baja (tumbado)',
+  { id: 'cobertura_tumbado', group: 'cobertura', title: 'Cobertura muy baja (recostado)',
     how: 'C junto a un objeto de menos de unos 60 cm',
     desc: `Se recuesta de lado, de espaldas al objeto, con las rodillas recogidas y el arma al pecho, y se arrastra a ${n(T.PRONE_SPEED)} m/s sin darse la vuelta. La cámara baja casi a ras del objeto. Al apuntar o disparar se incorpora de rodillas y la cámara se cierra sobre el hombro. La pose se arma por código: el modelo no trae un clip así.`,
     place: [5.6, -5.5, 0], seconds: 5.6, view: 0.7, dist: 3.4,
     steps: [[0.1, press('KeyC'), 'Se desliza y se recuesta'], [1.6, key('KeyD'), 'Se arrastra'], [2.8, key('KeyD', false)],
-      [3.2, aim(true), 'Se arrodilla y apunta'], [3.7, fire(true), 'Dispara'], [4.4, all(fire(false), aim(false)), 'Vuelve a recostarse']] },
+      [3.2, aim(true), 'Se arrodilla y apunta'], [3.7, fire(true), 'Dispara'], [4.4, all(fire(false), aim(false)), 'Vuelve a recostarse']],
+    // Posturas editables desde la ficha: [clave de POSES, título, segundo de la escena en que se ve].
+    poses: [['recostado', 'Recostado', 1.5], ['rodillas', 'De rodillas, apuntando', 3.6]] },
 
   { id: 'zombi', group: 'enemigos', title: 'Zombi: persecución, mordida y muerte',
     how: 'H inicia la horda',

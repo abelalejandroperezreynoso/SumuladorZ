@@ -113,6 +113,10 @@ escena con el motor real y una cámara lateral, así que muestra siempre el jueg
   mezclan con su peso y ritmo, y las poses calculadas por código (flexión, apuntado, retroceso…).
 - **Clips**: los 24 clips del modelo, usados o no, reproducidos sobre el personaje, con quién
   los usa y para qué.
+- **Editar postura**: en «Cobertura muy baja», los botones «Editar postura» detienen la escena
+  en esa postura (recostado o de rodillas) y muestran un deslizador por articulación; el
+  personaje cambia en vivo. «Copiar valores» da un texto corto con los números para fijarlos
+  en el código (`POSES` en `src/player.js`). Los cambios duran hasta recargar la página.
 - **Mandos**: pausa, avance cuadro a cuadro, velocidad (1×, ½×, ¼×) y vista de esqueleto.
   Arrastrar sobre la escena gira la cámara y la rueda acerca. Teclado: `←` `→` cambian de
   ficha, `Espacio` pausa, `K` esqueleto, `Esc` cierra.

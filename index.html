@@ -72,6 +72,13 @@
       .cat-bar u { display: block; height: 100%; background: #a9bb7c; transform-origin: left center; transform: scaleX(0); }
       .cat-bar b { font-weight: 400; text-align: right; white-space: nowrap; }
       .cat-how { font: 12px ui-monospace, Menlo, monospace; opacity: 0.75; }
+      .cat-poses { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+      .cat-wrap { flex-wrap: wrap; margin: 8px 0 6px; }
+      .cat-slider { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: baseline; padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+      .cat-slider b { font: 400 12px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+      .cat-slider.changed b { color: #ffd479; }
+      .cat-slider input { grid-column: 1 / -1; width: 100%; margin: 4px 0 0; accent-color: #a9bb7c; touch-action: pan-x; }
+      #cat-pose-text { width: 100%; box-sizing: border-box; font: 11px ui-monospace, Menlo, monospace; color: #e8eef5; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; padding: 6px; resize: none; user-select: text; -webkit-user-select: text; }
       .cat-beats { list-style: none; margin: 4px 0 0; padding: 0; }
       .cat-beats li { display: flex; gap: 10px; padding: 3px 6px; border-radius: 4px; cursor: pointer; }
       .cat-beats li b { font: 12px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; color: #a9bb7c; flex: none; width: 48px; }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { SCENES, GROUPS, place, clipList } from './catalog-scenes.js';
-import { TUNING } from './player.js';
+import { TUNING, POSES, POSE_SPEC } from './player.js';
 
 // Catálogo de mecánicas y animaciones dentro del juego (tecla G o botón «Catálogo»).
 // No guarda imágenes: cada ficha ejecuta su escena con el motor real y una cámara lateral,
@@ -12,6 +12,12 @@ const CLIP_SPOT = [20, 30, 0]; // dónde se coloca el personaje para ver un clip
 const CLIP_VIEW = Math.PI * 0.8;
 const fmt = (x, d = 2) => x.toFixed(d).replace('.', ',');
 const shortest = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+// Valores de fábrica de cada postura, para «Restablecer» y para marcar lo que se ha cambiado.
+const POSE_DEFAULTS = JSON.parse(JSON.stringify(POSES));
+const round = (v) => +v.toFixed(3);
+/** Valor de una postura tal como se enseña: grados, metros o tanto por ciento. */
+const poseText = (v, unit) => (unit === 'rad' ? `${Math.round(v * 180 / Math.PI)}°`
+  : unit === 'm' ? `${fmt(v)} m` : `${Math.round(v * 100)} %`);
 
 // Poses calculadas por código sobre el clip en curso: [rótulo, valor 0-1 leído del personaje].
 const PLAYER_LAYERS = [
@@ -20,7 +26,7 @@ const PLAYER_LAYERS = [
   ['Retroceso', (p) => p.recoil],
   ['Dos manos', (p) => p.coverGrip * p.aimWeight],
   ['Inclinación', (p) => Math.abs(p.coverLean) / TUNING.PEEK_LEAN],
-  ['Tumbado', (p) => p.prone],
+  ['Recostado', (p) => p.prone],
 ];
 const ZOMBIE_LAYERS = [['Brazos al frente', (z) => z.arms]];
 
@@ -49,6 +55,7 @@ export class Catalog {
     this.zoom = 1;
     this.fit = 1; // alejamiento extra cuando el panel deja poco sitio
     this.frames = 0;
+    this.editing = null; // clave de POSES que se está retocando (la escena queda detenida en ella)
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
 
     // Las escenas pulsan teclas sobre esta entrada simulada; antes de cada paso del juego se
@@ -124,7 +131,19 @@ export class Catalog {
     });
     this.el.info.addEventListener('click', (e) => {
       const t = e.target.closest('[data-t]')?.dataset.t;
-      if (t !== undefined) this.seek(+t);
+      if (t !== undefined) return this.seek(+t);
+      const pose = e.target.closest('[data-pose]')?.dataset.pose;
+      if (pose) return this.editPose(pose);
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'copy') this.copyPose();
+      else if (act === 'reset') this.resetPose();
+      else if (act === 'done') this.editPose(null);
+    });
+    this.el.info.addEventListener('input', (e) => {
+      const key = e.target.dataset?.key;
+      if (!key || !this.editing) return;
+      POSES[this.editing][key] = round(+e.target.value);
+      this.refreshPose();
     });
 
     // Arrastrar sobre la escena gira y sube la cámara; la rueda acerca.
@@ -207,6 +226,7 @@ export class Catalog {
     const tab = scene ? 'scenes' : 'clips';
     if (tab !== this.tab || !this.el.select.options.length) { this.tab = tab; this.fillSelect(); }
     this.item = scene ?? clip;
+    this.editing = null;
     this.el.select.value = id;
     this.orbit = this.lift = 0;
     this.zoom = 1;
@@ -220,6 +240,8 @@ export class Catalog {
     if (it.steps) {
       const beats = it.steps.filter((s) => s[2]);
       html = `<p class="cat-how">${it.how}</p><p>${it.desc}</p>`
+        + (it.poses ? `<div class="cat-poses">${it.poses.map(([key, title]) =>
+          `<button data-pose="${key}">Editar postura: ${title}</button>`).join('')}</div>` : '')
         + (beats.length ? `<ol class="cat-beats">${beats.map(([t, , label]) =>
           `<li data-t="${t}"><b>${fmt(t)} s</b>${label}</li>`).join('')}</ol>` : '');
     } else {
@@ -295,6 +317,74 @@ export class Catalog {
     L.beats.forEach((li, i) => li.classList.toggle('on', i === current));
   }
 
+  // ---------- Editor de posturas ----------
+
+  /**
+   * Detiene la escena en el instante en que se ve la postura y cambia la ficha por sus
+   * deslizadores. Los cambios se aplican en vivo sobre POSES (también al volver al juego, hasta
+   * recargar) y «Copiar» los da como texto para fijarlos en el código. Con null, sale.
+   */
+  editPose(key) {
+    const entry = key && this.item?.poses?.find((p) => p[0] === key);
+    if (!entry) {
+      this.editing = null;
+      this.el.live.hidden = false;
+      this.restart();
+      this.renderInfo();
+      return;
+    }
+    this.seek(entry[2]);
+    this.editing = key;
+    this.setPaused(false);
+    this.el.live.hidden = true;
+    const spec = POSE_SPEC[key];
+    this.el.info.innerHTML = `<h4>Postura: ${entry[1]}</h4>`
+      + '<p class="cat-how">La escena queda detenida en esta postura. Arrastra la vista para girarla; «Esqueleto» ayuda a ver las articulaciones.</p>'
+      + spec.map(([k, label, min, max, unit]) => `<label class="cat-slider" data-row="${k}"><span>${label}</span><b></b>`
+        + `<input type="range" id="cat-pose-${k}" data-key="${k}" min="${min}" max="${max}" step="${unit === 'rad' ? 0.01745 : 0.01}"></label>`).join('')
+      + '<div class="cat-row cat-wrap"><button data-act="copy">Copiar valores</button><button data-act="reset">Restablecer</button><button data-act="done">Salir</button></div>'
+      + '<p class="cat-how" id="cat-pose-msg">Copia los valores y pégalos en el chat para dejarlos fijos en el juego.</p>'
+      + '<textarea id="cat-pose-text" readonly rows="3" aria-label="Valores de la postura"></textarea>';
+    this.refreshPose(true);
+  }
+
+  /** Texto que se comparte: solo números, en las unidades del código (radianes y metros). */
+  poseString() {
+    const key = this.editing;
+    return `postura ${key}: ` + POSE_SPEC[key].map(([k]) => `${k}=${round(POSES[key][k])}`).join(' ');
+  }
+
+  refreshPose(setInputs = false) {
+    const key = this.editing;
+    for (const [k, , , , unit] of POSE_SPEC[key]) {
+      const row = this.el.info.querySelector(`[data-row="${k}"]`);
+      const v = POSES[key][k];
+      if (setInputs) row.querySelector('input').value = v;
+      row.querySelector('b').textContent = poseText(v, unit);
+      row.classList.toggle('changed', Math.abs(v - POSE_DEFAULTS[key][k]) > 1e-3);
+    }
+    this.el.info.querySelector('#cat-pose-text').value = this.poseString();
+  }
+
+  resetPose() {
+    Object.assign(POSES[this.editing], POSE_DEFAULTS[this.editing]);
+    this.refreshPose(true);
+  }
+
+  copyPose() {
+    const area = this.el.info.querySelector('#cat-pose-text');
+    const msg = this.el.info.querySelector('#cat-pose-msg');
+    const manual = () => {
+      // Sin acceso al portapapeles: el texto queda seleccionado para copiarlo a mano.
+      area.focus();
+      area.select();
+      msg.textContent = 'No se pudo copiar solo: el texto de abajo queda seleccionado; cópialo a mano.';
+    };
+    try {
+      navigator.clipboard.writeText(area.value).then(() => { msg.textContent = 'Copiado. Pégalo en el chat.'; }, manual);
+    } catch { manual(); }
+  }
+
   /** La cámara encuadra la zona libre de la pantalla, no el centro que tapa el panel. */
   layout() {
     const W = innerWidth, H = innerHeight;
@@ -326,6 +416,7 @@ export class Catalog {
 
   close() {
     if (!this.active) return;
+    if (this.editing) this.editPose(null);
     this.skipRender = true;
     place(this.g, 0, 0, 0); // deja el mundo como al empezar
     this.skipRender = false;
@@ -404,7 +495,10 @@ export class Catalog {
 
   /** Un fotograma del bucle principal mientras el catálogo está abierto. */
   frame(dt) {
-    if (!this.paused) this.advance(dt * this.speed);
+    // Editando una postura el juego sigue corriendo (para que la pose se recalcule) pero la
+    // escena no avanza: las teclas que tenía pulsadas se mantienen.
+    if (this.editing && !this.paused) this.tick(dt);
+    else if (!this.paused) this.advance(dt * this.speed);
     else {
       this.beforeRender();
       this.game.renderer.render(this.game.scene, this.camera);

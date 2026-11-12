@@ -53,19 +53,44 @@ const PEEK_LEAN = 0.3; // inclinación lateral del tronco al asomarse (rad)
 // Cuánto se agacha (0-1) en cada postura de cobertura.
 const CROUCH_HIDE = 1; // oculto tras una cobertura baja
 const CROUCH_OVER = 0.14; // disparando por encima
-const CROUCH_KNEEL = 0.9; // incorporado para disparar por encima de una cobertura muy baja
 const PRONE_SPEED = 0.8; // velocidad arrastrándose (m/s)
-const PRONE_BACK = 0.88; // el cuerpo tumbado (con las piernas recogidas) se centra sobre la cápsula (m)
-// Tras una cobertura muy baja se recuesta de lado, de espaldas al objeto, con las rodillas
-// recogidas y el arma al pecho. La pose se arma por código: el modelo no trae un clip así.
-const RECLINE_TURN = 1.85; // giro sobre el eje del cuerpo desde boca abajo (rad): algo más que de lado, recostado hacia atrás
-const RECLINE_LIFT = 0.2; // altura del eje del cuerpo sobre el suelo (m)
-const RECLINE_IN = 0.22; // cuánto se arrima al objeto respecto a la cápsula (m)
-const RECLINE_CURL = 0.38; // tronco encorvado (rad)
-const RECLINE_HEAD = 0.4; // cabeza levantada del suelo (rad)
-// Piernas [la de arriba, la de abajo]: flexión de cadera y de rodilla (rad).
-const RECLINE_HIP = [1.45, 1.0];
-const RECLINE_KNEE = [1.55, 1.25];
+// Posturas armadas por código (el modelo no trae clips así). Sus valores se pueden retocar
+// en vivo desde el catálogo (ficha → «Editar postura») y copiar como texto para fijarlos aquí.
+// Cada entrada de POSE_SPEC: [clave, rótulo, mínimo, máximo, unidad ('rad', 'm' o '')].
+export const POSES = {
+  // Tras una cobertura muy baja: recostado de lado, de espaldas al objeto, con las rodillas
+  // recogidas y el arma al pecho.
+  recostado: {
+    giro: 1.85, altura: 0.2, arrimo: 0.22, centrado: 0.88, tronco: 0.38, cabeza: 0.4,
+    caderaArriba: 1.45, rodillaArriba: 1.55, caderaAbajo: 1.0, rodillaAbajo: 1.25, piernasAbiertas: 0.08,
+    brazoAdelante: 0.69, brazoAbierto: 0.2, codoCerrado: 0.67, antebrazoArriba: 0.57,
+  },
+  // Incorporado para apuntar por encima de una cobertura muy baja.
+  rodillas: { agachado: 0.9, tronco: 0.27 },
+};
+export const POSE_SPEC = {
+  recostado: [
+    ['giro', 'Giro del cuerpo (90° de lado, 180° boca arriba)', 1.0, 2.6, 'rad'],
+    ['altura', 'Altura sobre el suelo', 0.05, 0.45, 'm'],
+    ['arrimo', 'Arrimado al objeto', 0, 0.45, 'm'],
+    ['centrado', 'Desplazado hacia los pies', 0.3, 1.3, 'm'],
+    ['tronco', 'Tronco encorvado', -0.3, 1.0, 'rad'],
+    ['cabeza', 'Cabeza levantada', -0.4, 1.0, 'rad'],
+    ['caderaArriba', 'Pierna de arriba: cadera', 0, 2.1, 'rad'],
+    ['rodillaArriba', 'Pierna de arriba: rodilla', 0, 2.5, 'rad'],
+    ['caderaAbajo', 'Pierna de abajo: cadera', 0, 2.1, 'rad'],
+    ['rodillaAbajo', 'Pierna de abajo: rodilla', 0, 2.5, 'rad'],
+    ['piernasAbiertas', 'Piernas separadas', -0.3, 0.6, 'rad'],
+    ['brazoAdelante', 'Brazos hacia delante', -0.5, 2.4, 'rad'],
+    ['brazoAbierto', 'Brazos abiertos', -0.3, 1.3, 'rad'],
+    ['codoCerrado', 'Antebrazos hacia dentro', -0.3, 1.5, 'rad'],
+    ['antebrazoArriba', 'Antebrazos hacia la cabeza', -1.0, 1.5, 'rad'],
+  ],
+  rodillas: [
+    ['agachado', 'Cuánto se agacha', 0.3, 1, ''],
+    ['tronco', 'Tronco inclinado', -0.2, 0.8, 'rad'],
+  ],
+};
 const SCOOT_SWING = 0.2; // vaivén de las piernas al arrastrarse (rad)
 const SCOOT_RATE = 7; // ritmo de ese vaivén (rad por metro recorrido)
 const PRONE_VIEW = 0.8; // altura de la cámara recostado: justo por encima del objeto (m)
@@ -175,6 +200,7 @@ export class Player {
     this.proneSide = 1; // hacia qué lado gira al recostarse para dar la espalda al objeto
     this.proneN = { x: 0, z: 1 }; // normal de esa cobertura (del objeto hacia el personaje)
     this.scoot = 0; // fase del vaivén de piernas al arrastrarse
+    this.kneel = 0; // 0-1: usa la postura «rodillas» (cobertura muy baja) en vez del agachado normal
     this.aiming = false; // apunta (mantiene el botón de apuntar o acaba de disparar)
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando el arma
@@ -624,7 +650,7 @@ export class Player {
         const rest = cover.high ? 0 : CROUCH_HIDE;
         coverCrouchTarget = THREE.MathUtils.lerp(rest, cover.high ? CROUCH_SIDE_HIGH : CROUCH_SIDE_LOW, out);
         leanTarget = cover.peekDir * PEEK_LEAN * out;
-      } else if (cover.mode === 'over') coverCrouchTarget = cover.veryLow ? CROUCH_KNEEL : CROUCH_OVER;
+      } else if (cover.mode === 'over') coverCrouchTarget = cover.veryLow ? POSES.rodillas.agachado : CROUCH_OVER;
       else if (cover.veryLow) proneTarget = 1;
       else if (!cover.high) coverCrouchTarget = CROUCH_HIDE;
     }
@@ -640,6 +666,7 @@ export class Player {
       this.scoot += this.speed * SCOOT_RATE * dt;
     }
     this.coverCrouch = THREE.MathUtils.damp(this.coverCrouch, coverCrouchTarget, 11, dt);
+    this.kneel = THREE.MathUtils.damp(this.kneel, cover?.attached && cover.veryLow ? 1 : 0, 10, dt);
     this.coverLean = THREE.MathUtils.damp(this.coverLean, leanTarget, 11, dt);
     this.coverGrip = THREE.MathUtils.damp(this.coverGrip, cover?.attached && coverAim ? 1 : 0, 10, dt);
     this.canFire = !cover || (cover.attached && (
@@ -939,14 +966,15 @@ export class Player {
     if (!this.bodyBone || !this.legs.length) return;
     this.savePose();
     this.model.updateMatrixWorld(true);
+    const R = POSES.recostado;
     // ¿Qué lado del cuerpo queda arriba? (+1 el izquierdo)
     const upSide = _v.set(1, 0, 0).applyQuaternion(this.model.quaternion).y >= 0 ? 1 : -1;
     const swing = Math.sin(this.scoot) * SCOOT_SWING * THREE.MathUtils.clamp(this.speed / PRONE_SPEED, 0, 1);
 
     for (const leg of this.legs) {
       const i = leg.side * upSide > 0 ? 0 : 1;
-      const hip = RECLINE_HIP[i] + (i ? -swing : swing);
-      const knee = RECLINE_KNEE[i] + (i ? swing : -swing) * 0.6;
+      const hip = (i ? R.caderaAbajo : R.caderaArriba) + (i ? -swing : swing);
+      const knee = (i ? R.rodillaAbajo : R.rodillaArriba) + (i ? swing : -swing) * 0.6;
       // El pie no cuelga de la pierna en este modelo: se recoloca para que siga a la tibia.
       // (Sin matrices: los huesos de la pierna tienen escala no uniforme y las deforman.)
       const kneeOld = leg.lower.getWorldPosition(_knee2);
@@ -956,7 +984,7 @@ export class Player {
       const sign = Math.sign(_axis.setFromMatrixColumn(leg.lower.matrixWorld, 1).dot(footOld)) || 1;
       _axis.normalize().multiplyScalar(sign);
 
-      this.poseSegment(leg.upper, kneeOld, _h.set(leg.side * 0.08, -Math.cos(hip), Math.sin(hip)), w);
+      this.poseSegment(leg.upper, kneeOld, _h.set(leg.side * Math.sin(R.piernasAbiertas), -Math.cos(hip), Math.sin(hip)), w);
       const shin = hip - knee;
       leg.lower.getWorldPosition(_a);
       _a.addScaledVector(_axis2.setFromMatrixColumn(leg.lower.matrixWorld, 1).normalize(), sign);
@@ -973,16 +1001,19 @@ export class Player {
     }
 
     // Tronco encorvado hacia las rodillas.
-    if (this.abdomen) this.turnBone(this.abdomen, _right.set(1, 0, 0).applyQuaternion(this.model.quaternion), RECLINE_CURL * w);
+    if (this.abdomen) this.turnBone(this.abdomen, _right.set(1, 0, 0).applyQuaternion(this.model.quaternion), R.tronco * w);
     // Brazos: codos junto al cuerpo y las dos manos delante del pecho, donde va el arma.
     for (const [upper, lower, hand, side] of [
       [this.upperArmL, this.lowerArmL, this.handL, 1], [this.upperArm, this.lowerArm, this.hand, -1],
     ]) {
       if (!upper || !lower || !hand || hand === lower) continue;
       lower.getWorldPosition(_a);
-      this.poseSegment(upper, _a, _h.set(side * 0.2, -0.75, 0.62), w);
+      const open = Math.cos(R.brazoAbierto), close = Math.cos(R.codoCerrado);
+      this.poseSegment(upper, _a, _h.set(
+        side * Math.sin(R.brazoAbierto), -Math.cos(R.brazoAdelante) * open, Math.sin(R.brazoAdelante) * open), w);
       hand.getWorldPosition(_a);
-      this.poseSegment(lower, _a, _h.set(-side * 0.62, 0.42, 0.66), w);
+      this.poseSegment(lower, _a, _h.set(
+        -side * Math.sin(R.codoCerrado), Math.sin(R.antebrazoArriba) * close, Math.cos(R.antebrazoArriba) * close), w);
     }
     // Cabeza levantada del suelo.
     if (this.neck) {
@@ -990,7 +1021,7 @@ export class Player {
       this.neckPosed = true;
       _v.set(0, 1, 0).applyQuaternion(this.model.quaternion); // hacia la cabeza
       _right.set(_v.z, 0, -_v.x); // eje horizontal perpendicular: gira la cabeza hacia arriba
-      if (_right.lengthSq() > 1e-6) this.turnBone(this.neck, _right.normalize(), -RECLINE_HEAD * w);
+      if (_right.lengthSq() > 1e-6) this.turnBone(this.neck, _right.normalize(), -R.cabeza * w);
     }
   }
 
@@ -1110,19 +1141,23 @@ export class Player {
       const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
       const n = this.proneN;
       const ease = THREE.MathUtils.smoothstep(prone, 0, 1);
+      const R = POSES.recostado;
       this.model.quaternion
         .multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), ease * Math.PI / 2))
-        .multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), ease * RECLINE_TURN * this.proneSide));
-      this.model.position.x -= (fx * PRONE_BACK + n.x * RECLINE_IN) * ease;
-      this.model.position.z -= (fz * PRONE_BACK + n.z * RECLINE_IN) * ease;
-      this.model.position.y += RECLINE_LIFT * ease;
+        .multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), ease * R.giro * this.proneSide));
+      this.model.position.x -= (fx * R.centrado + n.x * R.arrimo) * ease;
+      this.model.position.z -= (fz * R.centrado + n.z * R.arrimo) * ease;
+      this.model.position.y += R.altura * ease;
       this.applyRecline(ease);
     }
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
     if (jc > 0.01 || cc > 0.01 || Math.abs(this.coverLean) > 0.005 || this.coverGrip > 0.01) {
+      // Inclinación del tronco a cubierto: 0,3 rad agachado del todo; de rodillas, la de su postura.
+      const K = POSES.rodillas;
+      const coverLean = THREE.MathUtils.lerp(0.3, K.tronco / Math.max(K.agachado, 0.05), this.kneel) * cc;
       this.applyCrouch(
-        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc), Math.max(0.45 * jc, 0.3 * cc), 0.7 * jc,
+        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc), Math.max(0.45 * jc, coverLean), 0.7 * jc,
         this.coverLean,
       );
     }
