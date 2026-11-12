@@ -34,7 +34,8 @@ el juego queda guardado en el teléfono: abre al instante y sin gastar datos, y 
 solo descarga el código del juego (unos 30 KB), no las bibliotecas ni el modelo.
 
 Controles táctiles: joystick a la izquierda (a fondo = correr), arrastrar en la parte derecha para
-mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizontal.
+mover la cámara, y botones de disparo, apuntar (un toque entra, otro sale), golpe, salto y
+reinicio. Mejor en horizontal.
 
 El botón **⟳** de arriba a la derecha muestra la versión instalada; al pulsarlo comprueba si hay
 una más nueva y, si la hay, recarga el juego con ella.
@@ -49,6 +50,7 @@ para empezar. Mientras se usa el mando se ocultan los controles táctiles (vuelv
 | Moverse / correr | Stick izquierdo (a fondo o pulsado = correr) |
 | Cámara | Stick derecho |
 | Disparar | RT |
+| Apuntar | LT |
 | Saltar | A |
 | Golpe | X |
 | Cubrirse | B |
@@ -66,7 +68,8 @@ para empezar. Mientras se usa el mando se ocultan los controles táctiles (vuelv
 | Correr rápido | `Q` (un toque; dura mientras sigas avanzando; no permite disparar) |
 | Saltar | `Espacio` (flexiona las piernas para tomar impulso y despega) |
 | Disparar | Clic izquierdo (mantener para ráfaga) |
-| Golpear | Clic derecho o `F` |
+| Apuntar | Clic derecho mantenido (la cámara se cierra sobre el hombro) |
+| Golpear | `F` |
 | Cubrirse / salir de la cobertura | `C` (cerca de un muro u objeto) |
 | Cámara / zoom | Ratón / rueda |
 | Reiniciar el mundo | `R` |
@@ -149,8 +152,12 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   casi cualquier objeto: muros, postes, bloques, el parapeto y también cajas y barriles.
   Al disparar se asoma: por encima de una cobertura baja, o inclinándose por el borde si hay
   uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
-  Tras una cobertura muy baja (menos de unos 60 cm) se tumba boca abajo, se arrastra a lo
-  largo de ella y se incorpora de rodillas para disparar.
+  Tras una cobertura muy baja (menos de unos 60 cm) se recuesta de lado, de espaldas al
+  objeto, con las rodillas recogidas y el arma al pecho; la cámara baja casi a ras del objeto.
+  Se arrastra a lo largo de ella y se incorpora de rodillas para apuntar o disparar.
+- **Apuntar**: con el clic derecho levanta el arma sin disparar y la cámara pasa a un plano
+  cerrado sobre el hombro, con menos campo de visión y la mira más lenta. Disparar también la
+  cierra. A cubierto, al soltar vuelve a esconderse en 0,3 s.
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
 - **Cajas, muro de bloques y barriles** (izquierda): para empujar, golpear y derribar.
 - **Sacos de boxeo** (derecha): tres sacos de distinto peso colgados con articulaciones.

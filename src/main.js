@@ -145,7 +145,7 @@ async function start() {
     combat.update(dt);
     // La cámara se actualiza antes de apuntar para que mira y disparo coincidan.
     const t = player.body.translation();
-    cam.update(dt, input, { x: t.x, y: t.y - 0.87, z: t.z }, physics);
+    cam.update(dt, input, { x: t.x, y: t.y - 0.87, z: t.z }, physics, player.view);
     camera.updateMatrixWorld(true);
     player.postPhysics(dt, cam, combat);
     // Si un obstáculo empuja la cámara hasta la cabeza, se oculta el modelo para no taparlo todo.
@@ -184,7 +184,9 @@ async function start() {
       sprintShown = player.sprinting;
       document.getElementById('t-sprint')?.classList.toggle('held', sprintShown);
     }
-    const fov = THREE.MathUtils.damp(camera.fov, player.sprinting ? 67 : 60, 6, dt);
+    // ...y al apuntar lo cierra (la cámara ya suaviza ese cambio).
+    const fov = player.sprinting ? THREE.MathUtils.damp(camera.fov, 67, 6, dt)
+      : THREE.MathUtils.damp(camera.fov, cam.fov(60), 14, dt);
     if (Math.abs(fov - camera.fov) > 0.01) {
       camera.fov = fov;
       camera.updateProjectionMatrix();

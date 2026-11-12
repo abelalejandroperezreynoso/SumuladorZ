@@ -18,6 +18,8 @@ export class Input {
     this.padPrev = []; // botones del mando en el frame anterior
     this.padStick = { x: 0, y: 0 };
     this.padFire = false;
+    this.padAim = false; // gatillo izquierdo del mando
+    this.aimToggle = false; // botón táctil «Apuntar» (se alterna con un toque)
     this.onPadStart = null; // lo asigna main.js: arrancar desde la pantalla de inicio
 
     addEventListener('keydown', (e) => {
@@ -73,14 +75,14 @@ export class Input {
 
   /**
    * Lee el mando (Xbox, PlayStation…) con la API Gamepad. Llamar al inicio de cada frame.
-   * Distribución estándar: A saltar, X golpe, B cubrirse, Y correr rápido, RT disparar,
+   * Distribución estándar: A saltar, X golpe, B cubrirse, Y correr rápido, LT apuntar, RT disparar,
    * LB/RB horda, Menú empezar, Vista reiniciar, stick izquierdo moverse (a fondo o pulsado
    * = correr), stick derecho cámara.
    */
   pollGamepad(dt) {
     const pads = navigator.getGamepads?.() ?? [];
     const pad = [...pads].find((p) => p && p.connected);
-    if (!pad) { this.padStick.x = this.padStick.y = 0; this.releasePadFire(); return; }
+    if (!pad) { this.padStick.x = this.padStick.y = 0; this.padAim = false; this.releasePadFire(); return; }
     const btn = (i) => !!pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.4);
     const now = pad.buttons.map((_, i) => btn(i));
     const prev = this.padPrev;
@@ -111,6 +113,7 @@ export class Input {
     const map = { 0: 'Space', 2: 'KeyF', 1: 'KeyC', 3: 'KeyQ', 8: 'KeyR', 4: 'KeyH', 5: 'KeyH', 12: 'KeyP' };
     for (const i in map) if (edge(+i)) this.pressed.add(map[i]);
 
+    this.padAim = now[6];
     const fire = now[7];
     if (fire) { this.buttons.add(0); this.padFire = true; } else this.releasePadFire();
   }
@@ -122,6 +125,8 @@ export class Input {
   down(code) { return this.keys.has(code); }
   justPressed(code) { return this.pressed.has(code); }
   mouseDown(button) { return this.buttons.has(button); }
+  /** Apuntar sin disparar: clic derecho mantenido, LT del mando o el botón táctil. */
+  aiming() { return this.buttons.has(2) || this.padAim || this.aimToggle; }
 
   // Llamar al final de cada frame.
   endFrame() {
