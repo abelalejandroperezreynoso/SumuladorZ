@@ -55,8 +55,21 @@ const CROUCH_HIDE = 1; // oculto tras una cobertura baja
 const CROUCH_OVER = 0.14; // disparando por encima
 const CROUCH_KNEEL = 0.9; // incorporado para disparar por encima de una cobertura muy baja
 const PRONE_SPEED = 0.8; // velocidad arrastrándose (m/s)
-const PRONE_BACK = 0.85; // el cuerpo tumbado se centra sobre la cápsula (m)
-const PRONE_LIFT = 0.14; // altura del eje del cuerpo tumbado sobre el suelo (m)
+const PRONE_BACK = 0.88; // el cuerpo tumbado (con las piernas recogidas) se centra sobre la cápsula (m)
+// Tras una cobertura muy baja se recuesta de lado, de espaldas al objeto, con las rodillas
+// recogidas y el arma al pecho. La pose se arma por código: el modelo no trae un clip así.
+const RECLINE_TURN = 1.85; // giro sobre el eje del cuerpo desde boca abajo (rad): algo más que de lado, recostado hacia atrás
+const RECLINE_LIFT = 0.2; // altura del eje del cuerpo sobre el suelo (m)
+const RECLINE_IN = 0.22; // cuánto se arrima al objeto respecto a la cápsula (m)
+const RECLINE_CURL = 0.38; // tronco encorvado (rad)
+const RECLINE_HEAD = 0.4; // cabeza levantada del suelo (rad)
+// Piernas [la de arriba, la de abajo]: flexión de cadera y de rodilla (rad).
+const RECLINE_HIP = [1.45, 1.0];
+const RECLINE_KNEE = [1.55, 1.25];
+const SCOOT_SWING = 0.2; // vaivén de las piernas al arrastrarse (rad)
+const SCOOT_RATE = 7; // ritmo de ese vaivén (rad por metro recorrido)
+const PRONE_VIEW = 0.8; // altura de la cámara recostado: justo por encima del objeto (m)
+const AIM_VIEW = 0.12; // al apuntar, la cámara queda esto por encima de la cabeza (m)
 const CROUCH_SIDE_LOW = 0.78; // asomado por el borde de una cobertura baja
 const CROUCH_SIDE_HIGH = 0.1; // asomado por el borde de una cobertura alta
 const STRIDE_CROUCHED = 0.35; // amplitud del paso lateral cuando va agachado (1 = zancada completa)
@@ -74,6 +87,7 @@ const PUNCH_HIT = 0.4; // fracción de la animación en la que conecta
 const FIRE_INTERVAL = 0.14;
 const JUMP_POSE_TIME = 0.2; // instante del clip de carrera usado como pose de salto
 const AIM_HOLD = 0.9; // segundos que mantiene la pose de apuntar tras disparar
+const AIM_HOLD_COVER = 0.3; // ...a cubierto vuelve a esconderse enseguida
 
 // Colores por nombre de material del modelo (los no listados conservan el original).
 // LightBlue = pantalón, LightBrown = camiseta, Red_Dark = zapatillas, Hair = pelo.
@@ -97,6 +111,11 @@ const _knee = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _pole = new THREE.Vector3();
 const _right = new THREE.Vector3();
+const _knee2 = new THREE.Vector3();
+const _foot = new THREE.Vector3();
+const _axis = new THREE.Vector3();
+const _axis2 = new THREE.Vector3();
+const _fq = new THREE.Quaternion();
 
 // Estado del juego -> clip del modelo. El catálogo lo lee para saber qué clips se usan.
 export const PLAYER_CLIPS = {
@@ -109,7 +128,7 @@ export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
-  PRONE_SPEED, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE,
+  PRONE_SPEED, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
 };
 
 function dampAngle(a, b, lambda, dt) {
@@ -152,7 +171,11 @@ export class Player {
     this.dead = false;
     this.cover = null; // { nx, nz, high, attached, peek, peekDir, away } mientras está a cubierto
     this.coverCrouch = 0;
-    this.prone = 0; // 0 = erguido, 1 = tumbado boca abajo tras una cobertura muy baja
+    this.prone = 0; // 0 = erguido, 1 = recostado tras una cobertura muy baja
+    this.proneSide = 1; // hacia qué lado gira al recostarse para dar la espalda al objeto
+    this.proneN = { x: 0, z: 1 }; // normal de esa cobertura (del objeto hacia el personaje)
+    this.scoot = 0; // fase del vaivén de piernas al arrastrarse
+    this.aiming = false; // apunta (mantiene el botón de apuntar o acaba de disparar)
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando el arma
     this.canFire = true;
@@ -194,11 +217,13 @@ export class Player {
     this.bodyBone = bone('Body');
     this.abdomen = bone('Abdomen');
     this.legs = ['L', 'R']
-      .map((s) => ({ upper: bone('UpperLeg' + s), lower: bone('LowerLeg' + s), foot: bone('Foot' + s), end: new THREE.Vector3() }))
+      .map((s) => ({ upper: bone('UpperLeg' + s), lower: bone('LowerLeg' + s), foot: bone('Foot' + s), end: new THREE.Vector3(), side: s === 'L' ? 1 : -1 }))
       .filter((l) => l.upper && l.lower && l.foot);
     // Huesos que modifica la flexión, con su pose de animación guardada para restaurarla.
-    this.poseBones = [this.bodyBone, this.abdomen, this.upperArmL, this.upperArm,
-      ...this.legs.flatMap((l) => [l.upper, l.lower])]
+    this.lowerArm = bone('LowerArmR');
+    this.lowerArmL = bone('LowerArmL');
+    this.poseBones = [this.bodyBone, this.abdomen, this.upperArmL, this.upperArm, this.lowerArmL, this.lowerArm,
+      ...this.legs.flatMap((l) => [l.upper, l.lower, l.foot])]
       .filter(Boolean)
       .map((b) => ({ bone: b, pos: new THREE.Vector3(), quat: new THREE.Quaternion() }));
     this.posed = false;
@@ -369,6 +394,18 @@ export class Player {
     return THREE.MathUtils.lerp(1.45 - 0.6 * this.coverCrouch, 0.3, this.prone);
   }
 
+  /** Postura que la cámara debe seguir (ver ThirdPersonCamera.update). */
+  get view() {
+    this._view ??= { aim: false, height: 1.55, low: 0 };
+    const v = this._view;
+    v.aim = this.aiming;
+    v.low = this.cover?.attached && this.cover.veryLow ? 1 : this.prone;
+    // Apuntando, a la altura de la cabeza (de pie queda como siempre); recostado, casi a ras
+    // del objeto que lo cubre.
+    v.height = this.aiming ? this.headHeight + AIM_VIEW : THREE.MathUtils.lerp(1.55, PRONE_VIEW, this.prone);
+    return v;
+  }
+
   get healthFraction() {
     return this.health / MAX_HEALTH;
   }
@@ -431,7 +468,13 @@ export class Player {
       c.nx = hit.nx;
       c.nz = hit.nz;
       gap = hit.dist - (RADIUS + COVER_GAP);
-      if (gap < 0.12) c.attached = true;
+      if (gap < 0.12 && !c.attached) {
+        c.attached = true;
+        // Recostado no se da la vuelta: la cabeza queda hacia donde empujaba al llegar (o a la
+        // derecha de la cámara) y se arrastra hacia la cabeza o hacia los pies.
+        const side = (moving ? dir.x : Math.cos(cam.yaw)) * hit.nz - (moving ? dir.z : -Math.sin(cam.yaw)) * hit.nx;
+        c.proneDir = side < 0 ? -1 : 1;
+      }
       c.high = !!wall(t.x, t.z, COVER_HIGH_Y, hit.dist + 0.5);
       c.veryLow = !c.high && !wall(t.x, t.z, COVER_LOW_Y, hit.dist + 0.5);
     }
@@ -480,7 +523,6 @@ export class Player {
     c.peek += peekV * dt;
     if (c.peek > 0.02 || peekTarget) along = 0;
 
-    if (along) c.proneDir = along; // tumbado, la cabeza apunta hacia donde se arrastra
     const vt = along * (c.veryLow ? PRONE_SPEED : c.high ? COVER_SPEED : COVER_CROUCH_SPEED) + c.peekDir * peekV;
     // El deslizamiento hacia el muro acelera en vez de arrancar de golpe.
     const vnTarget = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
@@ -547,7 +589,8 @@ export class Player {
     let speed = moving ? (this.sprinting ? SPRINT_SPEED : running ? RUN_SPEED : WALK_SPEED) : 0;
     if (punching) speed *= 0.25;
     this.jumpBuffer = input.justPressed('Space') ? JUMP_BUFFER : this.jumpBuffer - dt;
-    const wantsPunch = input.justPressed('KeyF') || input.justPressed('Mouse2');
+    const wantsPunch = input.justPressed('KeyF');
+    const aimHeld = !!input.aiming?.() && !punching && !this.sprinting;
 
     // --- Cobertura ---
     // Se busca muro hacia donde se empuja, hacia donde mira la cámara o de frente.
@@ -562,7 +605,7 @@ export class Player {
     } else if (this.cover && (!this.grounded || this.jumpBuffer > 0 || wantsPunch)) {
       this.leaveCover(); // saltar, golpear o quedarse sin suelo saca de la cobertura
     }
-    const coverAim = this.aimT > 0 || (input.mouseDown(0) && !this.sprinting);
+    const coverAim = this.aimT > 0 || aimHeld || (input.mouseDown(0) && !this.sprinting);
     if (this.cover) this.coverMove(dt, _v, moving, coverAim, cam);
 
     if (!this.cover) {
@@ -585,7 +628,17 @@ export class Player {
       else if (cover.veryLow) proneTarget = 1;
       else if (!cover.high) coverCrouchTarget = CROUCH_HIDE;
     }
-    this.prone = THREE.MathUtils.damp(this.prone, proneTarget, 9, dt);
+    // Recostarse es más pausado que incorporarse a disparar.
+    this.prone = THREE.MathUtils.damp(this.prone, proneTarget, proneTarget ? 6 : 9, dt);
+    if (proneTarget) {
+      this.proneN.x = cover.nx;
+      this.proneN.z = cover.nz;
+      // Gira hacia el lado que deja el pecho hacia fuera: depende solo de hacia dónde queda la
+      // cabeza, así que no cambia mientras se recuesta ni al girar para disparar.
+      this.proneSide = -cover.proneDir;
+      // Vaivén de piernas al arrastrarse, al ritmo de lo que avanza.
+      this.scoot += this.speed * SCOOT_RATE * dt;
+    }
     this.coverCrouch = THREE.MathUtils.damp(this.coverCrouch, coverCrouchTarget, 11, dt);
     this.coverLean = THREE.MathUtils.damp(this.coverLean, leanTarget, 11, dt);
     this.coverGrip = THREE.MathUtils.damp(this.coverGrip, cover?.attached && coverAim ? 1 : 0, 10, dt);
@@ -654,9 +707,10 @@ export class Player {
     // --- Disparo ---
     this.fireCooldown -= dt;
     this.wantsFire = input.mouseDown(0) && this.punchT < 0 && !this.sprinting;
-    if (this.wantsFire) this.aimT = AIM_HOLD;
+    if (this.wantsFire) this.aimT = cover ? AIM_HOLD_COVER : AIM_HOLD;
     this.aimT -= dt;
-    const aiming = this.aimT > 0;
+    const aiming = this.aimT > 0 || (aimHeld && this.punchT < 0);
+    this.aiming = aiming;
     this.aimWeight = THREE.MathUtils.damp(this.aimWeight, aiming ? 1 : 0, aiming ? 25 : 10, dt);
 
     // --- Orientación: hacia la mira al apuntar/golpear, si no hacia el movimiento ---
@@ -666,7 +720,7 @@ export class Player {
       // De espaldas al muro; durante el deslizamiento de entrada, de cara a él.
       const s = cover.attached ? 1 : -1;
       if (cover.attached && cover.veryLow) {
-        // Tumbado: el cuerpo queda paralelo a la cobertura.
+        // Recostado: el cuerpo queda paralelo a la cobertura.
         this.turnToward(Math.atan2(cover.nz * cover.proneDir, -cover.nx * cover.proneDir), 10, dt);
       } else
       this.turnToward(Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
@@ -746,7 +800,7 @@ export class Player {
     else if (this.cover?.attached) {
       // Paso lateral según hacia qué lado del personaje se desplaza.
       const side = this.velocity.x * -Math.cos(this.facing) + this.velocity.z * Math.sin(this.facing);
-      if (this.cover.veryLow) next = s < 0.15 || this.cover.mode ? 'Idle' : 'Walking'; // arrastrarse
+      if (this.cover.veryLow) next = 'Idle'; // recostado: la pose y el arrastre van por código
       else next = s < 0.3 ? 'Idle' : side > 0 ? 'CoverRight' : 'CoverLeft';
     }
     else if (s > (WALK_SPEED + RUN_SPEED) / 2) next = 'Running';
@@ -850,6 +904,96 @@ export class Player {
     bone.updateMatrixWorld(true);
   }
 
+  /** Guarda la pose animada de los huesos que se modifican por código (una vez por fotograma). */
+  savePose() {
+    if (this.posed) return;
+    for (const p of this.poseBones) {
+      p.pos.copy(p.bone.position);
+      p.quat.copy(p.bone.quaternion);
+    }
+    this.posed = true;
+  }
+
+  /**
+   * Lleva el segmento hueso→`end` (posición mundial de su extremo) hacia `dir`, una dirección
+   * en el espacio del modelo de pie (+X izquierda, +Y cabeza, +Z pecho), con peso `w`.
+   */
+  poseSegment(bone, end, dir, w) {
+    _qa.copy(bone.quaternion);
+    bone.getWorldPosition(_hip);
+    _knee.copy(end).sub(_hip).normalize();
+    _dir.copy(dir).normalize().applyQuaternion(this.model.quaternion);
+    this.aimBone(bone, _knee, _dir);
+    if (w < 1) {
+      bone.quaternion.copy(_qa.slerp(bone.quaternion, w));
+      bone.updateMatrixWorld(true);
+    }
+  }
+
+  /**
+   * Pose recostada tras una cobertura muy baja, con peso `w`: rodillas recogidas (más la
+   * pierna de arriba), tronco encorvado, manos juntas delante del pecho y cabeza levantada.
+   * Se define sobre el modelo de pie; `postPhysics` ya lo ha girado hasta dejarlo de lado.
+   */
+  applyRecline(w) {
+    if (!this.bodyBone || !this.legs.length) return;
+    this.savePose();
+    this.model.updateMatrixWorld(true);
+    // ¿Qué lado del cuerpo queda arriba? (+1 el izquierdo)
+    const upSide = _v.set(1, 0, 0).applyQuaternion(this.model.quaternion).y >= 0 ? 1 : -1;
+    const swing = Math.sin(this.scoot) * SCOOT_SWING * THREE.MathUtils.clamp(this.speed / PRONE_SPEED, 0, 1);
+
+    for (const leg of this.legs) {
+      const i = leg.side * upSide > 0 ? 0 : 1;
+      const hip = RECLINE_HIP[i] + (i ? -swing : swing);
+      const knee = RECLINE_KNEE[i] + (i ? swing : -swing) * 0.6;
+      // El pie no cuelga de la pierna en este modelo: se recoloca para que siga a la tibia.
+      // (Sin matrices: los huesos de la pierna tienen escala no uniforme y las deforman.)
+      const kneeOld = leg.lower.getWorldPosition(_knee2);
+      const footOld = leg.foot.getWorldPosition(_foot).sub(kneeOld); // del tobillo respecto a la rodilla
+      leg.foot.getWorldQuaternion(_fq);
+      // El eje Y de la tibia es su longitud; el signo, hacia el pie.
+      const sign = Math.sign(_axis.setFromMatrixColumn(leg.lower.matrixWorld, 1).dot(footOld)) || 1;
+      _axis.normalize().multiplyScalar(sign);
+
+      this.poseSegment(leg.upper, kneeOld, _h.set(leg.side * 0.08, -Math.cos(hip), Math.sin(hip)), w);
+      const shin = hip - knee;
+      leg.lower.getWorldPosition(_a);
+      _a.addScaledVector(_axis2.setFromMatrixColumn(leg.lower.matrixWorld, 1).normalize(), sign);
+      this.poseSegment(leg.lower, _a, _h.set(0, -Math.cos(shin), Math.sin(shin)), w);
+
+      // Giro total de la tibia → el pie gira y se traslada con ella.
+      _axis2.setFromMatrixColumn(leg.lower.matrixWorld, 1).normalize().multiplyScalar(sign);
+      _q.setFromUnitVectors(_axis, _axis2);
+      leg.lower.getWorldPosition(_a).add(footOld.applyQuaternion(_q));
+      leg.foot.position.copy(leg.foot.parent.worldToLocal(_a));
+      leg.foot.parent.getWorldQuaternion(_pq);
+      leg.foot.quaternion.copy(_pq.invert().multiply(_q).multiply(_fq));
+      leg.foot.updateMatrixWorld(true);
+    }
+
+    // Tronco encorvado hacia las rodillas.
+    if (this.abdomen) this.turnBone(this.abdomen, _right.set(1, 0, 0).applyQuaternion(this.model.quaternion), RECLINE_CURL * w);
+    // Brazos: codos junto al cuerpo y las dos manos delante del pecho, donde va el arma.
+    for (const [upper, lower, hand, side] of [
+      [this.upperArmL, this.lowerArmL, this.handL, 1], [this.upperArm, this.lowerArm, this.hand, -1],
+    ]) {
+      if (!upper || !lower || !hand || hand === lower) continue;
+      lower.getWorldPosition(_a);
+      this.poseSegment(upper, _a, _h.set(side * 0.2, -0.75, 0.62), w);
+      hand.getWorldPosition(_a);
+      this.poseSegment(lower, _a, _h.set(-side * 0.62, 0.42, 0.66), w);
+    }
+    // Cabeza levantada del suelo.
+    if (this.neck) {
+      this.neckRest.copy(this.neck.quaternion);
+      this.neckPosed = true;
+      _v.set(0, 1, 0).applyQuaternion(this.model.quaternion); // hacia la cabeza
+      _right.set(_v.z, 0, -_v.x); // eje horizontal perpendicular: gira la cabeza hacia arriba
+      if (_right.lengthSq() > 1e-6) this.turnBone(this.neck, _right.normalize(), -RECLINE_HEAD * w);
+    }
+  }
+
   /**
    * Flexión procedimental sobre la animación en curso: baja la cadera, dobla las rodillas
    * (IK de dos huesos, con los pies fijos en el suelo), inclina el tronco y lleva los
@@ -857,11 +1001,7 @@ export class Player {
    */
   applyCrouch(depth, lean, arms, side = 0) {
     if (!this.bodyBone || !this.legs.length) return;
-    for (const p of this.poseBones) {
-      p.pos.copy(p.bone.position);
-      p.quat.copy(p.bone.quaternion);
-    }
-    this.posed = true;
+    this.savePose();
     this.model.updateMatrixWorld(true);
     // El extremo de cada pierna (tobillo) en coordenadas de su hueso, antes de agacharse.
     for (const leg of this.legs) {
@@ -962,20 +1102,21 @@ export class Player {
     const t = this.body.translation();
     this.position.set(t.x, t.y - FOOT - 0.02, t.z);
     this.model.position.copy(this.position);
-    // Tumbado: el modelo gira hasta quedar boca abajo y se centra sobre la cápsula.
+    // Recostado: el modelo se tumba hacia delante, gira sobre su eje hasta quedar de lado con
+    // la espalda hacia el objeto, se arrima a él y se centra sobre la cápsula.
     const prone = this.prone > 0.005 ? this.prone : 0;
-    this.model.rotation.set(prone * Math.PI / 2, this.facing, 0, 'YXZ');
+    this.model.rotation.set(0, this.facing, 0);
     if (prone) {
-      this.model.position.x -= Math.sin(this.facing) * PRONE_BACK * prone;
-      this.model.position.z -= Math.cos(this.facing) * PRONE_BACK * prone;
-      this.model.position.y += PRONE_LIFT * prone;
-      // Levanta la cabeza para mirar al frente en vez de al suelo.
-      if (this.neck) {
-        this.neckRest.copy(this.neck.quaternion);
-        this.neckPosed = true;
-        this.model.updateMatrixWorld(true);
-        this.turnBone(this.neck, _right.set(Math.cos(this.facing), 0, -Math.sin(this.facing)), -0.9 * prone);
-      }
+      const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+      const n = this.proneN;
+      const ease = THREE.MathUtils.smoothstep(prone, 0, 1);
+      this.model.quaternion
+        .multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), ease * Math.PI / 2))
+        .multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), ease * RECLINE_TURN * this.proneSide));
+      this.model.position.x -= (fx * PRONE_BACK + n.x * RECLINE_IN) * ease;
+      this.model.position.z -= (fz * PRONE_BACK + n.z * RECLINE_IN) * ease;
+      this.model.position.y += RECLINE_LIFT * ease;
+      this.applyRecline(ease);
     }
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
@@ -986,9 +1127,19 @@ export class Player {
       );
     }
 
-    this.gun.visible = this.aimWeight > 0.05;
+    const armed = this.aimWeight > 0.05;
+    this.gun.visible = armed || prone > 0.5;
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
     if (!this.gun.visible) return;
+    if (!armed) {
+      // Recostado lleva el arma en las manos, junto al pecho y apuntando hacia arriba.
+      this.model.updateMatrixWorld(true);
+      this.hand.getWorldPosition(this.gun.position);
+      _v.set(0, 0.8, 0.45).applyQuaternion(this.model.quaternion);
+      _v.y = Math.abs(_v.y) + 0.5;
+      this.gun.lookAt(_v.add(this.gun.position));
+      return;
+    }
 
     this.aimPoint.copy(combat.aimPoint(cam));
     this.model.updateMatrixWorld(true);

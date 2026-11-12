@@ -6,6 +6,7 @@ import { TUNING as T, PLAYER_CLIPS } from './player.js';
 import { ZOMBIE_TUNING as Z, ZOMBIE_CLIPS } from './horde.js';
 import { COMBAT_TUNING as C } from './combat.js';
 import { AUTOPILOT_TUNING as A } from './autopilot.js';
+import { CAMERA_TUNING as K } from './camera.js';
 
 const n = (x, digits = 2) => String(+x.toFixed(digits)).replace('.', ',');
 const jumpHeight = (v) => (v * v) / (2 * T.GRAVITY);
@@ -14,6 +15,7 @@ const jumpHeight = (v) => (v * v) / (2 * T.GRAVITY);
 const key = (k, on = true) => (g) => { if (on) g.input.keys.add(k); else g.input.keys.delete(k); };
 const press = (k) => (g) => { g.input.pressed.add(k); };
 const fire = (on) => (g) => { if (on) g.input.buttons.add(0); else g.input.buttons.delete(0); };
+const aim = (on) => (g) => { if (on) g.input.buttons.add(2); else g.input.buttons.delete(2); };
 const all = (...fns) => (g) => { for (const f of fns) f(g); };
 
 /** Deja el mundo limpio y al jugador quieto en (x, z) con la cámara mirando hacia `yaw`. */
@@ -65,17 +67,23 @@ export const SCENES = [
     steps: [[0, all(key('KeyW'), key('ShiftLeft')), 'Carrera'], [1.0, press('Space'), 'Batida y salto'], [1.8, null, 'Aterriza y sigue']] },
 
   { id: 'golpe', group: 'combate', title: 'Puñetazo',
-    how: 'F o clic derecho · mando X',
+    how: 'F · mando X',
     desc: `Dura ${n(T.PUNCH_TIME)} s y conecta al ${n(T.PUNCH_HIT * 100)} % de la animación. Empuja lo que haya delante del personaje y quita 1,5 de vida a un zombi (tienen ${n(Z.HEALTH)}). Mientras golpea se mueve a un cuarto de velocidad.`,
     place: [20, 30, 0], seconds: 1.2, view: Math.PI * 0.7,
     steps: [[0.1, press('KeyF'), 'Arranca el golpe'], [0.1 + T.PUNCH_TIME * T.PUNCH_HIT, null, 'Conecta'], [0.1 + T.PUNCH_TIME, null, 'Recupera']] },
   // Disparo de pie: apuntar y ráfaga parado, y después caminando sin dejar de disparar.
   { id: 'disparo', group: 'combate', title: 'Apuntar y disparar',
     how: 'Clic izquierdo (mantener para ráfaga) · mando RT',
-    desc: `El cuerpo gira hacia la mira (hasta ${n(T.AIM_TURN)} rad/s) y el brazo derecho apunta al punto exacto. Una bala cada ${n(T.FIRE_INTERVAL)} s, con retroceso; las balas son cuerpos físicos a ${n(C.BULLET_SPEED)} m/s. Tras soltar mantiene la pose ${n(T.AIM_HOLD)} s. Se puede caminar sin dejar de disparar.`,
+    desc: `El cuerpo gira hacia la mira (hasta ${n(T.AIM_TURN)} rad/s) y el brazo derecho apunta al punto exacto. Una bala cada ${n(T.FIRE_INTERVAL)} s, con retroceso; las balas son cuerpos físicos a ${n(C.BULLET_SPEED)} m/s. Tras soltar mantiene la pose ${n(T.AIM_HOLD)} s (${n(T.AIM_HOLD_COVER)} s a cubierto, para esconderse enseguida). Se puede caminar sin dejar de disparar.`,
     place: [20, 30, 0], seconds: 3.6, view: Math.PI * 0.7,
     steps: [[0.3, fire(true), 'Levanta el arma y dispara'], [1.4, key('KeyW'), 'Camina disparando'],
       [2.6, key('KeyW', false), 'Se detiene'], [3.0, fire(false), 'Deja de disparar']] },
+
+  { id: 'apuntar', group: 'combate', title: 'Apuntar (cámara al hombro)',
+    how: 'Clic derecho mantenido · mando LT · botón «Apuntar» en táctil (un toque entra, otro sale)',
+    desc: `Levanta el arma sin disparar y la cámara del juego se cierra sobre el hombro derecho: pasa a ${n(K.AIM_DISTANCE)} m del personaje, a la altura de la cabeza, con ${n(K.AIM_FOV)}° de campo (60° normal) y la mira un ${n((1 - K.AIM_SENS) * 100)} % más lenta. Disparar también la cierra. Esta ficha lo muestra desde fuera; el movimiento de cámara se ve jugando.`,
+    place: [20, 30, 0], seconds: 3.2, view: Math.PI * 0.7,
+    steps: [[0.3, aim(true), 'Apunta sin disparar'], [1.2, fire(true), 'Dispara'], [2.0, fire(false)], [2.4, aim(false), 'Baja el arma']] },
 
   { id: 'cobertura_baja', group: 'cobertura', title: 'Cobertura baja',
     how: 'C cubrirse · A / D a lo largo · clic para disparar',
@@ -90,10 +98,10 @@ export const SCENES = [
     steps: [[0.1, press('KeyC'), 'Se desliza hasta el muro'], [1.4, fire(true), 'Se asoma por el borde y dispara'], [2.8, fire(false), 'Regresa']] },
   { id: 'cobertura_tumbado', group: 'cobertura', title: 'Cobertura muy baja (tumbado)',
     how: 'C junto a un objeto de menos de unos 60 cm',
-    desc: `Se tumba boca abajo paralelo al objeto y se arrastra a ${n(T.PRONE_SPEED)} m/s. Para disparar se incorpora de rodillas. No hay clip de arrastre: se usa el de caminar con el modelo girado.`,
+    desc: `Se recuesta de lado, de espaldas al objeto, con las rodillas recogidas y el arma al pecho, y se arrastra a ${n(T.PRONE_SPEED)} m/s sin darse la vuelta. La cámara baja casi a ras del objeto. Al apuntar o disparar se incorpora de rodillas y la cámara se cierra sobre el hombro. La pose se arma por código: el modelo no trae un clip así.`,
     place: [5.6, -5.5, 0], seconds: 5.6, view: 0.7, dist: 3.4,
-    steps: [[0.1, press('KeyC'), 'Se desliza y se tumba'], [1.6, key('KeyD'), 'Se arrastra'], [2.8, key('KeyD', false)],
-      [3.2, fire(true), 'Se arrodilla y dispara'], [4.4, fire(false), 'Vuelve a tumbarse']] },
+    steps: [[0.1, press('KeyC'), 'Se desliza y se recuesta'], [1.6, key('KeyD'), 'Se arrastra'], [2.8, key('KeyD', false)],
+      [3.2, aim(true), 'Se arrodilla y apunta'], [3.7, fire(true), 'Dispara'], [4.4, all(fire(false), aim(false)), 'Vuelve a recostarse']] },
 
   { id: 'zombi', group: 'enemigos', title: 'Zombi: persecución, mordida y muerte',
     how: 'H inicia la horda',

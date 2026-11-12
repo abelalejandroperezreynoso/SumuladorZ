@@ -14,11 +14,13 @@ export function setupTouch(input) {
     <button id="t-punch" data-key="KeyF">Golpe</button>
     <button id="t-cover" data-key="KeyC">Cubrir</button>
     <button id="t-sprint" data-key="KeyQ">Correr</button>
+    <button id="t-aim">Apuntar</button>
     <button id="t-fire">Disparo</button>`;
   document.body.append(ui);
   const stick = ui.querySelector('#stick');
   const knob = ui.querySelector('#stick-knob');
   const fire = ui.querySelector('#t-fire');
+  const aim = ui.querySelector('#t-aim');
 
   let stickTouch = null; // { id, x, y }
   const lookTouches = new Map(); // id -> { x, y }
@@ -43,6 +45,11 @@ export function setupTouch(input) {
       const button = t.target.closest?.('#touch-ui button');
       if (button?.dataset.key) {
         input.pressed.add(button.dataset.key);
+      } else if (button === aim) {
+        // Un toque entra o sale del apuntado; arrastrando desde el botón se mueve la mira.
+        input.aimToggle = !input.aimToggle;
+        aim.classList.toggle('held', input.aimToggle);
+        lookTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
       } else if (button === fire) {
         fireId = t.identifier;
         input.buttons.add(0);
