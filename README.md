@@ -29,6 +29,10 @@ botón **Compartir** → **Añadir a pantalla de inicio**. Se abre a pantalla co
 navegador, y tras la primera carga funciona sin conexión. En Android: menú de Chrome →
 *Instalar aplicación*.
 
+**Con datos móviles**: la primera visita descarga unos 1,8 MB y muestra el porcentaje. Después
+el juego queda guardado en el teléfono: abre al instante y sin gastar datos, y una versión nueva
+solo descarga el código del juego (unos 30 KB), no las bibliotecas ni el modelo.
+
 Controles táctiles: joystick a la izquierda (a fondo = correr), arrastrar en la parte derecha para
 mover la cámara, y botones de disparo, golpe, salto y reinicio. Mejor en horizontal.
 
@@ -167,6 +171,8 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/touch.js` | Controles táctiles |
 | `src/catalog.js`, `src/catalog-scenes.js` | Catálogo de mecánicas dentro del juego y sus escenas |
 | `src/pwa.js`, `public/sw.js`, `public/manifest.webmanifest` | Instalación como app y modo sin conexión |
+| `src/download.js` | Descargas con porcentaje para la pantalla de carga |
+| `vite.config.js` | Compilación: bibliotecas en archivos aparte y el wasm de Rapier fuera del script |
 
 ## Créditos
 

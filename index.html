@@ -155,7 +155,7 @@
           if (!window.__game) __bootError(String((e.reason && (e.reason.stack || e.reason.message)) || e.reason));
         });
         setTimeout(function () {
-          if (!window.__game && !window.__bootFailed) msg.textContent += ' (está tardando; la primera descarga pesa unos 2 MB)';
+          if (!window.__game && !window.__bootFailed) msg.textContent += ' (está tardando; la primera descarga pesa casi 2 MB, las siguientes casi nada)';
         }, 15000);
       })();
     </script>

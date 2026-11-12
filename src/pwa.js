@@ -2,19 +2,27 @@
 // y poder jugar sin conexión.
 export function setupPWA() {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
-  addEventListener('load', async () => {
-    try {
-      await navigator.serviceWorker.register('./sw.js');
-      const reg = await navigator.serviceWorker.ready;
-      // Guarda en caché lo que esta visita ya descargó (script, modelo, iconos).
-      const urls = performance.getEntriesByType('resource')
-        .map((e) => e.name)
-        .filter((u) => u.startsWith(location.origin));
-      reg.active?.postMessage({ type: 'precache', urls });
-    } catch (err) {
-      console.warn('Service worker no disponible:', err);
-    }
-  });
+  const register = () => navigator.serviceWorker.register('./sw.js')
+    .catch((err) => console.warn('Service worker no disponible:', err));
+  if (document.readyState === 'complete') register(); else addEventListener('load', register);
+}
+
+/**
+ * Guarda en caché lo que esta visita descargó (scripts, motor de físicas, modelo, iconos) y
+ * deja que el service worker borre los archivos de versiones anteriores. Se llama cuando el
+ * juego ya arrancó: antes la lista estaría incompleta y se borraría algo que aún hace falta.
+ */
+export async function cacheLoadedFiles() {
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const urls = performance.getEntriesByType('resource')
+      .map((e) => e.name)
+      .filter((u) => u.startsWith(location.origin) && !u.includes('version.json'));
+    reg.active?.postMessage({ type: 'precache', urls });
+  } catch (err) {
+    console.warn('No se pudo guardar el juego para usarlo sin conexión:', err);
+  }
 }
 
 /**
