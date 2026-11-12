@@ -25,6 +25,8 @@ export class ThirdPersonCamera {
     this.aim = 0; // 0-1: cuánto se ha cerrado sobre el hombro
     this.height = STAND_HEIGHT; // altura actual del pivote sobre los pies
     this.low = 0;
+    this.sensitivity = 1; // ajustes del menú
+    this.invertY = false;
     this.forward = new THREE.Vector3(0, 0, -1); // dirección de la mirada
   }
 
@@ -42,9 +44,9 @@ export class ThirdPersonCamera {
     ease('aim', view.aim ? 1 : 0, 17);
     ease('height', view.height ?? STAND_HEIGHT, 16);
     ease('low', view.low ?? 0, 12);
-    const sens = SENS * THREE.MathUtils.lerp(1, AIM_SENS, this.aim);
+    const sens = SENS * this.sensitivity * THREE.MathUtils.lerp(1, AIM_SENS, this.aim);
     this.yaw -= input.mouseDX * sens;
-    this.pitch = THREE.MathUtils.clamp(this.pitch + input.mouseDY * sens, -0.9, 1.35);
+    this.pitch = THREE.MathUtils.clamp(this.pitch + input.mouseDY * sens * (this.invertY ? -1 : 1), -0.9, 1.35);
     this.distance = THREE.MathUtils.clamp(this.distance + input.wheel * 0.5, 2, 9);
 
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);

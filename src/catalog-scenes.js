@@ -125,7 +125,7 @@ export const SCENES = [
 
   // El piloto automático jugando: se le ve buscar cobertura, asomarse y disparar.
   { id: 'piloto', group: 'piloto', title: 'Partida del piloto automático',
-    how: 'P o botón «Piloto» · mando: cruceta arriba',
+    how: 'P o menú → Ajustes → Piloto automático · mando: cruceta arriba',
     desc: `El juego jugándose solo con los mismos controles que un jugador: inicia la horda, busca cobertura (rota entre alta, baja y muy baja), dispara a los zombis que ve a menos de ${n(A.SHOOT_RANGE)} m, huye cuando se acercan a ${n(A.FLEE_START)} m y golpea si lo acorralan. Cada repetición sale distinta.`,
     place: [0, 0, 0], seconds: 16, view: (s) => s.facing + 2.4, dist: 4.2,
     before: (g) => { g.input.pressed.add('KeyP'); g.tick(1 / 60); },

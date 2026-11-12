@@ -18,7 +18,7 @@ en español. El `README.md` describe controles, mecánicas y estructura.
 No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
 (`npx vite --port 5199 &`) y Playwright con Chromium en el entorno.
 
-- **Catálogo en el juego** — tecla `G`, botón «Catálogo» o `#catalogo` en la dirección
+- **Catálogo en el juego** — tecla `G`, menú → «Catálogo» o `#catalogo` en la dirección
   (`src/catalog.js`). Ejecuta cada escena en vivo y muestra clips activos, pesos y capas por
   código. Las escenas se definen una sola vez en `src/catalog-scenes.js` (las usa también
   `tools/watch.cjs`): al añadir o cambiar una mecánica, añadir o ajustar ahí su escena y tomar
