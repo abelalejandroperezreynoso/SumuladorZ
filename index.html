@@ -72,6 +72,13 @@
       .cat-bar u { display: block; height: 100%; background: #a9bb7c; transform-origin: left center; transform: scaleX(0); }
       .cat-bar b { font-weight: 400; text-align: right; white-space: nowrap; }
       .cat-how { font: 12px ui-monospace, Menlo, monospace; opacity: 0.75; }
+      .cat-part { display: flex; flex-direction: column; gap: 6px; padding: 8px; margin: 6px 0; border: 1px solid rgba(255, 213, 121, 0.45); border-radius: 8px; }
+      .cat-part > b { color: #ffd479; }
+      .cat-part.none > b { color: inherit; font-weight: 400; opacity: 0.75; }
+      .cat-part.none .cat-slider, .cat-part.none #cat-part-reset { display: none; }
+      .cat-part .cat-seg button { flex: 1; }
+      #catalog button:disabled { opacity: 0.4; cursor: default; }
+      .cat-general summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
       .cat-poses { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
       .cat-wrap { flex-wrap: wrap; margin: 8px 0 6px; }
       .cat-slider { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: baseline; padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
