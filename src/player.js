@@ -64,10 +64,26 @@ export const POSES = {
     giro: 1.85, altura: 0.2, arrimo: 0.22, centrado: 0.88, tronco: 0.38, cabeza: 0.4,
     caderaArriba: 1.45, rodillaArriba: 1.55, caderaAbajo: 1.0, rodillaAbajo: 1.25, piernasAbiertas: 0.08,
     brazoAdelante: 0.69, brazoAbierto: 0.2, codoCerrado: 0.67, antebrazoArriba: 0.57,
+    ajustes: {},
   },
   // Incorporado para apuntar por encima de una cobertura muy baja.
-  rodillas: { agachado: 0.9, tronco: 0.27 },
+  rodillas: { agachado: 0.9, tronco: 0.27, ajustes: {} },
 };
+// `ajustes` guarda giros libres por hueso, hechos en el editor seleccionando una parte del
+// cuerpo y arrastrando: { NombreDelHueso: [x, y, z, w] }, un cuaternión en el marco del hueso
+// padre que se suma a la postura ya calculada.
+// Partes seleccionables: [hueso, hueso donde termina (o null), rótulo].
+const PARTS = [
+  ['Abdomen', 'Torso', 'Cintura'], ['Torso', 'Chest', 'Tronco'], ['Chest', 'Neck', 'Pecho'],
+  ['Neck', 'Head', 'Cuello'], ['Head', null, 'Cabeza'],
+  ['UpperArmL', 'LowerArmL', 'Brazo izquierdo'], ['LowerArmL', 'WristL', 'Antebrazo izquierdo'], ['WristL', null, 'Mano izquierda'],
+  ['UpperArmR', 'LowerArmR', 'Brazo derecho'], ['LowerArmR', 'WristR', 'Antebrazo derecho'], ['WristR', null, 'Mano derecha'],
+  ['UpperLegL', 'LowerLegL', 'Muslo izquierdo'], ['LowerLegL', 'FootL', 'Pierna izquierda'], ['FootL', null, 'Pie izquierdo'],
+  ['UpperLegR', 'LowerLegR', 'Muslo derecho'], ['LowerLegR', 'FootR', 'Pierna derecha'], ['FootR', null, 'Pie derecho'],
+];
+// Partes que una postura no deja girar porque otra capa las coloca después (al apuntar, los
+// brazos van hacia la mira).
+export const POSE_FIXED = { recostado: [], rodillas: ['UpperArmL', 'UpperArmR'] };
 export const POSE_SPEC = {
   recostado: [
     ['giro', 'Giro del cuerpo (90° de lado, 180° boca arriba)', 1.0, 2.6, 'rad'],
@@ -248,8 +264,13 @@ export class Player {
     // Huesos que modifica la flexión, con su pose de animación guardada para restaurarla.
     this.lowerArm = bone('LowerArmR');
     this.lowerArmL = bone('LowerArmL');
-    this.poseBones = [this.bodyBone, this.abdomen, this.upperArmL, this.upperArm, this.lowerArmL, this.lowerArm,
-      ...this.legs.flatMap((l) => [l.upper, l.lower, l.foot])]
+    // Partes del cuerpo que el editor de posturas deja seleccionar y girar.
+    this.parts = PARTS.map(([name, end, label]) => ({ name, label, bone: bone(name), end: end && bone(end) }))
+      .filter((p) => p.bone);
+    const legBones = new Set(this.legs.flatMap((l) => [l.upper, l.lower, l.foot]));
+    this.adjustBones = this.parts.map((p) => p.bone).filter((b) => !legBones.has(b)); // de padres a hijos
+    this.poseBones = [...new Set([this.bodyBone, this.abdomen, this.upperArmL, this.upperArm, this.lowerArmL, this.lowerArm,
+      ...this.legs.flatMap((l) => [l.upper, l.lower, l.foot]), ...this.adjustBones])]
       .filter(Boolean)
       .map((b) => ({ bone: b, pos: new THREE.Vector3(), quat: new THREE.Quaternion() }));
     this.posed = false;
@@ -958,6 +979,61 @@ export class Player {
   }
 
   /**
+   * Suma a la postura ya calculada los giros libres guardados en `POSES[key].ajustes`, con
+   * peso `w`. Los pies no cuelgan de la pierna en este modelo: se llevan con la tibia.
+   */
+  applyAdjust(key, w) {
+    const adj = POSES[key].ajustes;
+    if (w < 0.002 || !adj) return;
+    let any = false;
+    for (const k in adj) { any = true; break; }
+    if (!any) return;
+    this.savePose();
+    this.model.updateMatrixWorld(true);
+    const turn = (bone) => {
+      const d = adj[bone.name];
+      if (!d) return;
+      _qb.set(d[0], d[1], d[2], d[3]);
+      if (w < 1) _qb.copy(_q.identity().slerp(_qb, w));
+      bone.quaternion.premultiply(_qb);
+      bone.updateMatrixWorld(true);
+    };
+    for (const bone of this.adjustBones) turn(bone);
+    for (const leg of this.legs) {
+      if (!adj[leg.upper.name] && !adj[leg.lower.name] && !adj[leg.foot.name]) continue;
+      const kneeOld = leg.lower.getWorldPosition(_knee2);
+      const footOld = leg.foot.getWorldPosition(_foot).sub(kneeOld);
+      leg.foot.getWorldQuaternion(_fq);
+      leg.lower.getWorldQuaternion(_qa);
+      turn(leg.upper);
+      turn(leg.lower);
+      leg.lower.getWorldQuaternion(_q2).multiply(_qa.invert()); // giro total de la tibia
+      leg.lower.getWorldPosition(_a).add(footOld.applyQuaternion(_q2));
+      leg.foot.position.copy(leg.foot.parent.worldToLocal(_a));
+      leg.foot.parent.getWorldQuaternion(_pq);
+      leg.foot.quaternion.copy(_pq.invert().multiply(_q2).multiply(_fq));
+      leg.foot.updateMatrixWorld(true);
+      turn(leg.foot);
+    }
+  }
+
+  /**
+   * Editor de posturas: gira un hueso con el giro `world` (cuaternión en el mundo) y lo
+   * acumula en los ajustes de la postura `key`.
+   */
+  adjustBone(key, name, world) {
+    const part = this.parts.find((p) => p.name === name);
+    if (!part) return;
+    const adj = POSES[key].ajustes;
+    part.bone.parent.getWorldQuaternion(_pq);
+    _qa.copy(_pq).invert().multiply(world).multiply(_pq); // el mismo giro visto desde el hueso padre
+    const d = adj[name];
+    if (d) _qa.multiply(_qb.set(d[0], d[1], d[2], d[3]));
+    _qa.normalize();
+    adj[name] = [_qa.x, _qa.y, _qa.z, _qa.w].map((v) => +v.toFixed(4));
+  }
+
+  /**
    * Pose recostada tras una cobertura muy baja, con peso `w`: rodillas recogidas (más la
    * pierna de arriba), tronco encorvado, manos juntas delante del pecho y cabeza levantada.
    * Se define sobre el modelo de pie; `postPhysics` ya lo ha girado hasta dejarlo de lado.
@@ -1023,6 +1099,7 @@ export class Player {
       _right.set(_v.z, 0, -_v.x); // eje horizontal perpendicular: gira la cabeza hacia arriba
       if (_right.lengthSq() > 1e-6) this.turnBone(this.neck, _right.normalize(), -R.cabeza * w);
     }
+    this.applyAdjust('recostado', w);
   }
 
   /**
@@ -1163,6 +1240,10 @@ export class Player {
     }
 
     const armed = this.aimWeight > 0.05;
+    // De rodillas tras una cobertura muy baja: giros libres de su postura.
+    const kneelW = this.kneel * THREE.MathUtils.clamp(cc / Math.max(POSES.rodillas.agachado, 0.05), 0, 1) * (1 - prone);
+    if (kneelW > 0.01) this.applyAdjust('rodillas', kneelW);
+
     this.gun.visible = armed || prone > 0.5;
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
     if (!this.gun.visible) return;

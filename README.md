@@ -114,9 +114,11 @@ escena con el motor real y una cámara lateral, así que muestra siempre el jueg
 - **Clips**: los 24 clips del modelo, usados o no, reproducidos sobre el personaje, con quién
   los usa y para qué.
 - **Editar postura**: en «Cobertura muy baja», los botones «Editar postura» detienen la escena
-  en esa postura (recostado o de rodillas) y muestran un deslizador por articulación; el
-  personaje cambia en vivo. «Copiar valores» da un texto corto con los números para fijarlos
-  en el código (`POSES` en `src/player.js`). Los cambios duran hasta recargar la página.
+  en esa postura (recostado o de rodillas). Con la rueda o pellizcando se acerca la vista. Al
+  tocar una parte del cuerpo queda seleccionada y arrastrar la gira libremente; un deslizador
+  la gira sobre su propio eje y un botón quita su giro. «Ajustes generales» tiene además un
+  deslizador por articulación. «Copiar valores» da un texto corto con los números para
+  fijarlos en el código (`POSES` en `src/player.js`). Los cambios duran hasta recargar la página.
 - **Mandos**: pausa, avance cuadro a cuadro, velocidad (1×, ½×, ¼×) y vista de esqueleto.
   Arrastrar sobre la escena gira la cámara y la rueda acerca. Teclado: `←` `→` cambian de
   ficha, `Espacio` pausa, `K` esqueleto, `Esc` cierra.

@@ -25,11 +25,15 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   las cifras del texto de `TUNING` para que el catálogo no quede desfasado.
 - **Editor de posturas** — en el catálogo, las fichas con `poses` (por ahora «Cobertura muy
   baja») tienen botones «Editar postura». La escena se detiene en esa postura y aparecen
-  deslizadores que cambian `POSES` (`src/player.js`) en vivo. «Copiar valores» da un texto como
-  `postura recostado: giro=1.85 altura=0.2 …` (radianes y metros). Cuando el usuario pegue uno
-  en el chat, pasar esos números a `POSES` y verificar la pose con `tools/watch.cjs`. Para
-  hacer editable otra postura: añadir sus valores a `POSES`, sus deslizadores a `POSE_SPEC` y
-  `poses: [[clave, título, segundo]]` a su escena.
+  deslizadores que cambian `POSES` (`src/player.js`) en vivo. Además se puede tocar una parte
+  del cuerpo para seleccionarla y arrastrar para girarla libremente; esos giros se guardan por
+  hueso en `POSES.<clave>.ajustes`. «Copiar valores» da un texto como
+  `postura recostado: giro=1.85 altura=0.2 … | giros: UpperLegR=-0.34,-0.22,0.08,0.91 …`
+  (radianes, metros y cuaterniones x,y,z,w). Cuando el usuario pegue uno en el chat, pasar los
+  números a `POSES` y los giros a su `ajustes`, y verificar la pose con `tools/watch.cjs`. Para
+  hacer editable otra postura: añadir sus valores a `POSES`, sus deslizadores a `POSE_SPEC`,
+  llamar a `applyAdjust(clave, peso)` donde se arma y poner `poses: [[clave, título, segundo]]`
+  en su escena.
 - **Animaciones y sensación** — `node tools/watch.cjs <carpeta> [escena...]`
   Guarda tiras de fotogramas a 30 imágenes por segundo de cada mecánica y mide pies que
   resbalan, saltos bruscos de pose, tirones del personaje y de la cámara y velocidad de giro.
