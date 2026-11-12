@@ -19,28 +19,67 @@
       #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 2px #000; }
       #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; clip-path: polygon(0 0, 100% 0, 100% 35%, 0 35%, 0 65%, 100% 65%, 100% 100%, 0 100%); }
       #crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; clip-path: polygon(0 0, 35% 0, 35% 100%, 0 100%, 0 0, 65% 0, 100% 0, 100% 100%, 65% 100%, 65% 0); }
-      .panel { position: fixed; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 10px 14px; font-size: 13px; line-height: 1.6; pointer-events: none; }
-      #controls { left: 12px; bottom: 12px; }
-      kbd { background: rgba(255, 255, 255, 0.14); border-radius: 4px; padding: 1px 6px; font-family: inherit; font-size: 12px; }
-      #horde-btn { position: fixed; left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%); padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; white-space: nowrap; cursor: pointer; touch-action: none; }
-      #auto-btn { position: fixed; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
-      #bone-btn { position: fixed; left: calc(max(12px, env(safe-area-inset-left)) + 78px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
-      #update-btn { position: fixed; right: calc(max(12px, env(safe-area-inset-right)) + 52px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
-      #cat-btn { position: fixed; left: calc(max(12px, env(safe-area-inset-left)) + 182px); top: max(10px, env(safe-area-inset-top)); padding: 7px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.6); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; touch-action: none; }
-      @media (max-width: 860px) { #cat-btn { left: max(12px, env(safe-area-inset-left)); top: calc(max(10px, env(safe-area-inset-top)) + 40px); } }
-      #overlay-cat { margin-top: 14px; padding: 9px 18px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.4); background: rgba(20, 26, 34, 0.7); color: #fff; font: 600 14px system-ui, sans-serif; cursor: pointer; }
-      #bone-btn.active { background: rgba(40, 150, 110, 0.75); border-color: rgba(150, 255, 210, 0.7); }
-      #auto-btn.active { background: rgba(40, 110, 190, 0.75); border-color: rgba(150, 200, 255, 0.7); }
-      #horde-btn.active { background: rgba(150, 30, 30, 0.7); border-color: rgba(255, 140, 140, 0.6); }
-      #health { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 40px); width: 200px; height: 8px; margin-left: -100px; border-radius: 4px; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.25); overflow: hidden; pointer-events: none; }
       #health-fill { width: 100%; height: 100%; background: #d6453d; transform-origin: left center; }
       #hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 140px 30px rgba(190, 0, 0, 0.85); }
-      #toast { position: fixed; left: 0; right: 0; top: 22%; text-align: center; font: 700 30px system-ui, sans-serif; letter-spacing: 1px; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
       #toast.show { opacity: 1; }
-      #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(5, 8, 12, 0.72); cursor: pointer; text-align: center; }
-      #overlay h1 { margin: 0; font-size: 40px; letter-spacing: 2px; }
-      #overlay p { margin: 0; opacity: 0.8; }
+      /* --- HUD: pausa arriba a la izquierda, vida y estado arriba al centro --- */
+      #pause-btn { position: fixed; z-index: 5; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.55); color: #fff; font: 700 14px system-ui, sans-serif; letter-spacing: -1px; cursor: pointer; touch-action: none; padding: 0; }
+      #pause-btn:focus-visible, #overlay button:focus-visible, #overlay input:focus-visible { outline: 2px solid #ffd479; outline-offset: 2px; }
+      #health { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 18px); width: 200px; height: 8px; margin-left: -100px; border-radius: 4px; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.25); overflow: hidden; pointer-events: none; }
+      #hud-status { position: fixed; left: 0; right: 0; top: calc(max(10px, env(safe-area-inset-top)) + 34px); display: flex; justify-content: center; gap: 6px; pointer-events: none; }
+      #hud-status span { padding: 3px 10px; border-radius: 999px; background: rgba(10, 14, 20, 0.55); font: 600 12px system-ui, sans-serif; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
+      #hud-status .horde { background: rgba(150, 30, 30, 0.6); }
+      #hud-status .auto { background: rgba(40, 110, 190, 0.6); }
+      #toast { position: fixed; z-index: 30; left: 0; right: 0; top: 22%; text-align: center; font: 700 30px system-ui, sans-serif; letter-spacing: 1px; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+      /* --- Menú: pantalla de inicio y pausa (mismo panel) --- */
+      #overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-sizing: border-box; background: rgba(5, 8, 12, 0.62); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
       #overlay.hidden { display: none; }
+      /* Con el menú abierto, la escena queda limpia detrás: sin vida, mira ni controles. */
+      body.in-menu #health, body.in-menu #hud-status, body.in-menu #crosshair, body.in-menu #touch-ui, body.in-menu #rotate { display: none !important; }
+      .menu-card { display: flex; gap: 22px; max-width: 100%; max-height: 100%; box-sizing: border-box; padding: 22px; border-radius: 16px; background: rgba(14, 19, 26, 0.88); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5); }
+      .menu-main { display: flex; flex-direction: column; gap: 10px; width: 250px; flex: none; }
+      .menu-main h1 { margin: 0 0 2px; font-size: 34px; letter-spacing: 1px; line-height: 1.1; }
+      #overlay-msg { margin: 0; font-size: 14px; opacity: 0.75; }
+      #overlay-msg:empty { display: none; }
+      #overlay button { font: 600 15px system-ui, sans-serif; color: #fff; border-radius: 10px; cursor: pointer; }
+      .menu-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+      .menu-actions button { padding: 12px 16px; text-align: left; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.07); }
+      .menu-actions button.primary { background: #e8eef5; color: #0b0f14 !important; border-color: #e8eef5; font-size: 17px; }
+      .menu-actions button:disabled { opacity: 0.45; cursor: default; }
+      #overlay:not(.paused) .paused-only { display: none; }
+      .menu-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+      .menu-tabs button { padding: 8px 10px; font-size: 13px !important; border: 1px solid rgba(255, 255, 255, 0.14); background: transparent; }
+      .menu-tabs button.on { background: rgba(255, 212, 121, 0.16); border-color: rgba(255, 212, 121, 0.6); }
+      #m-sec { width: 330px; min-width: 0; overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; font-size: 14px; line-height: 1.5; padding-right: 4px; }
+      #m-sec h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.65; }
+      #m-sec h3 { margin: 14px 0 6px; font-size: 14px; }
+      #m-sec p { margin: 0 0 8px; opacity: 0.85; }
+      .m-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+      .m-row b { font: 400 13px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; opacity: 0.8; }
+      .m-range { display: grid; grid-template-columns: 1fr auto; padding: 10px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+      .m-range input { grid-column: 1 / -1; width: 100%; margin: 8px 0 0; accent-color: #ffd479; touch-action: pan-x; }
+      .m-switch { appearance: none; -webkit-appearance: none; flex: none; width: 44px; height: 26px; margin: 0; border-radius: 13px; background: rgba(255, 255, 255, 0.18); position: relative; cursor: pointer; transition: background 0.15s; }
+      .m-switch::after { content: ''; position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+      .m-switch:checked { background: #5c9e6e; }
+      .m-switch:checked::after { transform: translateX(18px); }
+      .m-keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+      .m-keys dt { font: 600 12px ui-monospace, Menlo, monospace; white-space: nowrap; color: #ffd479; }
+      .m-keys dd { margin: 0; opacity: 0.85; }
+      #m-update { margin-top: 6px; padding: 9px 14px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.07); }
+      /* En pantallas estrechas (móvil en vertical) el panel se apila. */
+      @media (max-width: 640px) {
+        .menu-card { flex-direction: column; width: 100%; overflow-y: auto; touch-action: pan-y; }
+        .menu-main, #m-sec { width: auto; }
+        #m-sec { overflow: visible; }
+      }
+      /* Móvil en horizontal: poca altura, título y botones más compactos. */
+      @media (max-height: 460px) {
+        .menu-card { padding: 14px 18px; }
+        .menu-main { gap: 7px; }
+        .menu-main h1 { font-size: 26px; }
+        .menu-actions { gap: 6px; margin-top: 2px; }
+        .menu-actions button { padding: 9px 14px; }
+      }
       #rotate { display: none; }
       /* --- Catálogo de mecánicas (src/catalog.js) --- */
       body.catalog > :not(canvas):not(#catalog):not(script) { display: none !important; }
@@ -100,7 +139,6 @@
       /* --- Controles táctiles --- */
       #touch-ui { display: none; }
       body.touch #touch-ui { display: block; }
-      body.touch #controls { display: none; }
       /* Con mando no hacen falta los controles táctiles (vuelven al tocar la pantalla). */
       body.gamepad #touch-ui, body.gamepad #rotate { display: none !important; }
       #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.08); left: calc(90px + env(safe-area-inset-left)); top: calc(100% - 100px); opacity: 0.45; pointer-events: none; }
@@ -114,32 +152,78 @@
       #t-sprint { width: 68px; height: 68px; right: calc(136px + env(safe-area-inset-right)); bottom: 204px; }
       #t-aim { width: 68px; height: 68px; right: calc(222px + env(safe-area-inset-right)); bottom: 78px; }
       #t-jump { width: 68px; height: 68px; right: calc(40px + env(safe-area-inset-right)); bottom: 178px; }
-      #t-reset { width: 40px; height: 40px; right: calc(12px + env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); font-size: 20px !important; }
       @media (orientation: portrait) {
+        #t-aim { right: calc(40px + env(safe-area-inset-right)); bottom: 262px; } /* en vertical sobra altura: lejos del joystick */
         body.touch #rotate { display: block; position: fixed; left: 0; right: 0; top: 18%; text-align: center; font-size: 14px; opacity: 0.85; pointer-events: none; text-shadow: 0 1px 3px #000; }
       }
     </style>
   </head>
-  <body>
+  <body class="in-menu">
     <div id="crosshair"></div>
-    <div id="controls" class="panel">
-      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> caminar &nbsp;·&nbsp; <kbd>Shift</kbd> correr &nbsp;·&nbsp; <kbd>Q</kbd> correr rápido &nbsp;·&nbsp; <kbd>Espacio</kbd> saltar<br />
-      <kbd>Clic izq.</kbd> disparar &nbsp;·&nbsp; <kbd>Clic der.</kbd> apuntar &nbsp;·&nbsp; <kbd>F</kbd> golpear &nbsp;·&nbsp; <kbd>C</kbd> cubrirse<br />
-      <kbd>Ratón</kbd> cámara &nbsp;·&nbsp; <kbd>Rueda</kbd> zoom &nbsp;·&nbsp; <kbd>R</kbd> reiniciar mundo &nbsp;·&nbsp; <kbd>H</kbd> horda &nbsp;·&nbsp; <kbd>P</kbd> piloto &nbsp;·&nbsp; <kbd>K</kbd> esqueleto &nbsp;·&nbsp; <kbd>G</kbd> catálogo
-    </div>
     <div id="hurt"></div>
-    <button id="horde-btn">▶ Iniciar horda</button>
-    <button id="auto-btn">Piloto</button>
-    <button id="bone-btn">Esqueleto</button>
-    <button id="cat-btn">Catálogo</button>
-    <button id="update-btn" title="Buscar actualización">⟳</button>
+    <button id="pause-btn" aria-label="Pausa y menú" hidden>❚❚</button>
     <div id="health"><div id="health-fill"></div></div>
+    <div id="hud-status"></div>
     <div id="toast"></div>
     <div id="rotate">Gira el teléfono en horizontal para jugar mejor</div>
     <div id="overlay">
-      <h1>SumuladorZ</h1>
-      <p id="overlay-msg">Cargando…</p>
-      <button id="overlay-cat">Catálogo de mecánicas</button>
+      <div class="menu-card" role="dialog" aria-labelledby="m-title">
+        <div class="menu-main">
+          <h1 id="m-title">SumuladorZ</h1>
+          <p id="overlay-msg">Cargando…</p>
+          <div class="menu-actions">
+            <button id="m-play" class="primary" disabled>Jugar</button>
+            <button id="m-horde" disabled>Jugar contra la horda</button>
+            <button id="m-reset" class="paused-only">Reiniciar el mundo</button>
+          </div>
+          <nav class="menu-tabs" aria-label="Más opciones">
+            <button data-sec="ajustes">Ajustes</button>
+            <button data-sec="controles">Controles</button>
+            <button id="overlay-cat">Catálogo</button>
+            <button data-sec="info">Información</button>
+          </nav>
+        </div>
+        <section id="m-sec" hidden>
+          <div data-panel="ajustes">
+            <h2>Ajustes</h2>
+            <label class="m-range" for="m-sens"><span>Sensibilidad de la cámara</span><b id="m-sens-val"></b>
+              <input type="range" id="m-sens" min="0.4" max="2" step="0.05" value="1"></label>
+            <label class="m-row" for="m-invert"><span>Invertir el eje vertical</span><input type="checkbox" class="m-switch" id="m-invert"></label>
+            <label class="m-row" for="m-auto"><span>Piloto automático<br /><small style="opacity:.6">El juego se juega solo</small></span><input type="checkbox" class="m-switch" id="m-auto"></label>
+            <label class="m-row" for="m-bones"><span>Ver solo el esqueleto</span><input type="checkbox" class="m-switch" id="m-bones"></label>
+          </div>
+          <div data-panel="controles">
+            <h2>Controles</h2>
+            <h3>Teclado y ratón</h3>
+            <dl class="m-keys">
+              <dt>W A S D</dt><dd>Caminar</dd><dt>Shift</dt><dd>Correr</dd><dt>Q</dt><dd>Carrera rápida (un toque)</dd>
+              <dt>Espacio</dt><dd>Saltar</dd><dt>Clic izquierdo</dt><dd>Disparar</dd><dt>Clic derecho</dt><dd>Apuntar</dd>
+              <dt>F</dt><dd>Golpear</dd><dt>C</dt><dd>Cubrirse / salir de la cobertura</dd><dt>Ratón · rueda</dt><dd>Cámara · zoom</dd>
+              <dt>Esc</dt><dd>Pausa</dd><dt>H</dt><dd>Iniciar o detener la horda</dd><dt>R</dt><dd>Reiniciar el mundo</dd>
+              <dt>P · K · G</dt><dd>Piloto · esqueleto · catálogo</dd>
+            </dl>
+            <h3>Mando</h3>
+            <dl class="m-keys">
+              <dt>Stick izq.</dt><dd>Moverse (a fondo o pulsado: correr)</dd><dt>Stick der.</dt><dd>Cámara</dd>
+              <dt>RT · LT</dt><dd>Disparar · apuntar</dd><dt>A · X</dt><dd>Saltar · golpear</dd><dt>B · Y</dt><dd>Cubrirse · carrera rápida</dd>
+              <dt>Menú</dt><dd>Pausa</dd><dt>LB / RB</dt><dd>Horda</dd><dt>Vista</dt><dd>Reiniciar</dd>
+            </dl>
+            <h3>Táctil</h3>
+            <dl class="m-keys">
+              <dt>Izquierda</dt><dd>Joystick (a fondo: correr)</dd><dt>Derecha</dt><dd>Arrastrar para mover la cámara</dd>
+              <dt>Botones</dt><dd>Disparo, Apuntar, Golpe, Cubrir, Saltar y Correr</dd><dt>❚❚</dt><dd>Pausa</dd>
+            </dl>
+          </div>
+          <div data-panel="info">
+            <h2>Información</h2>
+            <p>Juego 3D en tercera persona. Sobrevive a oleadas de zombis cada vez más numerosas y rápidas; los disparos hacen ruido y los atraen.</p>
+            <p>Con <b>C</b> te pegas a un muro u objeto cercano. Tras uno bajo te agachas, tras uno alto te asomas por el borde y tras uno muy bajo te recuestas. Al apuntar te incorporas para disparar.</p>
+            <p>El <b>Catálogo</b> muestra cada mecánica y animación en vivo y permite editar posturas.</p>
+            <div class="m-row"><span>Versión</span><b id="m-version"></b></div>
+            <button id="m-update">Buscar actualización</button>
+          </div>
+        </section>
+      </div>
     </div>
     <script>
       // Diagnóstico de arranque: cualquier error se muestra en pantalla (útil en móviles sin consola).

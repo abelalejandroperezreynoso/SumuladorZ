@@ -20,7 +20,8 @@ export class Input {
     this.padFire = false;
     this.padAim = false; // gatillo izquierdo del mando
     this.aimToggle = false; // botón táctil «Apuntar» (se alterna con un toque)
-    this.onPadStart = null; // lo asigna main.js: arrancar desde la pantalla de inicio
+    this.onPadStart = null; // lo asigna main.js: arrancar o continuar desde el menú
+    this.onPadMenu = null; // ...y abrir la pausa con el botón Menú
 
     addEventListener('keydown', (e) => {
       if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
@@ -52,7 +53,12 @@ export class Input {
 
   lock() {
     if (this.touchMode || this.padMode) this.started = true;
-    else this.element.requestPointerLock?.();
+    else this.element.requestPointerLock?.()?.catch?.(() => {}); // justo tras Esc el navegador lo rechaza un momento
+  }
+
+  unlock() {
+    this.started = false;
+    if (document.pointerLockElement) document.exitPointerLock();
   }
 
   /** Movimiento deseado: x (derecha), z (adelante) en [-1, 1] y si se quiere correr. */
@@ -110,6 +116,7 @@ export class Input {
     this.mouseDX += Math.sign(lx) * lx * lx * LOOK;
     this.mouseDY += Math.sign(ly) * ly * ly * LOOK * 0.7;
 
+    if (edge(9)) { this.onPadMenu?.(); return; }
     const map = { 0: 'Space', 2: 'KeyF', 1: 'KeyC', 3: 'KeyQ', 8: 'KeyR', 4: 'KeyH', 5: 'KeyH', 12: 'KeyP' };
     for (const i in map) if (edge(+i)) this.pressed.add(map[i]);
 

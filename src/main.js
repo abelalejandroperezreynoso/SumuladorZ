@@ -11,12 +11,12 @@ import { Autopilot } from './autopilot.js';
 import { Catalog } from './catalog.js';
 import { setupTouch } from './touch.js';
 import { setupPWA, setupUpdateButton, cacheLoadedFiles } from './pwa.js';
+import { Menu } from './menu.js';
 
 setupPWA();
 
-const overlay = document.getElementById('overlay');
 const overlayMsg = document.getElementById('overlay-msg');
-const hordeBtn = document.getElementById('horde-btn');
+const hudStatus = document.getElementById('hud-status');
 const healthFill = document.getElementById('health-fill');
 const hurt = document.getElementById('hurt');
 const toast = document.getElementById('toast');
@@ -61,73 +61,77 @@ async function start() {
   combat.player = player;
   const horde = new Horde(scene, physics, player.assets);
   horde.onWave = (n) => showToast(`Oleada ${n}`);
-  const boneBtn = document.getElementById('bone-btn');
-  const toggleSkeleton = () => boneBtn.classList.toggle('active', player.toggleSkeleton());
-  boneBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    input.pressed.add('KeyK');
-  }, { passive: false });
-  boneBtn.addEventListener('click', () => { toggleSkeleton(); boneBtn.blur(); });
   let shotsHeard = 0, hudKey = '', sprintShown = false;
-  const toggleHorde = () => {
-    if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
-  };
-  // En táctil el botón se pulsa directamente; con teclado se usa H.
-  hordeBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    input.pressed.add('KeyH');
-  }, { passive: false });
-  hordeBtn.addEventListener('click', () => { toggleHorde(); hordeBtn.blur(); });
   const input = new Input(renderer.domElement);
   const cam = new ThirdPersonCamera(camera);
   const autopilot = new Autopilot({ player, horde, cam, input, physics });
-  const autoBtn = document.getElementById('auto-btn');
-  const toggleAuto = () => {
-    autopilot.toggle();
-    autoBtn.classList.toggle('active', autopilot.active);
-    showToast(autopilot.active ? 'Piloto automático' : 'Control manual');
-  };
-  autoBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    input.pressed.add('KeyP');
-  }, { passive: false });
-  autoBtn.addEventListener('click', () => { toggleAuto(); autoBtn.blur(); });
+  let catalog = null; // catálogo de mecánicas (se crea al final, cuando existe tick)
 
-  setupTouch(input);
-  setupUpdateButton(document.getElementById('update-btn'), showToast);
-  overlayMsg.textContent = 'Haz clic o toca para jugar';
-  // En móviles se arranca con el propio toque (iOS no siempre genera "click" en un div).
-  const begin = (e) => {
-    if (e.type === 'touchend') {
-      e.preventDefault();
+  const toggleSkeleton = () => player.toggleSkeleton();
+  const toggleHorde = () => {
+    if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
+  };
+  const toggleAuto = (quiet) => {
+    autopilot.toggle();
+    if (!quiet) showToast(autopilot.active ? 'Piloto automático' : 'Control manual'); // desde el menú ya lo dice el interruptor
+  };
+  const resetWorld = () => {
+    physics.reset();
+    player.respawn();
+    combat.targetHits = combat.punchHits = 0;
+    if (horde.active) horde.stop();
+  };
+
+  // --- Menú de inicio y pausa ---
+  // Con ratón, jugar es tener el puntero bloqueado: al soltarlo (Esc) se abre la pausa.
+  const resume = (e) => {
+    if (e?.type === 'touchend') { // jugar con los dedos
       input.touchMode = true;
       document.body.classList.add('touch');
     }
     input.lock();
-    if (input.touchMode) overlay.classList.add('hidden');
+    if (input.touchMode || input.padMode) menu.setOpen(false);
   };
-  input.onPadStart = () => { input.lock(); overlay.classList.add('hidden'); };
-  overlay.addEventListener('click', begin);
-  overlay.addEventListener('touchend', begin, { passive: false });
+  const pause = () => {
+    if (menu.open) return; // (si el catálogo está abierto, la pausa queda debajo y se ve al cerrarlo)
+    input.unlock();
+    input.keys.clear();
+    input.buttons.clear();
+    input.aimToggle = false;
+    document.getElementById('t-aim')?.classList.remove('held');
+    menu.setOpen(true);
+  };
+  const menu = new Menu({
+    play: resume,
+    pause,
+    toggleHorde,
+    reset: resetWorld,
+    catalog: () => catalog.open(),
+    toggleAuto,
+    toggleSkeleton,
+    hordeActive: () => horde.active,
+    autoActive: () => autopilot.active,
+    skeletonActive: () => player.skeletonOnly,
+    applySettings: (s) => { cam.sensitivity = s.sens; cam.invertY = s.invert; },
+  });
+  input.onPadStart = () => { if (!catalog?.active) resume(); };
+  input.onPadMenu = pause;
   document.addEventListener('pointerlockchange', () => {
-    overlay.classList.toggle('hidden', input.locked);
+    if (input.touchMode || input.padMode) return;
+    if (input.locked) menu.setOpen(false);
+    else pause();
   });
 
-  let catalog = null; // catálogo de mecánicas (se crea al final, cuando existe tick)
+  setupTouch(input);
+  setupUpdateButton(document.getElementById('m-update'), showToast);
+  document.getElementById('m-version').textContent = `${__BUILD__.id} · ${__BUILD__.date.slice(0, 10)}`;
+
   const sunOffset = new THREE.Vector3(18, 30, 12);
   const timer = new THREE.Timer();
 
   function tick(dt) {
     input.pollGamepad(dt);
-    if (input.justPressed('KeyR') || player.position.y < -20) {
-      physics.reset();
-      player.respawn();
-      combat.targetHits = combat.punchHits = 0;
-      if (horde.active) horde.stop();
-    }
+    if (input.justPressed('KeyR') || player.position.y < -20) resetWorld();
     if (input.justPressed('KeyP')) toggleAuto();
     if (input.justPressed('KeyK')) toggleSkeleton();
     autopilot.update(dt);
@@ -168,16 +172,14 @@ async function start() {
     if (!catalog?.skipRender) renderer.render(scene, viewing ? catalog.camera : camera);
     input.endFrame();
 
-    // Interfaz: botón de horda, barra de vida y borde rojo al recibir daño.
+    // Interfaz: oleada y piloto (solo si están activos), barra de vida y borde rojo al recibir daño.
     const alive = horde.alive;
     const key = `${horde.active}|${horde.wave}|${alive}|${autopilot.active}`;
     if (key !== hudKey) {
       hudKey = key;
-      hordeBtn.textContent = !horde.active ? '▶ Iniciar horda'
-        : horde.wave ? `■ Detener horda · Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}`
-        : '■ Detener horda';
-      hordeBtn.classList.toggle('active', horde.active);
-      autoBtn.classList.toggle('active', autopilot.active);
+      hudStatus.innerHTML = (horde.active
+        ? `<span class="horde">${horde.wave ? `Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}` : 'Horda'}</span>` : '')
+        + (autopilot.active ? '<span class="auto">Piloto automático</span>' : '');
     }
     // Carrera rápida: el botón queda marcado y la cámara abre un poco el campo de visión.
     if (player.sprinting !== sprintShown) {
@@ -198,27 +200,23 @@ async function start() {
   const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick };
   catalog = new Catalog(game, { toggleSkeleton });
   game.catalog = catalog;
-  // El catálogo se abre con su botón, con G, desde la pantalla de inicio o con #catalogo en la dirección.
-  const openCatalog = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    catalog.toggle();
-  };
-  for (const id of ['cat-btn', 'overlay-cat']) {
-    const button = document.getElementById(id);
-    button.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-    button.addEventListener('touchend', openCatalog, { passive: false });
-    button.addEventListener('click', (e) => { openCatalog(e); button.blur(); });
-  }
+  // El catálogo se abre desde el menú, con G o con #catalogo en la dirección.
   addEventListener('keydown', (e) => { if (e.code === 'KeyG' && !e.repeat) catalog.toggle(); });
   if (location.hash === '#catalogo') catalog.open();
 
   renderer.setAnimationLoop(() => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 1 / 20);
-    if (catalog.active) catalog.frame(dt); else tick(dt);
+    if (catalog.active) catalog.frame(dt);
+    else if (menu.paused) {
+      // En pausa el mundo queda congelado; solo se atiende al mando (para continuar).
+      input.pollGamepad(dt);
+      renderer.render(scene, camera);
+      input.endFrame();
+    } else tick(dt);
   });
 
+  menu.ready();
   try { sessionStorage.removeItem('bootRetry'); } catch { /* sin almacenamiento */ }
   window.__game = game;
   cacheLoadedFiles();

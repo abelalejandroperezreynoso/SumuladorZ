@@ -26,12 +26,11 @@ export async function cacheLoadedFiles() {
 }
 
 /**
- * Botón de versión: muestra la compilación en uso y, al pulsarlo, pregunta al servidor si hay
+ * Botón «Buscar actualización» (menú → Información): pregunta al servidor si hay
  * otra más nueva. Si la hay, vacía la caché y recarga; si no, lo dice.
  */
 export function setupUpdateButton(button, toast) {
   const build = __BUILD__;
-  button.textContent = `⟳ ${build.id}`;
   let busy = false;
   const check = async () => {
     if (busy) return;

@@ -9,7 +9,6 @@ export function setupTouch(input) {
   ui.id = 'touch-ui';
   ui.innerHTML = `
     <div id="stick"><div id="stick-knob"></div></div>
-    <button id="t-reset" data-key="KeyR">↺</button>
     <button id="t-jump" data-key="Space">Saltar</button>
     <button id="t-punch" data-key="KeyF">Golpe</button>
     <button id="t-cover" data-key="KeyC">Cubrir</button>

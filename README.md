@@ -34,16 +34,29 @@ el juego queda guardado en el teléfono: abre al instante y sin gastar datos, y 
 solo descarga el código del juego (unos 30 KB), no las bibliotecas ni el modelo.
 
 Controles táctiles: joystick a la izquierda (a fondo = correr), arrastrar en la parte derecha para
-mover la cámara, y botones de disparo, apuntar (un toque entra, otro sale), golpe, salto y
-reinicio. Mejor en horizontal.
+mover la cámara, y botones de disparo, apuntar (un toque entra, otro sale), golpe, cubrirse,
+salto y carrera. Mejor en horizontal.
 
-El botón **⟳** de arriba a la derecha muestra la versión instalada; al pulsarlo comprueba si hay
-una más nueva y, si la hay, recarga el juego con ella.
+## Menú y pausa
+
+La pantalla de inicio y la pausa son el mismo menú: **Jugar** (o **Continuar**), **Jugar contra
+la horda** (en pausa, iniciarla o detenerla) y **Reiniciar el mundo**, más cuatro apartados:
+
+- **Ajustes**: sensibilidad de la cámara, invertir el eje vertical, piloto automático y ver solo
+  el esqueleto. La sensibilidad y el eje se recuerdan en el navegador.
+- **Controles**: teclado y ratón, mando y táctil.
+- **Catálogo**: mecánicas y animaciones en vivo (ver más abajo).
+- **Información**: de qué va el juego, la versión instalada y **Buscar actualización**, que
+  recarga el juego si hay una versión más nueva.
+
+En pausa el mundo queda congelado. Se pausa con el botón **❚❚** de arriba a la izquierda, con
+`Esc` o con el botón **Menú** del mando. Durante la partida la pantalla solo muestra ese botón,
+la vida, la oleada (si hay horda) y los controles táctiles.
 
 ## Mando (Xbox, PlayStation…)
 
-Se conecta por Bluetooth y funciona también en iPad/iPhone. Pulsa **Menú** (o cualquier botón)
-para empezar. Mientras se usa el mando se ocultan los controles táctiles (vuelven al tocar la pantalla).
+Se conecta por Bluetooth y funciona también en iPad/iPhone. Pulsa cualquier botón para empezar
+o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los controles táctiles (vuelven al tocar la pantalla).
 
 | Acción | Botón |
 |---|---|
@@ -57,6 +70,7 @@ para empezar. Mientras se usa el mando se ocultan los controles táctiles (vuelv
 | Carrera rápida | Y |
 | Horda | LB / RB |
 | Piloto automático | Cruceta arriba |
+| Pausa | Menú |
 | Reiniciar | Vista |
 
 ## Controles (teclado y ratón)
@@ -72,15 +86,16 @@ para empezar. Mientras se usa el mando se ocultan los controles táctiles (vuelv
 | Golpear | `F` |
 | Cubrirse / salir de la cobertura | `C` (cerca de un muro u objeto) |
 | Cámara / zoom | Ratón / rueda |
+| Pausa y menú | `Esc` |
 | Reiniciar el mundo | `R` |
-| Iniciar / detener la horda | `H` o el botón superior |
-| Piloto automático | `P` o el botón «Piloto» |
-| Ver solo el esqueleto del personaje | `K` o el botón «Esqueleto» |
-| Catálogo de mecánicas y animaciones | `G` o el botón «Catálogo» |
+| Iniciar / detener la horda | `H` |
+| Piloto automático | `P` |
+| Ver solo el esqueleto del personaje | `K` |
+| Catálogo de mecánicas y animaciones | `G` |
 
 ## Horda de zombis
 
-El botón superior (o `H`) inicia y detiene la horda. La oleada 1 suelta un zombi; al matarlo
+«Jugar contra la horda» en el menú (o `H`) inicia y detiene la horda. La oleada 1 suelta un zombi; al matarlo
 llegan dos, luego tres, y así sucesivamente.
 
 - **Visión**: cada zombi deambula hasta detectarte. Ve en un cono de 120° hasta 22 m y los
@@ -96,15 +111,14 @@ El zombi usa el mismo modelo del personaje recoloreado (piel verdosa y ropa oscu
 
 ## Piloto automático
 
-El botón «Piloto» (o `P`) hace que el juego se juegue solo: inicia la horda, busca cobertura,
+El interruptor «Piloto automático» de los ajustes (o `P`) hace que el juego se juegue solo: inicia la horda, busca cobertura,
 dispara, huye corriendo cuando se le acercan y golpea si lo acorralan. Usa los mismos controles
 que un jugador, así que sirve para ver todas las mecánicas en marcha y para cazar fallos.
 Lleva un registro de la partida en `window.__game.autopilot.log` y `.stats`.
 
 ## Catálogo de mecánicas y animaciones
 
-El botón «Catálogo» (o `G`, o el botón de la pantalla de inicio, o añadir `#catalogo` a la
-dirección) abre un catálogo dentro del propio juego. No guarda imágenes: cada ficha ejecuta su
+«Catálogo» en el menú (o `G`, o añadir `#catalogo` a la dirección) abre un catálogo dentro del propio juego. No guarda imágenes: cada ficha ejecuta su
 escena con el motor real y una cámara lateral, así que muestra siempre el juego tal como está.
 
 - **Mecánicas**: locomoción, giro, saltos, golpe, disparo, las tres coberturas, el zombi y el
@@ -183,6 +197,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/input.js` | Teclado, ratón y mando |
 | `src/touch.js` | Controles táctiles |
 | `src/catalog.js`, `src/catalog-scenes.js` | Catálogo de mecánicas dentro del juego y sus escenas |
+| `src/menu.js` | Menú de inicio y pausa, ajustes, controles e información |
 | `src/pwa.js`, `public/sw.js`, `public/manifest.webmanifest` | Instalación como app y modo sin conexión |
 | `src/download.js` | Descargas con porcentaje para la pantalla de carga |
 | `vite.config.js` | Compilación: bibliotecas en archivos aparte y el wasm de Rapier fuera del script |

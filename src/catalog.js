@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { SCENES, GROUPS, place, clipList } from './catalog-scenes.js';
 import { TUNING, POSES, POSE_SPEC, POSE_FIXED } from './player.js';
 
-// Catálogo de mecánicas y animaciones dentro del juego (tecla G o botón «Catálogo»).
+// Catálogo de mecánicas y animaciones dentro del juego (tecla G o menú → «Catálogo»).
 // No guarda imágenes: cada ficha ejecuta su escena con el motor real y una cámara lateral,
 // y los clips, pesos y capas que muestra se leen del personaje en cada fotograma. Por eso
 // refleja siempre el código en uso.
