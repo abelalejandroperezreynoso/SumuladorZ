@@ -23,6 +23,13 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   código. Las escenas se definen una sola vez en `src/catalog-scenes.js` (las usa también
   `tools/watch.cjs`): al añadir o cambiar una mecánica, añadir o ajustar ahí su escena y tomar
   las cifras del texto de `TUNING` para que el catálogo no quede desfasado.
+- **Editor de posturas** — en el catálogo, las fichas con `poses` (por ahora «Cobertura muy
+  baja») tienen botones «Editar postura». La escena se detiene en esa postura y aparecen
+  deslizadores que cambian `POSES` (`src/player.js`) en vivo. «Copiar valores» da un texto como
+  `postura recostado: giro=1.85 altura=0.2 …` (radianes y metros). Cuando el usuario pegue uno
+  en el chat, pasar esos números a `POSES` y verificar la pose con `tools/watch.cjs`. Para
+  hacer editable otra postura: añadir sus valores a `POSES`, sus deslizadores a `POSE_SPEC` y
+  `poses: [[clave, título, segundo]]` a su escena.
 - **Animaciones y sensación** — `node tools/watch.cjs <carpeta> [escena...]`
   Guarda tiras de fotogramas a 30 imágenes por segundo de cada mecánica y mide pies que
   resbalan, saltos bruscos de pose, tirones del personaje y de la cámara y velocidad de giro.
