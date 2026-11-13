@@ -158,6 +158,27 @@ export const SCENES = [
       [6.0, (g) => g.horde.zombies[0]?.damage(5, g.player), 'Muere']],
     keepAlive: true },
 
+  { id: 'desmembrar', group: 'enemigos', title: 'Zombi: disparos por zonas y arrastre',
+    how: 'Apuntar a la cabeza, a un hombro o al estómago',
+    desc: `La bala arranca la zona que atraviesa: la cabeza (a menos de ${n(Z.HEAD_ZONE * 100, 0)} cm de su centro; el zombi muere), un brazo por el hombro (${n(Z.SHOULDER_ZONE * 100, 0)} cm) o el tronco por el estómago (${n(Z.STOMACH_ZONE * 100, 0)} cm), que se separa de las piernas. Sin piernas cae en ${n(Z.CRAWL_FALL)} s y se arrastra a ${n(Z.CRAWL_SPEED)} m/s mientras le queden cabeza, tronco y un brazo; si pierde el último brazo, muere. Cada bala quita además 1 de vida y los trozos quedan ${n(Z.DEBRIS_TIME)} s en el suelo.`,
+    place: [20, 20, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2 - 0.5, dist: 3.8,
+    before: (g) => {
+      g.horde.start();
+      for (let i = 0; i < 40; i++) g.tick(1 / 60);
+      const z = g.horde.zombies[0];
+      z.hp = 9; // para que la escena llegue al final: aquí solo lo matan las zonas
+      z.body.setTranslation({ x: 20, y: 0.9, z: 31 }, true);
+      z.body.setNextKinematicTranslation({ x: 20, y: 0.9, z: 31 });
+      z.facing = Math.PI;
+      g.tick(1 / 60);
+    },
+    subject: (g) => g.horde.zombies[0],
+    steps: [[0, null, 'Persecución'],
+      [1.2, (g) => g.horde.zombies[0]?.shoot('armL', null, g.player), 'Hombro: pierde un brazo'],
+      [2.4, (g) => g.horde.zombies[0]?.shoot('stomach', null, g.player), 'Estómago: el tronco se separa y se arrastra'],
+      [7.8, (g) => g.horde.zombies[0]?.shoot('head', null, g.player), 'Cabeza: muere']],
+    keepAlive: true },
+
   // El piloto automático jugando: se le ve buscar cobertura, asomarse y disparar.
   { id: 'piloto', group: 'piloto', title: 'Partida del piloto automático',
     how: 'P o menú → Ajustes → Piloto automático · mando: cruceta arriba',

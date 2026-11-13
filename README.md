@@ -130,6 +130,11 @@ llegan dos, luego tres, y así sucesivamente.
 - **Ataque**: a corta distancia te muerde (15 de vida). La vida se recupera sola tras 5 s sin
   daño; si llega a cero, la horda termina y reapareces.
 - **Matarlos**: aguantan 3 balas o 2 puñetazos.
+- **Disparos por zonas**: la bala arranca la zona que atraviesa. En la cabeza, la cabeza se
+  desprende y el zombi muere. En un hombro, pierde ese brazo. En el estómago, el tronco se
+  separa de las piernas: cae y sigue persiguiéndote arrastrándose (más lento, 0,9 m/s) mientras
+  le queden cabeza, tronco y al menos un brazo; sin brazos no puede arrastrarse y muere. Los
+  trozos caen al suelo y desaparecen a los 6 s. Los puñetazos y el bate no desmiembran.
 
 El zombi usa el mismo esqueleto del personaje, en verde.
 

@@ -64,7 +64,7 @@ export class Combat {
     mesh.position.copy(from);
     mesh.quaternion.setFromUnitVectors(Z, _dir);
     this.scene.add(mesh);
-    this.bullets.set(collider.handle, { body, mesh, life: BULLET_LIFE, dead: false });
+    this.bullets.set(collider.handle, { body, mesh, life: BULLET_LIFE, dead: false, dir: _dir.clone(), from: from.clone() });
   }
 
   registerHit(meta, kind) {
@@ -98,11 +98,14 @@ export class Combat {
       if (!bullet || bullet.dead) return;
       bullet.dead = true;
       const meta = this.physics.meta.get(b1 ? h2 : h1);
-      if (meta?.zombie) meta.zombie.damage(1, this.player);
+      const p = bullet.body.translation();
+      _point.set(p.x, p.y, p.z);
+      // El zombi decide qué zona del cuerpo alcanza la bala. Se le da la trayectoria con la que
+      // venía (posición y rumbo del fotograma anterior): tras el choque la bala ya se ha desviado.
+      if (meta?.zombie) meta.zombie.hit(bullet.from, bullet.dir, this.player);
       else if (meta?.body.isDynamic()) this.physics.flash(meta);
       this.registerHit(meta, 'bullet');
-      const p = bullet.body.translation();
-      this.spark(_point.set(p.x, p.y, p.z));
+      this.spark(_point);
     });
 
     for (const [handle, b] of this.bullets) {
@@ -111,7 +114,8 @@ export class Combat {
       const p = b.body.translation();
       const v = b.body.linvel();
       b.mesh.position.set(p.x, p.y, p.z);
-      b.mesh.quaternion.setFromUnitVectors(Z, _dir.set(v.x, v.y, v.z).normalize());
+      b.from.set(p.x, p.y, p.z);
+      b.mesh.quaternion.setFromUnitVectors(Z, b.dir.set(v.x, v.y, v.z).normalize());
     }
 
     for (let i = this.sparks.length - 1; i >= 0; i--) {

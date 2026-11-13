@@ -74,7 +74,7 @@ export class Autopilot {
   clearShot(z) {
     const P = this.player.position;
     const from = { x: P.x, y: P.y + 1.4, z: P.z };
-    _dir.set(z.position.x - P.x, z.position.y + 1.1 - from.y, z.position.z - P.z);
+    _dir.set(z.position.x - P.x, z.position.y + z.aimY - from.y, z.position.z - P.z);
     const len = _dir.length();
     _dir.divideScalar(len);
     return !this.physics.world.castRay(
@@ -189,7 +189,7 @@ export class Autopilot {
       return; // si está a cubierto, espera ahí la siguiente oleada
     }
     const dx = target.position.x - P.position.x, dz = target.position.z - P.position.z;
-    const chestY = target.position.y + 1.15;
+    const chestY = target.position.y + target.aimY; // al pecho; más bajo si se arrastra
     const los = this.clearShot(target);
 
     // Frustración: si lleva un rato disparando sin herir a nadie, se recoloca.

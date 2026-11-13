@@ -95,6 +95,15 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   mantener la dirección hacia ese lado continúa el paso lateral sin pausa (`PEEK_LOOK`, a la
   velocidad de caminar), inclina el tronco y gira cabeza y tronco hacia detrás del muro
   (`PEEK_HEAD`, `cover.look`; empieza a girar al acercarse); disparando da el paso entero, como al apuntar.
+- **Zonas del cuerpo de los zombis** — `Zombie.hit` (`src/horde.js`) recibe la trayectoria de
+  la bala y `zoneAt` da la primera zona que atraviesa (`HEAD_ZONE`, `SHOULDER_ZONE`,
+  `STOMACH_ZONE`, radios alrededor de los huesos). `shoot(zona)` la arranca: cabeza = muere;
+  hombro = pierde el brazo; estómago = el tronco se separa de las piernas y se arrastra
+  (`crawler`, `poseCrawl`, cuerpo físico en esfera) si le quedan cabeza y un brazo; si no, muere.
+  Las piezas salen del esqueleto con `SkeletonView.detach` y caen como cuerpos sueltos
+  (`Horde.detach`, grupo `GROUPS.debris`). Para apuntarle usar `zombie.aimY` (pecho; más bajo
+  si se arrastra). Escena `desmembrar` del catálogo. `autopilot.aimAt` apunta ~13 cm a la
+  izquierda de la mira real: en pruebas de puntería corregir con `player.aimPoint`.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 
