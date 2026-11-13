@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
-import { SkeletonView, SKELETON_DEFAULT } from './skeleton.js';
+import { SkeletonView } from './skeleton.js';
 import { makeGun, makeBat } from './pickups.js';
 import { fixProportions } from './proportions.js';
 import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
@@ -144,15 +144,6 @@ const JUMP_POSE_TIME = 0.2; // instante del clip de carrera usado como pose de s
 const AIM_HOLD = 0.9; // segundos que mantiene la pose de apuntar tras disparar
 const AIM_HOLD_COVER = 0.3; // ...a cubierto vuelve a esconderse enseguida
 
-// Colores por nombre de material del modelo (los no listados conservan el original).
-// LightBlue = pantalón, LightBrown = camiseta, Red_Dark = zapatillas, Hair = pelo.
-const PALETTE = { LightBlue: 0x56633c, Red_Dark: 0x1c2338 }; // pantalón oliva, tenis azul marino
-const POCKET_COLOR = 0x4a5634;
-const THIGH_WIDTH = 1.5; // pantalón holgado: ensancha los huesos de las piernas
-const SHIN_WIDTH = 1.22; // ensanche extra de la pernera (se suma al del muslo)
-const SHOE_SIZE = 1.25; // tenis más voluminosos
-const POCKET_OFFSET = 0.095; // distancia del eje del muslo a su cara exterior (m)
-
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
 const _h = new THREE.Vector3();
@@ -202,6 +193,16 @@ export class Player {
       ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
       : await loader.parseAsync(await preloadModel(), '');
     fixProportions(gltf.scene, gltf.animations); // brazos y manos a medidas humanas
+    // Del modelo solo se usan el esqueleto y las animaciones: se escala a 1,75 m con la
+    // medida de su malla y después se quitan las mallas (los personajes se ven como esqueletos).
+    const box = new THREE.Box3().setFromObject(gltf.scene);
+    gltf.scene.scale.setScalar(1.75 / (box.max.y - box.min.y));
+    const meshes = [];
+    gltf.scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    for (const m of meshes) {
+      m.removeFromParent();
+      m.geometry.dispose();
+    }
     // Copia intacta del modelo (antes de vestir al jugador) para crear los zombis.
     const assets = { scene: cloneSkinned(gltf.scene), animations: gltf.animations };
     const player = new Player(scene, physics, gltf);
@@ -259,17 +260,6 @@ export class Player {
 
     // --- Modelo ---
     const model = gltf.scene;
-    const box = new THREE.Box3().setFromObject(model);
-    model.scale.setScalar(1.75 / (box.max.y - box.min.y));
-    model.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = true;
-      o.frustumCulled = false;
-      const color = PALETTE[o.material.name];
-      if (color !== undefined) o.material.color.set(color);
-      o.material.roughness = 0.85;
-      o.material.metalness = 0;
-    });
     this.model = model;
     scene.add(model);
 
@@ -278,7 +268,6 @@ export class Player {
       model.traverse((o) => { if (!found && o.isBone && o.name === name) found = o; });
       return found;
     };
-    this.addCargoPants(bone);
     this.upperArm = bone('UpperArmR');
     this.upperArmL = bone('UpperArmL');
     this.bodyBone = bone('Body');
@@ -341,11 +330,9 @@ export class Player {
     this.batTip = new THREE.Vector3();
     this.recoil = 0; // 1 justo al disparar; decae enseguida
 
-    // Vista de esqueleto (src/skeleton.js); por ahora es la vista por defecto.
+    // El personaje se dibuja como esqueleto (src/skeleton.js).
     this.skel = new SkeletonView(model, scene, 'player');
     this.skeleton = this.skel.group;
-    this.skeletonOnly = false;
-    this.setSkeleton(SKELETON_DEFAULT);
     scene.add(this.gun);
     this.muzzle = new THREE.Vector3();
 
@@ -367,54 +354,6 @@ export class Player {
     cc.setApplyImpulsesToDynamicBodies(true);
     cc.setCharacterMass(70);
     this.controller = cc;
-  }
-
-  // Pantalón tipo cargo: piernas más anchas y un bolsillo con solapa en cada muslo.
-  addCargoPants(bone) {
-    const pantsMat = new THREE.MeshStandardMaterial({ color: PALETTE.LightBlue, roughness: 0.9 });
-    const pocketMat = new THREE.MeshStandardMaterial({ color: POCKET_COLOR, roughness: 0.9 });
-    const hip = new THREE.Vector3(), knee = new THREE.Vector3();
-    const add = (mesh, parentBone) => {
-      mesh.traverse((o) => { o.castShadow = true; });
-      this.model.add(mesh);
-      parentBone.attach(mesh); // conserva la posición y sigue al hueso al animarse
-    };
-    for (const side of ['L', 'R']) {
-      const upper = bone('UpperLeg' + side), lower = bone('LowerLeg' + side), foot = bone('Foot' + side);
-      if (!upper || !lower) continue;
-      // El eje Y de cada hueso es su longitud: solo se ensancha el grosor.
-      upper.scale.set(THIGH_WIDTH, 1, THIGH_WIDTH);
-      lower.scale.set(SHIN_WIDTH, 1, SHIN_WIDTH);
-      foot?.scale.setScalar(SHOE_SIZE);
-      this.model.updateMatrixWorld(true);
-      upper.getWorldPosition(hip);
-      lower.getWorldPosition(knee);
-      const out = Math.sign(hip.x - this.model.position.x) || (side === 'L' ? 1 : -1);
-
-      // Bolsillo plano con solapa en el lateral del muslo.
-      const pocket = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.19, 0.17), pocketMat);
-      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.055, 0.18), pantsMat);
-      flap.position.y = 0.075;
-      pocket.add(body, flap);
-      pocket.position.lerpVectors(hip, knee, 0.6);
-      pocket.position.x += out * POCKET_OFFSET;
-      add(pocket, upper);
-
-      // Bajo ancho y arrugado que cae sobre el tenis, al final de la pernera.
-      const dir = new THREE.Vector3().setFromMatrixColumn(lower.matrixWorld, 1).normalize();
-      if (dir.y > 0) dir.negate(); // hacia el tobillo
-      const ankleY = this.model.position.y + 0.1;
-      const hem = new THREE.Group();
-      [[0.112, 0.07, 0.045], [0.124, 0.05, 0]].forEach(([r, h, y]) => {
-        const ring = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.94, r, h, 10), pantsMat);
-        ring.position.y = y;
-        hem.add(ring);
-      });
-      hem.position.copy(knee).addScaledVector(dir, (knee.y - ankleY) / -dir.y);
-      hem.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-      add(hem, lower);
-    }
   }
 
   respawn() {
@@ -624,18 +563,6 @@ export class Player {
     const turned = dampAngle(this.facing, angle, lambda, dt);
     const step = Math.atan2(Math.sin(turned - this.facing), Math.cos(turned - this.facing));
     this.facing += THREE.MathUtils.clamp(step, -max * dt, max * dt);
-  }
-
-  /** Muestra solo el esqueleto (true) o el modelo normal (false). */
-  setSkeleton(only) {
-    this.skeletonOnly = only;
-    this.skel.set(only);
-    return only;
-  }
-
-  /** Alterna entre el personaje normal y solo su esqueleto. */
-  toggleSkeleton() {
-    return this.setSkeleton(!this.skeletonOnly);
   }
 
   /** Coloca los huesos y articulaciones dibujados sobre la pose final de este fotograma. */

@@ -79,12 +79,6 @@ async function start() {
   horde.onKill = (position) => pickups.zombieDied(position);
   let catalog = null; // catálogo de mecánicas (se crea al final, cuando existe tick)
 
-  // Jugador y zombis cambian juntos entre esqueleto y modelo.
-  const toggleSkeleton = () => {
-    const only = player.toggleSkeleton();
-    horde.setSkeleton(only);
-    return only;
-  };
   const toggleHorde = () => {
     if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
   };
@@ -129,10 +123,8 @@ async function start() {
     reset: resetWorld,
     catalog: () => catalog.open(),
     toggleAuto,
-    toggleSkeleton,
     hordeActive: () => horde.active,
     autoActive: () => autopilot.active,
-    skeletonActive: () => player.skeletonOnly,
     applySettings: (s) => { cam.sensitivity = s.sens; cam.invertY = s.invert; },
   });
   input.onPadStart = () => { if (!catalog?.active) resume(); };
@@ -155,7 +147,6 @@ async function start() {
     input.pollGamepad(dt);
     if (input.justPressed('KeyR') || player.position.y < -20) resetWorld();
     if (input.justPressed('KeyP')) toggleAuto();
-    if (input.justPressed('KeyK')) toggleSkeleton();
     autopilot.update(dt);
     if (input.justPressed('KeyH')) toggleHorde();
     if (player.dead) {
@@ -178,7 +169,7 @@ async function start() {
     player.postPhysics(dt, cam, combat);
     // Si un obstáculo empuja la cámara hasta la cabeza, se oculta el modelo para no taparlo todo.
     player.model.visible = cam.current > 0.75;
-    player.skeleton.visible = player.skeletonOnly && player.model.visible;
+    player.skeleton.visible = player.model.visible;
     // Con el catálogo abierto se dibuja desde su cámara lateral (la del juego sigue apuntando).
     const viewing = catalog?.active;
     if (viewing) catalog.beforeRender();
@@ -234,7 +225,7 @@ async function start() {
   }
   // Para depuración desde la consola (y para el catálogo y las herramientas de tools/).
   const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick, pickups };
-  catalog = new Catalog(game, { toggleSkeleton });
+  catalog = new Catalog(game);
   game.catalog = catalog;
   // El catálogo se abre desde el menú, con G o con #catalogo en la dirección.
   addEventListener('keydown', (e) => { if (e.code === 'KeyG' && !e.repeat) catalog.toggle(); });
