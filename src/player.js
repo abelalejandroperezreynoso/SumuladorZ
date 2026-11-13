@@ -149,6 +149,13 @@ const FIRE_INTERVAL = 0.14;
 const JUMP_POSE_TIME = 0.2; // instante del clip de carrera usado como pose de salto
 const AIM_HOLD = 0.9; // segundos que mantiene la pose de apuntar tras disparar
 const AIM_HOLD_COVER = 0.3; // ...a cubierto vuelve a esconderse enseguida
+// Disparar sin apuntar: la cámara no se cierra ni aparece la mira. A cubierto saca el arma
+// por encima (o por el lado, si el muro es alto) sin dejar de cubrirse: disparo a ciegas.
+const HIP_SPREAD = 0.035; // desvío máximo de la bala sin apuntar (rad)
+const BLIND_SPREAD = 0.09; // ...y a ciegas desde la cobertura
+const BLIND_HOLD = 0.35; // segundos que mantiene el arma fuera tras disparar a ciegas
+const BLIND_REACH = 0.5; // distancia del hombro a la mano con el brazo fuera (m)
+const BLIND_EDGE = 0.55; // tras un muro alto, distancia máxima al borde para sacar el arma por él (m)
 
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
@@ -183,6 +190,7 @@ export const TUNING = {
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
+  HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, BLIND_EDGE,
 };
 
 function dampAngle(a, b, lambda, dt) {
@@ -243,7 +251,9 @@ export class Player {
     this.scootW = 0; // 0-1: cuánto se nota ese ciclo (se apaga al quedarse quieto)
     this.scootDir = 1; // hacia qué lado del cuerpo (+X o -X del modelo) se desplaza
     this.kneel = 0; // 0-1: usa la postura «rodillas» (cobertura muy baja) en vez del agachado normal
-    this.aiming = false; // apunta (mantiene el botón de apuntar o acaba de disparar)
+    this.aiming = false; // mantiene el botón de apuntar: cámara al hombro y mira en pantalla
+    this.blindT = 0; // tiempo que le queda con el arma fuera a ciegas tras disparar a cubierto
+    this.blindW = 0; // 0-1: brazos fuera de la cobertura disparando a ciegas
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando el arma
     this.canFire = true;
@@ -551,12 +561,30 @@ export class Player {
       c.mode = dir ? 'side' : c.high ? 'blocked' : 'over';
     }
     if (!aiming && c.peek < 0.02) c.mode = null;
+    // A ciegas tras un muro alto el brazo sale por un borde cercano (el del lado de la cámara
+    // si hay dos); sin borde al alcance de la mano no hay disparo.
+    if (c.attached && c.high && this.blindT > 0) {
+      if (c.blindSide === undefined) {
+        // Hasta dónde llega la mano del arma hacia cada lado: depende de dónde queda el hombro.
+        this.upperArm.getWorldPosition(_a);
+        const shoulder = (_a.x - t.x) * tx + (_a.z - t.z) * tz;
+        const reach = (side) => {
+          const max = Math.min(BLIND_EDGE, shoulder * side + BLIND_REACH - 0.1);
+          for (let r = 0.1; r <= max; r += 0.05) if (ends(side, r)) return true;
+          return false;
+        };
+        const l = reach(-1), r = reach(1);
+        const camSide = Math.sign(-Math.sin(cam.yaw) * tx - Math.cos(cam.yaw) * tz) || 1;
+        c.blindSide = l && r ? camSide : r ? 1 : l ? -1 : 0;
+      }
+    } else c.blindSide = undefined;
     const peekTarget = aiming && c.mode === 'side' ? c.peekGoal : 0;
     let peekV = THREE.MathUtils.clamp((peekTarget - c.peek) * 8, -2.8, 2.8);
     if (c.peek + peekV * dt < 0) peekV = -c.peek / dt;
     c.peek += peekV * dt;
     if (c.peek > 0.02 || peekTarget) along = 0;
 
+    if (c.veryLow && this.blindW > 0.3) along = 0; // acostado no se arrastra con el arma fuera
     const vt = along * (c.veryLow ? PRONE_SPEED : c.high ? COVER_SPEED : COVER_CROUCH_SPEED) + c.peekDir * peekV;
     // El deslizamiento hacia el muro acelera en vez de arrancar de golpe.
     const vnTarget = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
@@ -630,7 +658,8 @@ export class Player {
     } else if (this.cover && (!this.grounded || this.jumpBuffer > 0 || wantsPunch)) {
       this.leaveCover(); // saltar, golpear o quedarse sin suelo saca de la cobertura
     }
-    const coverAim = this.aimT > 0 || aimHeld || (gun && fireDown && !this.sprinting);
+    // Solo apuntando se levanta o se asoma; disparar sin apuntar es a ciegas, sin salir.
+    const coverAim = aimHeld;
     if (this.cover) this.coverMove(dt, _v, moving, coverAim, cam);
 
     if (!this.cover) {
@@ -668,7 +697,8 @@ export class Player {
     this.coverGrip = THREE.MathUtils.damp(this.coverGrip, cover?.attached && coverAim ? 1 : 0, 10, dt);
     this.canFire = !cover || (cover.attached && (
       cover.mode === 'side' ? cover.peek > cover.peekGoal * 0.8
-        : cover.mode === 'over' && (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
+        : cover.mode === 'over' ? (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
+          : this.blindW > 0.7 && (!cover.high || !!cover.blindSide)
     ));
 
     // --- Salto y gravedad ---
@@ -737,11 +767,21 @@ export class Player {
     this.dryFire = Math.max(0, this.dryFire - dt);
     if (gun && fireEdge && !this.loaded) this.dryFire = 1; // gatillo sin balas
     this.wantsFire = gun && fireDown && this.loaded && this.punchT < 0 && !this.sprinting;
-    if (this.wantsFire) this.aimT = cover ? AIM_HOLD_COVER : AIM_HOLD;
+    // Sin apuntar: fuera de cobertura dispara desde la cadera (levanta el brazo, la cámara no
+    // cambia); a cubierto saca el arma a ciegas.
+    if (this.wantsFire) {
+      if (aimHeld) this.aimT = cover ? AIM_HOLD_COVER : AIM_HOLD;
+      else if (cover) this.blindT = BLIND_HOLD;
+      else this.aimT = AIM_HOLD;
+    }
     this.aimT -= dt;
-    const aiming = this.aimT > 0 || (aimHeld && this.punchT < 0);
-    this.aiming = aiming;
+    this.blindT -= dt;
+    if (aimHeld || !gun) this.blindT = 0;
+    const aiming = (this.aimT > 0 && (!cover || aimHeld)) || (aimHeld && this.punchT < 0);
+    this.aiming = aimHeld && this.punchT < 0;
     this.aimWeight = THREE.MathUtils.damp(this.aimWeight, aiming ? 1 : 0, aiming ? 25 : 10, dt);
+    const blind = this.blindT > 0 && !!cover?.attached && !cover.mode && cover.peek < 0.02;
+    this.blindW = THREE.MathUtils.damp(this.blindW, blind ? 1 : 0, blind ? 14 : 9, dt);
 
     // --- Orientación: hacia la mira al apuntar/golpear, si no hacia el movimiento ---
     if (aiming) {
@@ -1173,6 +1213,40 @@ export class Player {
   }
 
   /**
+   * Disparo a ciegas desde la cobertura, con peso `w`: el brazo derecho sale por encima del
+   * objeto (por el lado si el muro es alto) mientras el cuerpo sigue cubierto, y la mano
+   * izquierda lo acompaña. El arma se orienta después hacia la mira.
+   */
+  applyBlindFire(w) {
+    const c = this.cover;
+    if (!c || !this.upperArm || !this.lowerArm || this.hand === this.lowerArm) return;
+    this.savePose();
+    this.model.updateMatrixWorld(true);
+    const shoulder = this.upperArm.getWorldPosition(_a).clone();
+    const toward = _v.copy(this.aimPoint).sub(shoulder).setY(0);
+    if (toward.lengthSq() > 1e-6) toward.normalize();
+    const back = new THREE.Vector3(-c.nx, 0, -c.nz); // hacia el muro (y lo que hay detrás)
+    const dir = new THREE.Vector3(0, 1, 0);
+    if (c.veryLow) dir.addScaledVector(toward, 0.45); // acostado: brazo en alto sobre el pecho
+    else if (c.high) {
+      // Muro alto: brazo estirado hacia el borde por el que saca el arma.
+      const side = c.blindSide || Math.sign(toward.x * c.nz - toward.z * c.nx) || 1;
+      dir.set(c.nz * side, 0.2, -c.nx * side).addScaledVector(back, 0.2);
+    } else dir.addScaledVector(back, 0.5).addScaledVector(toward, 0.15); // por encima y hacia atrás
+    const target = shoulder.clone().addScaledVector(dir.normalize(), BLIND_REACH);
+    const now = this.hand.getWorldPosition(_h).clone();
+    target.lerp(now, 1 - w);
+    const out = (s) => new THREE.Vector3(s, 0, 0).applyQuaternion(this.model.quaternion); // +X = izquierda
+    this.reach(this.upperArm, this.lowerArm, now, target, out(-1));
+    // La mano izquierda va junto a la derecha.
+    if (this.upperArmL && this.lowerArmL && this.handL && this.handL !== this.lowerArmL) {
+      const right = this.hand.getWorldPosition(_h).clone();
+      const nowL = this.handL.getWorldPosition(_knee2).clone();
+      this.reach(this.upperArmL, this.lowerArmL, nowL, right.addScaledVector(out(1), 0.06).lerp(nowL, 1 - w), out(1));
+    }
+  }
+
+  /**
    * Flexión procedimental sobre la animación en curso: baja la cadera, dobla las rodillas
    * (IK de dos huesos, con los pies fijos en el suelo), inclina el tronco y lleva los
    * brazos hacia atrás, como al tomar impulso o al amortiguar una caída.
@@ -1335,7 +1409,7 @@ export class Player {
       );
     }
 
-    const armed = this.aimWeight > 0.05;
+    const armed = this.aimWeight > 0.05 || this.blindW > 0.05;
     // De rodillas tras una cobertura muy baja: giros libres de su postura.
     const kneelW = this.kneel * THREE.MathUtils.clamp(cc / Math.max(POSES.rodillas.agachado, 0.05), 0, 1) * (1 - prone);
     if (kneelW > 0.01) this.applyAdjust('rodillas', kneelW);
@@ -1356,6 +1430,16 @@ export class Player {
 
     this.aimPoint.copy(combat.aimPoint(cam));
     this.model.updateMatrixWorld(true);
+    // A ciegas: los brazos salen de la cobertura (su propia pose; la de apuntar no se usa).
+    const blind = this.blindW;
+    if (blind > 0.01) {
+      // A ciegas no hay mira: tira hacia donde mira la cámara (el punto de la mira caería en
+      // el propio muro que lo cubre).
+      this.upperArm.getWorldPosition(_v).addScaledVector(cam.forward, 40);
+      this.aimPoint.lerp(_v, blind);
+      this.applyBlindFire(blind);
+    }
+    const aimW = this.aimWeight * (1 - blind);
 
     // Gira el brazo derecho para que la línea hombro→mano apunte al objetivo.
     this.upperArm.getWorldPosition(_a);
@@ -1372,11 +1456,11 @@ export class Player {
     _q.multiply(_q2); // orientación mundial deseada
     this.upperArm.parent.getWorldQuaternion(_pq);
     _q.premultiply(_pq.invert());
-    this.upperArm.quaternion.slerp(_q, this.aimWeight);
+    this.upperArm.quaternion.slerp(_q, aimW);
     this.upperArm.updateMatrixWorld(true);
 
     // A cubierto sujeta el arma con las dos manos: el brazo izquierdo va hacia la pistola.
-    const grip = this.coverGrip * this.aimWeight;
+    const grip = this.coverGrip * aimW;
     if (grip > 0.02 && this.upperArmL && this.handL) {
       this.hand.getWorldPosition(_knee);
       this.upperArmL.getWorldPosition(_a);
@@ -1397,13 +1481,21 @@ export class Player {
     this.gun.updateMatrixWorld(true);
     this.muzzle.set(0, 0, 0.4).applyMatrix4(this.gun.matrixWorld);
 
-    if (this.wantsFire && this.canFire && this.fireCooldown <= 0 && this.aimWeight > 0.6) {
+    if (this.wantsFire && this.canFire && this.fireCooldown <= 0 && (this.aimWeight > 0.6 || blind > 0.7)) {
       this.fireCooldown = FIRE_INTERVAL;
       this.shots++;
       if (!this.infiniteAmmo) this.ammo--;
       this.flash.intensity = 30;
       this.recoil = 1;
-      combat.fire(this.muzzle, this.aimPoint);
+      // Sin apuntar la bala se desvía un poco; a ciegas, bastante más.
+      const spread = blind > 0.5 ? BLIND_SPREAD : this.aiming ? 0 : HIP_SPREAD;
+      const to = _knee.copy(this.aimPoint);
+      if (spread) {
+        const d = this.muzzle.distanceTo(to) * Math.tan(spread * Math.sqrt(Math.random()));
+        _v.randomDirection();
+        to.addScaledVector(_v, d);
+      }
+      combat.fire(this.muzzle, to);
     }
   }
 }

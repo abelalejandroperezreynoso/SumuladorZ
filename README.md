@@ -88,9 +88,9 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Correr | `Shift` |
 | Correr rápido | `Q` (un toque; dura mientras sigas avanzando; no permite disparar) |
 | Saltar | `Espacio` (flexiona las piernas para tomar impulso y despega) |
-| Disparar (con el bate o sin arma, golpear) | Clic izquierdo (mantener para ráfaga) |
+| Disparar (con el bate o sin arma, golpear) | Clic izquierdo (mantener para ráfaga; sin apuntar, la cámara no cambia) |
 | Elegir arma | `1` sin arma · `2` bate · `3` pistola |
-| Apuntar | Clic derecho mantenido (la cámara se cierra sobre el hombro) |
+| Apuntar | Clic derecho mantenido (la cámara se cierra sobre el hombro y aparece la mira) |
 | Golpear | `F` |
 | Cubrirse / salir de la cobertura | `C` (cerca de un muro u objeto) |
 | Cámara / zoom | Ratón / rueda |
@@ -193,15 +193,19 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   (0,45 m), medio (1,1 m) y alto (2,4 m), una por cada tipo de cobertura. Con `C` el personaje se desliza
   hasta la cobertura más cercana y se pega de espaldas; `A`/`D` lo mueven a lo largo. Sirve
   cualquier bloque o muro.
-  Al disparar se asoma: por encima de una cobertura baja, o inclinándose por el borde si hay
-  uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
+  Disparando sin apuntar no sale de la cobertura: saca los brazos y dispara a ciegas (por
+  encima de la baja y la muy baja; por el borde de la alta si lo tiene al alcance de la
+  mano), con más desvío. Apuntando se asoma: por encima de una cobertura baja, o inclinándose
+  por el borde si hay uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
   Tras una cobertura muy baja (menos de unos 60 cm) se acuesta boca arriba, perpendicular al
   bloque, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho; la
-  cámara baja casi a ras del bloque. Se desplaza de lado y se incorpora de rodillas para
-  apuntar o disparar.
-- **Apuntar**: con el clic derecho levanta el arma sin disparar y la cámara pasa a un plano
-  cerrado sobre el hombro, con menos campo de visión y la mira más lenta. Disparar también la
-  cierra. A cubierto, al soltar vuelve a esconderse en 0,3 s.
+  cámara baja casi a ras del bloque. Se desplaza de lado apoyándose en manos y pies, y se
+  incorpora de rodillas para apuntar.
+- **Apuntar y disparar** son mandos separados. Con el clic derecho levanta el arma y la cámara
+  pasa a un plano cerrado sobre el hombro, con menos campo de visión, la mira en pantalla y
+  más lenta; las balas van exactas. Disparar sin apuntar no mueve la cámara ni muestra la
+  mira: levanta el brazo hacia el centro de la pantalla y las balas se desvían un poco.
+  A cubierto, al soltar el apuntado vuelve a esconderse en 0,3 s.
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
 - **Escalera y rampa** (detrás): suben a una plataforma de 2 m.
 
