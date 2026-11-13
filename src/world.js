@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { House } from './house.js';
 
 function gridTexture() {
   const c = document.createElement('canvas');
@@ -112,5 +113,7 @@ export function buildWorld(scene, physics) {
     euler: [0, 0, -ang],
   });
   fillUnder(run, (len, h) => [len, h, 4], (s) => [3 + run - s, 16], { color: 0xa8842e });
-  return { sun };
+  // --- Casa de una planta (al oeste del inicio) ---
+  const house = new House(scene, physics);
+  return { sun, house };
 }

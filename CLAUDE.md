@@ -128,6 +128,13 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   postura (cuerpo ladeado y mano con `reachArm`; en la escalada, manos al borde, tronco y
   piernas encogidas con `applyCrouch`). Al terminar sigue la física normal (si no hay suelo,
   cae). Escenas `barda_baja`, `barda_media` y `barda_alta`. Los zombis no las pasan.
+- **Casa** — `src/house.js` (`House`, creada en `buildWorld`, `window.__game.house`): muros
+  hechos de piezas fijas alrededor de los huecos (`HOUSE`), techo plano y una puerta
+  cinemática que gira sobre su bisagra y se abre sola, hacia el lado contrario, cuando el
+  jugador o un zombi se acerca (`DOOR`, `house.update`). Las ventanas no tienen cristal: se
+  pasan como una barda (`tryVault` busca de frente dónde acaba el muro, así vale un hueco con
+  dintel) y dejan pasar las balas. Los zombis no saben rodear muros: entran solo si la puerta
+  les queda de camino. Escenas `casa_puerta` y `casa_ventana`.
 - **Muerte de los zombis** — no hay clip de muerte: `Zombie.startRagdoll` (`src/horde.js`) crea
   un cuerpo físico por segmento (`RAGDOLL`, cápsulas en `GROUPS.debris`, unidos por rótulas)
   sobre la pose del momento y `poseRagdoll` lleva los huesos a esos cuerpos. Cuando todos

@@ -72,7 +72,7 @@ async function start() {
   if (!globalThis.__MODEL_GLB_B64) preloadModel().catch(() => {}); // el error sale en Player.load
   await initPhysics();
   const physics = new Physics(scene);
-  const { sun } = buildWorld(scene, physics);
+  const { sun, house } = buildWorld(scene, physics);
   status('Cargando personaje…');
   const player = await Player.load(scene, physics);
   const combat = new Combat(scene, physics);
@@ -178,6 +178,7 @@ async function start() {
     player.update(dt, input, cam, combat);
     pickups.update(dt);
     horde.update(dt, player);
+    house.update(dt, [player.position, ...horde.zombies.filter((z) => z.alive).map((z) => z.position)]);
     physics.step(dt);
     physics.sync(dt);
     combat.update(dt);
@@ -249,7 +250,7 @@ async function start() {
     hurt.style.opacity = Math.max(0, 0.75 - player.hurtT * 0.9) * (player.healthFraction < 1 ? 1 : 0);
   }
   // Para depuración desde la consola (y para el catálogo y las herramientas de tools/).
-  const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick, pickups };
+  const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick, pickups, house };
   catalog = new Catalog(game);
   game.catalog = catalog;
   // El catálogo se abre desde el menú, con G o con #catalogo en la dirección.

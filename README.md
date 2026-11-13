@@ -248,6 +248,10 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   se dobla al revés y la mano no va muy por detrás de la espalda ni cruza el cuerpo por detrás.
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
 - **Escalera y rampa** (detrás): suben a una plataforma de 2 m.
+- **Casa** (al oeste del inicio): una planta de 8 × 6 m con techo, una puerta y seis ventanas
+  sin cristal. La puerta se abre sola al acercarse (también a los zombis) y se cierra al
+  alejarse. Por las ventanas se entra corriendo de frente, como por una barda media, y se
+  puede disparar a través de ellas.
 
 ## Estructura
 
