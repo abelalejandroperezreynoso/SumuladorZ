@@ -58,6 +58,9 @@ const COVER_CROUCH = 0.52; // cuánto baja la cadera tras una cobertura baja (m)
 // Sentado contra una cobertura baja: los pies van por delante de la cadera (m), algo abiertos
 // y el izquierdo más adelantado; las rodillas suben y se abren un poco. Así el peso descansa
 // en la espalda contra el muro, en vez de quedar con las rodillas al frente y los pies debajo.
+// Acostarse tras una cobertura muy baja, por fracciones del recorrido (0-1): hasta `girado`
+// se da la vuelta, hasta `sentado` baja la cadera (`cadera`, m) y desde `recostar` se echa atrás.
+const PRONE_SIT = { girado: 0.45, sentado: 0.4, recostar: 0.3, cadera: 0.55 };
 const COVER_SIT = { frente: 0.24, abierto: 0.05, adelantado: 0.08, rodillaArriba: 0.6, rodillaFuera: 0.08 };
 const COVER_NEAR = 1.5; // radio en el que se busca cobertura en cualquier dirección (m)
 const COVER_FAN = 32; // rayos de esa búsqueda alrededor del personaje
@@ -354,6 +357,8 @@ export class Player {
     this.coverGrip = 0; // 0-1: mano izquierda sujetando la pistola (al apuntar)
     this.batReady = 0; // 0-1: bate en guardia, sobre el hombro derecho
     this.peekLook = 0; // -1..1: mira por el borde derecho o izquierdo, asomado con el mando
+    this.proneYaw = 0; // giro del modelo al acostarse (rad)
+    this.proneSquat = 0; // cuánto baja la cadera mientras se sienta para acostarse (m)
     this.coverSit = 0; // 0-1: sentado contra una cobertura baja, con los pies por delante
     this.coverHug = 0; // cuánto se arrima ahora el modelo al muro (m)
     this.hugN = { x: 0, z: 0 }; // normal del último muro (para separarse poco a poco al salir)
@@ -823,7 +828,7 @@ export class Player {
       coverCrouchTarget = CROUCH_HIDE * (cover.arrive ?? 0); // llegando a una cobertura baja
     }
     // Recostarse es más pausado que incorporarse a disparar.
-    this.prone = THREE.MathUtils.damp(this.prone, proneTarget, proneTarget ? 6 : 9, dt);
+    this.prone = THREE.MathUtils.damp(this.prone, proneTarget, proneTarget ? 4.5 : 9, dt);
     if (proneTarget) {
       this.proneN.x = cover.nx;
       this.proneN.z = cover.nz;
@@ -1692,7 +1697,8 @@ export class Player {
     this.bodyBone.position.copy(parent.worldToLocal(_v));
     this.bodyBone.updateMatrixWorld(true);
 
-    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+    const yaw = this.facing + (this.proneYaw || 0); // hacia donde mira el cuerpo (acostándose, ya girado)
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
     // La pose de piernas calculada entra de forma gradual con la profundidad: aplicarla de
     // golpe hacía que las rodillas dieran un salto al empezar o terminar de agacharse.
     const ik = THREE.MathUtils.smoothstep(depth, 0, 0.08);
@@ -1850,14 +1856,23 @@ export class Player {
     const standOn = !gaitOn && this.state === 'Idle' && this.grounded && !this.cover && !prone && this.crouch < 0.05
       && this.coverCrouch < 0.02;
     if (gaitOn || standOn || this.gait.weight > 0.01) this.savePose();
+    this.proneYaw = this.proneSquat = 0;
     if (prone) {
       const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
       const n = this.proneN;
-      const ease = THREE.MathUtils.smoothstep(prone, 0, 1);
+      // Se acuesta como una persona, no como una tabla: primero se da la vuelta mientras se
+      // agacha hasta sentarse de espaldas al objeto (`turn`), y luego se recuesta hacia atrás
+      // (`ease`) hasta apoyar la cabeza en él. La postura final es la misma que girando sobre
+      // su eje: R.giro sigue midiendo cuánto queda girado el cuerpo tumbado.
+      const turn = THREE.MathUtils.smoothstep(prone, 0, PRONE_SIT.girado);
+      const ease = THREE.MathUtils.smoothstep(prone, PRONE_SIT.recostar, 1);
       const R = POSES.recostado;
+      this.proneYaw = Math.PI * this.proneSide * turn;
+      this.proneSquat = PRONE_SIT.cadera * THREE.MathUtils.smoothstep(prone, 0, PRONE_SIT.sentado) * Math.cos(ease * Math.PI / 2);
       this.model.quaternion
-        .multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), ease * Math.PI / 2))
-        .multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), ease * R.giro * this.proneSide));
+        .multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), this.proneYaw))
+        .multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), -ease * Math.PI / 2))
+        .multiply(_q.setFromAxisAngle(_v.set(0, 1, 0), ease * (R.giro - Math.PI) * this.proneSide));
       this.model.position.x -= (fx * R.centrado + n.x * R.arrimo) * ease;
       this.model.position.z -= (fz * R.centrado + n.z * R.arrimo) * ease;
       this.model.position.y += R.altura * ease;
@@ -1882,12 +1897,12 @@ export class Player {
       (this.state === 'Running' ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), gaitOn);
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
-    if (jc > 0.01 || cc > 0.01 || Math.abs(this.coverLean) > 0.005) {
+    if (jc > 0.01 || cc > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
       // Inclinación del tronco a cubierto: 0,3 rad agachado del todo; de rodillas, la de su postura.
       const K = POSES.rodillas;
       const coverLean = THREE.MathUtils.lerp(0.3, K.tronco / Math.max(K.agachado, 0.05), this.kneel) * cc;
       this.applyCrouch(
-        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc), Math.max(0.45 * jc, coverLean), 0.7 * jc,
+        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc, this.proneSquat), Math.max(0.45 * jc, coverLean), 0.7 * jc,
         this.coverLean, this.coverSit * cc,
       );
     }
