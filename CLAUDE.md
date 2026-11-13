@@ -85,7 +85,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
 - **Cobertura** — la entrada se desliza hasta el muro y en el último tramo (`COVER_ARRIVE`,
   `cover.arrive` 0-1) frena, se da la vuelta, se agacha y coloca los brazos a la vez. Tras un muro bajo queda en
   cuclillas con la espalda en el muro y los pies por delante (`COVER_SIT`, `coverSit`; se quita
-  al levantarse o asomarse a disparar). `coverMove` mide cada fotograma la distancia a cada final del muro
+  al levantarse o asomarse a disparar). Tras uno muy bajo se da la vuelta agachándose, se
+  sienta y se recuesta hacia atrás (`PRONE_SIT`, en `postPhysics`); la postura final no cambia. `coverMove` mide cada fotograma la distancia a cada final del muro
   (`cover.edgeR`, `cover.edgeL`) y en qué límite está (`cover.limit`: -1 derecho, +1 izquierdo,
   0 ninguno; `LIMIT_RANGE`). El disparo a ciegas se decide con eso (`cover.blindMode`: `side`
   por el borde, girado hacia él; `over` por encima del muro bajo; `up` brazo en alto y tiro
