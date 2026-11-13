@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BODY } from './proportions.js';
 
 // Vista de esqueleto al estilo de Blender: cada hueso es un octaedro alargado, ancho junto a su
 // origen y afilado hacia la punta, con una esfera en cada articulación. La usan el jugador y los
@@ -8,6 +9,12 @@ import * as THREE from 'three';
 export const SKELETON_DEFAULT = true;
 
 const SKIP = /Index|Middle|Ring|Pinky|Thumb|^PT|^Root$/; // dedos y huesos auxiliares
+const STATURE = 1.75; // estatura a la que se escala el modelo (m)
+// El hueso del pie está en el talón, a ras de suelo, y el de la cabeza en la base del cráneo:
+// el pie se dibuja hacia delante y la cabeza se centra más arriba, con su tamaño real.
+const FOOT_LENGTH = BODY.foot * STATURE * 0.82; // del talón del hueso a la punta
+const HEAD_RADIUS = (BODY.head * STATURE) / 2;
+const HEAD_UP = HEAD_RADIUS + 0.025; // del hueso al centro de la cabeza
 const W = 0.1;
 const boneGeo = new THREE.BufferGeometry();
 // Octaedro de longitud 1 sobre +Y: origen, anillo cuadrado al 10 % y punta.
@@ -40,6 +47,7 @@ function paletteMaterials(kind) {
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
+const _q = new THREE.Quaternion();
 
 export class SkeletonView {
   /** model: el modelo animado; kind: 'player' o 'zombie'. */
@@ -61,21 +69,36 @@ export class SkeletonView {
       mesh.castShadow = true;
       mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
       this.group.add(mesh);
-      this.links.push({ from, to, mesh });
+      const link = { from, to, mesh };
+      this.links.push(link);
+      return link;
     };
     for (const o of Object.values(bones)) {
       if (SKIP.test(o.name)) continue;
       const joint = new THREE.Mesh(jointGeo, mat.joint);
       joint.castShadow = true;
-      if (o.name === 'Head') joint.scale.setScalar(3.5); // la cabeza, más grande
+      const head = o.name === 'Head';
+      if (head) joint.scale.setScalar(HEAD_RADIUS / 0.03); // la cabeza, a su tamaño
       this.group.add(joint);
-      this.joints.push({ bone: o, mesh: joint });
+      this.joints.push({ bone: o, mesh: joint, lift: head ? HEAD_UP : 0 });
       if (o.parent?.isBone && !SKIP.test(o.parent.name)) addLink(o.parent, o);
     }
-    // Los pies no cuelgan de la pierna en este modelo: se unen a mano.
+    model.updateMatrixWorld(true);
+    model.getWorldQuaternion(_q);
     for (const side of ['L', 'R']) {
+      // Los pies no cuelgan de la pierna en este modelo: se unen a mano.
       const shin = bones['LowerLeg' + side], foot = bones['Foot' + side];
-      if (shin && foot) addLink(shin, foot);
+      if (shin && foot) {
+        addLink(shin, foot);
+        // Pie: del talón hacia delante. La dirección se guarda en el marco del hueso, tomada
+        // de la pose de reposo (el modelo mira a su +Z).
+        const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(_q)
+          .applyQuaternion(foot.getWorldQuaternion(new THREE.Quaternion()).invert());
+        addLink(foot, null).toe = forward;
+      }
+      // Mano: de la muñeca a la punta del dedo medio.
+      const wrist = bones['Wrist' + side], tip = bones['Middle4' + side];
+      if (wrist && tip) addLink(wrist, tip);
     }
   }
 
@@ -90,10 +113,14 @@ export class SkeletonView {
   update() {
     if (!this.only || !this.group.visible) return;
     this.model.updateMatrixWorld(true);
-    for (const j of this.joints) j.bone.getWorldPosition(j.mesh.position);
+    for (const j of this.joints) {
+      j.bone.getWorldPosition(j.mesh.position);
+      if (j.lift) j.mesh.position.addScaledVector(_b.setFromMatrixColumn(j.bone.matrixWorld, 1).normalize(), j.lift);
+    }
     for (const l of this.links) {
       l.from.getWorldPosition(_a);
-      l.to.getWorldPosition(_b);
+      if (l.to) l.to.getWorldPosition(_b);
+      else _b.copy(l.toe).applyQuaternion(l.from.getWorldQuaternion(_q)).multiplyScalar(FOOT_LENGTH).add(_a);
       const len = _a.distanceTo(_b);
       l.mesh.visible = len > 1e-4;
       if (!l.mesh.visible) continue;

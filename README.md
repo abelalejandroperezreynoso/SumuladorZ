@@ -220,6 +220,8 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/camera.js` | Cámara en tercera persona con colisión |
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
 | `src/pickups.js` | Armas y cajas de balas que se recogen, y sus modelos |
+| `src/skeleton.js` | Vista de esqueleto del personaje y de los zombis |
+| `src/proportions.js` | Medidas del cuerpo: corrige el largo de brazos y manos del modelo |
 | `src/input.js` | Teclado, ratón y mando |
 | `src/touch.js` | Controles táctiles |
 | `src/catalog.js`, `src/catalog-scenes.js` | Catálogo de mecánicas dentro del juego y sus escenas |

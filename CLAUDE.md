@@ -50,6 +50,10 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   `window.__game.autopilot.log` y `.stats`. Busca cobertura de forma activa y va rotando
   entre alta, baja y muy baja (`stats.coverTypes`). La escena `piloto` de `tools/watch.cjs`
   graba 16 s de su partida.
+- **Proporciones** — `src/proportions.js` lleva brazos y manos del modelo a medidas humanas
+  (fracciones de la estatura, 1,75 m) escalando huesos y pistas de posición de los clips; se
+  aplica al cargar, antes de clonar el modelo para los zombis. El modelo original trae brazos
+  de 40 cm de hombro a muñeca; corregidos miden 56 cm. Piernas y tronco ya estaban bien.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 
