@@ -39,7 +39,7 @@ export function place(g, x, z, yaw = 0) {
   // El piloto de la escena «piloto» seguiría jugando (y matando al zombi) en las siguientes.
   if (g.autopilot.active) g.autopilot.toggle();
   g.player.preview(null);
-  g.horde.stop(); g.physics.reset(); g.player.respawn();
+  g.horde.stop(); g.physics.reset(); g.house?.reset(); g.player.respawn();
   // Las escenas empiezan con la pistola cargada y sin objetos por el suelo.
   g.pickups?.clear();
   g.player.pickUp('pistola', 99);
@@ -111,11 +111,12 @@ export const SCENES = [
     desc: `Casa de una planta (${n(HT.HOUSE.ancho)} × ${n(HT.HOUSE.fondo)} m, ${n(HT.HOUSE.alto)} m de alto) con una puerta y seis ventanas sin cristal. La puerta se abre sola cuando alguien (jugador o zombi) llega a menos de ${n(HT.DOOR.cerca)} m, hacia el lado contrario, y se cierra al alejarse.`,
     place: [-9.5, 3.2, Math.PI / 2], seconds: 4.2, view: Math.PI * 0.15, dist: 6, high: 2.2,
     steps: [[0.1, key('KeyW'), 'Camina hacia la puerta'], [1.2, null, 'Se abre hacia dentro'], [2.6, null, 'Entra'], [3.4, key('KeyW', false), 'Dentro; la puerta se cierra']] },
-  { id: 'casa_ventana', group: 'movimiento', title: 'Casa: entrar por una ventana',
-    how: 'Correr de frente contra la ventana',
-    desc: `El alféizar queda a ${n(HT.HOUSE.ventana.bajo)} m: corriendo de frente se pasa por el hueco apoyando la mano, como una barda media. También se dispara a través.`,
-    place: [-14, 9.5, 0], seconds: 2.6, view: Math.PI * 0.5, dist: 5, high: 1.6,
-    steps: [[0.1, all(key('KeyW'), key('ShiftLeft')), 'Corre hacia la ventana'], [0.9, null, 'Pasa por el hueco'], [1.6, all(key('KeyW', false), key('ShiftLeft', false)), 'Dentro']] },
+  { id: 'casa_ventana', group: 'movimiento', title: 'Casa: romper el cristal y entrar por la ventana',
+    how: 'Golpe (F) o disparo al cristal; después, correr de frente o saltar junto a la ventana',
+    desc: `Las ventanas tienen cristal: no deja pasar, pero se rompe de un puñetazo, un batazo o un balazo y saltan ${HT.GLASS.trozos} trozos. Con el cristal roto se pasa por el hueco (alféizar a ${n(HT.HOUSE.ventana.bajo)} m) apoyando la mano, como una barda media. Los cristales vuelven al reiniciar el mundo (R).`,
+    place: [-14, 6.9, 0], seconds: 3.6, view: Math.PI * 0.5, dist: 5, high: 1.6,
+    steps: [[0.1, key('KeyW'), 'Se acerca a la ventana'], [0.42, key('KeyW', false)], [0.6, press('KeyF'), 'Golpea el cristal'], [0.6 + T.PUNCH_TIME * T.PUNCH_HIT, null, 'Se rompe'],
+      [1.4, key('KeyW'), 'Avanza'], [1.8, press('Space'), 'Salta junto a la ventana: pasa por el hueco'], [2.9, key('KeyW', false), 'Dentro']] },
   { id: 'golpe', group: 'combate', title: 'Puñetazo',
     how: 'F · mando X',
     desc: `Dura ${n(T.PUNCH_TIME)} s y conecta al ${n(T.PUNCH_HIT * 100)} % de la animación. Empuja lo que haya delante del personaje y quita 1,5 de vida a un zombi (tienen ${n(Z.HEALTH)}). Mientras golpea se mueve a un cuarto de velocidad.`,
@@ -211,6 +212,23 @@ export const SCENES = [
       [6.0, (g) => g.horde.zombies[0]?.damage(5, g.player), 'Muere']],
     keepAlive: true },
 
+  { id: 'zombi_ventana', group: 'enemigos', title: 'Zombi: entra por una ventana',
+    how: 'Estar dentro de la casa con zombis fuera (o al revés)',
+    desc: `Si su presa está al otro lado del muro de la casa, el zombi va al hueco que menos rodeo le supone (una ventana o la puerta; a rastras, solo la puerta). Ante una ventana con cristal lo revienta de un cabezazo (${n(Z.WINDOW.romper)} s) y después trepa en ${n(Z.WINDOW.tiempo)} s, por código: echa brazos y tronco por el hueco, queda doblado sobre el alféizar pataleando, se desliza de cabeza, cae al suelo y se levanta. Mientras trepa no se detiene con los golpes, pero se le puede disparar.`,
+    place: [-14, 2.6, Math.PI], seconds: 6.5, view: Math.PI * 0.5, dist: 1.9, high: 1.4,
+    before: (g) => {
+      g.horde.start();
+      for (let i = 0; i < 40; i++) g.tick(1 / 60);
+      const z = g.horde.zombies[0];
+      z.body.setTranslation({ x: -14, y: 0.9, z: 7.6 }, true);
+      z.body.setNextKinematicTranslation({ x: -14, y: 0.9, z: 7.6 });
+      z.facing = Math.PI;
+      g.tick(1 / 60);
+      z.alert(g.player.position);
+    },
+    subject: (g) => g.horde.zombies[0],
+    steps: [[0, null, 'Va hacia la ventana'], [0.9, null, 'Revienta el cristal de un cabezazo'], [1.8, null, 'Echa el cuerpo por el hueco'], [2.8, null, 'Se desliza de cabeza'], [3.6, null, 'Se levanta'], [4.3, null, 'Ataca']],
+    keepAlive: true },
   { id: 'desmembrar', group: 'enemigos', title: 'Zombi: disparos a las articulaciones y arrastre',
     how: 'Apuntar a una articulación, al estómago o a la cabeza',
     desc: `La bala se comprueba contra el esqueleto, no contra un bulto: si pasa a menos de ${n(Z.JOINT_ZONE * 100, 1)} cm de una articulación (cuello, hombro, codo, muñeca, cadera, rodilla o tobillo), el cuerpo se parte por ahí y lo que cuelga de ella cae al suelo y ahí se queda. Por el estómago (${n(Z.STOMACH_ZONE * 100, 0)} cm) el tronco se separa de las piernas. Solo muere al perder la cabeza (${n(Z.HEAD_ZONE * 100, 0)} cm): sin un pie cojea, sin una pierna o sin tronco cae en ${n(Z.CRAWL_FALL)} s y se arrastra a ${n(Z.CRAWL_SPEEDS[2])} m/s (${n(Z.CRAWL_SPEEDS[1])} con un brazo; sin brazos repta a ${n(Z.CRAWL_SPEEDS[0])}) y sigue mordiendo. Un impacto que solo roza un hueso lo aturde ${n(Z.STAGGER)} s.`,

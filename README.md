@@ -249,9 +249,12 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
 - **Escalera y rampa** (detrás): suben a una plataforma de 2 m.
 - **Casa** (al oeste del inicio): una planta de 8 × 6 m con techo, una puerta y seis ventanas
-  sin cristal. La puerta se abre sola al acercarse (también a los zombis) y se cierra al
-  alejarse. Por las ventanas se entra corriendo de frente, como por una barda media, y se
-  puede disparar a través de ellas.
+  con cristal. La puerta se abre sola al acercarse (también a los zombis) y se cierra al
+  alejarse. El cristal no deja pasar: se rompe de un puñetazo, un batazo o un balazo, y con
+  él roto se entra corriendo de frente (o saltando junto a la ventana), como por una barda
+  media. Los zombis también entran por las ventanas: revientan el cristal de un cabezazo, se
+  echan por el hueco, se deslizan de cabeza y se levantan dentro. Los cristales vuelven al
+  reiniciar el mundo (`R`).
 
 ## Estructura
 

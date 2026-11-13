@@ -2039,6 +2039,12 @@ export class Player {
         crushed++;
         continue;
       }
+      const brk = this.physics.meta.get(collider.handle)?.break;
+      if (brk) { // cristal de una ventana
+        seen.add(body.handle);
+        if (brk({ x: fx, z: fz })) hits++;
+        continue;
+      }
       if (!body.isDynamic()) continue;
       seen.add(body.handle);
       const strength = (Math.min(body.mass(), 25) * 4.5 + 5) * M.push;
