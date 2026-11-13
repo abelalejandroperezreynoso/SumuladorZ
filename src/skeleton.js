@@ -23,6 +23,10 @@ boneGeo.computeVertexNormals();
 const edgeGeo = new THREE.EdgesGeometry(boneGeo);
 const jointGeo = new THREE.SphereGeometry(0.03, 14, 10);
 const edgeMat = new THREE.LineBasicMaterial({ color: 0x111111 });
+// Cara: ojos y nariz para ver hacia dónde mira la cabeza.
+const eyeGeo = new THREE.SphereGeometry(HEAD_RADIUS * 0.17, 10, 8);
+const noseGeo = new THREE.ConeGeometry(HEAD_RADIUS * 0.16, HEAD_RADIUS * 0.45, 10).rotateX(Math.PI / 2); // punta hacia +Z
+const eyeMat = new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.4 });
 
 // Colores por tipo de personaje (los materiales se comparten entre todos los del mismo tipo).
 const PALETTES = {
@@ -76,10 +80,27 @@ export class SkeletonView {
       if (head) joint.scale.setScalar(HEAD_RADIUS / 0.03); // la cabeza, a su tamaño
       this.group.add(joint);
       this.joints.push({ bone: o, mesh: joint, lift: head ? HEAD_UP : 0 });
+      if (head) {
+        // La cara sigue al hueso de la cabeza; se guarda el giro que la deja mirando al +Z
+        // del modelo en la pose de reposo.
+        const face = new THREE.Group();
+        for (const s of [-1, 1]) {
+          const eye = new THREE.Mesh(eyeGeo, eyeMat);
+          eye.position.set(s * HEAD_RADIUS * 0.38, HEAD_RADIUS * 0.22, HEAD_RADIUS * 0.86);
+          face.add(eye);
+        }
+        const nose = new THREE.Mesh(noseGeo, mat.joint);
+        nose.position.set(0, -HEAD_RADIUS * 0.05, HEAD_RADIUS * 1.05);
+        nose.castShadow = true;
+        face.add(nose);
+        this.group.add(face);
+        this.face = { bone: o, mesh: face, rest: null };
+      }
       if (o.parent?.isBone && !SKIP.test(o.parent.name)) addLink(o.parent, o);
     }
     model.updateMatrixWorld(true);
     model.getWorldQuaternion(_q);
+    if (this.face) this.face.rest = this.face.bone.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(_q);
     for (const side of ['L', 'R']) {
       // Los pies no cuelgan de la pierna en este modelo: se unen a mano.
       const shin = bones['LowerLeg' + side], foot = bones['Foot' + side];
@@ -104,6 +125,12 @@ export class SkeletonView {
     for (const j of this.joints) {
       j.bone.getWorldPosition(j.mesh.position);
       if (j.lift) j.mesh.position.addScaledVector(_b.setFromMatrixColumn(j.bone.matrixWorld, 1).normalize(), j.lift);
+    }
+    if (this.face) {
+      const f = this.face;
+      f.bone.getWorldPosition(f.mesh.position);
+      f.mesh.position.addScaledVector(_b.setFromMatrixColumn(f.bone.matrixWorld, 1).normalize(), HEAD_UP);
+      f.mesh.quaternion.copy(f.bone.getWorldQuaternion(_q)).multiply(f.rest);
     }
     for (const l of this.links) {
       l.from.getWorldPosition(_a);
