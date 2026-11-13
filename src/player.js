@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
 import { SkeletonView } from './skeleton.js';
+import { Gait, CLIP_SPEED } from './gait.js';
 import { makeGun, makeBat } from './pickups.js';
 import { fixProportions } from './proportions.js';
 import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
@@ -336,6 +337,7 @@ export class Player {
     this.legs = ['L', 'R']
       .map((s) => ({ upper: bone('UpperLeg' + s), lower: bone('LowerLeg' + s), foot: bone('Foot' + s), end: new THREE.Vector3(), side: s === 'L' ? 1 : -1 }))
       .filter((l) => l.upper && l.lower && l.foot);
+    this.gait = new Gait(this.legs); // zancada a medida y pies clavados al caminar y correr
     // Huesos que modifica la flexión, con su pose de animación guardada para restaurarla.
     this.lowerArm = bone('LowerArmR');
     this.lowerArmL = bone('LowerArmL');
@@ -984,11 +986,11 @@ export class Player {
       this.current.setEffectiveWeight(w);
       this.actions.Idle.setEffectiveWeight(1 - w);
     }
-    // Medido con tools/watch.cjs: a ritmo 1 el clip de caminar avanza ~0,8 m/s y el de correr
-    // ~3,1 m/s. Igualarlos del todo daría pasos frenéticos; estos valores reducen el
-    // deslizamiento de los pies sin perder naturalidad.
+    // Ritmo del paso según la velocidad. A ritmo 1 el clip de caminar avanza ~1,28 m/s y el
+    // de correr ~2,9 m/s (CLIP_SPEED); lo que falta lo pone la zancada alargada (src/gait.js),
+    // hasta un 20 % al correr: igualarlo solo con el ritmo daría pasos frenéticos.
     if (this.state === 'Walking') this.current.timeScale = THREE.MathUtils.clamp(s / 1.25, 0.7, 2);
-    if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / 4.2, 0.8, 1.9);
+    if (this.state === 'Running') this.current.timeScale = THREE.MathUtils.clamp(s / (CLIP_SPEED.Run * 1.2), 0.8, 2.2);
     this.finishAnimation(dt);
   }
 
@@ -1620,6 +1622,14 @@ export class Player {
     // arriba, con la cabeza junto a él y los pies hacia fuera.
     const prone = this.prone > 0.005 ? this.prone : 0;
     this.model.rotation.set(0, this.facing, 0);
+    // Caminar y correr de frente: zancada a la medida del avance y pie de apoyo clavado.
+    const striding = this.state === 'Walking' || this.state === 'Running';
+    const ahead = this.speed > 0.3
+      ? (this.velocity.x * Math.sin(this.facing) + this.velocity.z * Math.cos(this.facing)) / this.speed : 0;
+    const gaitOn = striding && this.grounded && !this.cover && !prone && this.crouch < 0.05 && ahead > 0.8;
+    if (gaitOn || this.gait.weight > 0.01) this.savePose();
+    this.gait.update(dt, this.model, this.position.y, this.facing, this.speed * ahead,
+      (this.state === 'Running' ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), gaitOn);
     if (prone) {
       const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
       const n = this.proneN;
