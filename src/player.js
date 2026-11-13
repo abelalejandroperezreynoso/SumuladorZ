@@ -57,6 +57,10 @@ const PEEK_REACH = 0.8; // distancia máxima al borde para poder asomarse por é
 const PEEK_CLEAR_GUN = 0.28; // cuánto sobrepasa el borde al asomarse por el lado del arma (m)
 const PEEK_CLEAR_OFF = 0.46; // ...y por el lado contrario, para que el arma libre el muro
 const PEEK_LEAN = 0.3; // inclinación lateral del tronco al asomarse (rad)
+// Asomarse con el mando: en un límite del muro, mantener la dirección hacia ese lado.
+const PEEK_HOLD = 0.25; // tiempo empujando contra el final del muro hasta asomarse (s)
+const PEEK_LOOK = 0.5; // fracción del paso completo que da solo para mirar (al disparar, entero)
+const PEEK_HEAD = { giro: 0.2, cuello: 0.8 }; // giro del tronco y de la cabeza hacia ese lado (rad)
 // Cuánto se agacha (0-1) en cada postura de cobertura.
 const CROUCH_HIDE = 1; // oculto tras una cobertura baja
 const CROUCH_OVER = 0.14; // disparando por encima
@@ -264,7 +268,7 @@ export const PLAYER_CLIPS = {
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
-  COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
+  COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, PEEK_HOLD, PEEK_LOOK,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
   HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
 };
@@ -336,6 +340,7 @@ export class Player {
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando la pistola (al apuntar)
     this.batReady = 0; // 0-1: bate en guardia, sobre el hombro derecho
+    this.peekLook = 0; // -1..1: mira por el borde derecho o izquierdo, asomado con el mando
     this.coverHug = 0; // cuánto se arrima ahora el modelo al muro (m)
     this.hugN = { x: 0, z: 0 }; // normal del último muro (para separarse poco a poco al salir)
     this.armFrame = null; // marco del tronco para los límites de los brazos, si está girado (reachArm)
@@ -576,6 +581,7 @@ export class Player {
       // -1 el derecho del personaje (de espaldas al muro), +1 el izquierdo, 0 ninguno.
       edgeR: Infinity, edgeL: Infinity, limit: 0,
       blindMode: 'over', blindSide: 0, blindLocked: false,
+      stickPeek: false, stickSide: 0, stickT: 0, // asomarse manteniendo el mando hacia un límite
     };
     this.jumpT = -1;
     return true;
@@ -627,6 +633,16 @@ export class Player {
     } else {
       c.away = 0;
     }
+    // Asomarse con el mando: ya en el final del muro, seguir empujando hacia ese lado.
+    let stick = 0;
+    if (c.attached && moving && !c.veryLow) {
+      const s = dir.x * tx + dir.z * tz;
+      const sgn = Math.sign(s);
+      if (Math.abs(s) > 0.5 && (c.peek > 0.02 ? c.peekDir === sgn : !along && ends(sgn, RADIUS + 0.1))) stick = sgn;
+    }
+    c.stickT = stick && stick === c.stickSide ? c.stickT + dt : 0;
+    c.stickSide = stick;
+    c.stickPeek = stick !== 0 && c.stickT >= PEEK_HOLD;
 
     // ¿Está en un límite del muro? Se mide la distancia a cada final (mientras no se asoma).
     const edge = (side) => {
@@ -643,11 +659,12 @@ export class Player {
     // Al empezar a apuntar decide cómo asomarse: por el borde si hay uno cerca (siempre en
     // cobertura alta, por el más cercano; en la baja, solo si se apunta hacia ese lado) o por
     // encima.
-    if (c.attached && aiming && !c.mode) {
+    if (c.attached && (aiming || c.stickPeek) && !c.mode) {
       const left = c.edgeR, right = c.edgeL;
       const aimSide = -Math.sin(cam.yaw) * tx - Math.cos(cam.yaw) * tz; // hacia dónde mira la cámara
       let dir = 0;
-      if (c.high) {
+      if (c.stickPeek) dir = c.stickSide; // el lado lo elige el mando
+      else if (c.high) {
         dir = right < left ? 1 : left < Infinity ? -1 : 0;
       } else if (c.veryLow) dir = 0; // tumbado solo se dispara incorporándose
       else if (right < Infinity && aimSide > 0.3) dir = 1;
@@ -657,7 +674,7 @@ export class Player {
       c.peekGoal = dir > 0 ? right + PEEK_CLEAR_GUN : dir < 0 ? left + PEEK_CLEAR_OFF : 0;
       c.mode = dir ? 'side' : c.high ? 'blocked' : 'over';
     }
-    if (!aiming && c.peek < 0.02) c.mode = null;
+    if (!aiming && !c.stickPeek && c.peek < 0.02) c.mode = null;
     // A ciegas: en un límite del muro saca el arma por ese lado; si no, por encima (muro bajo)
     // o con el brazo en alto, tirando hacia arriba (muro alto). Se decide al empezar a disparar
     // y el brazo lo recuerda mientras se recoge.
@@ -668,7 +685,8 @@ export class Player {
         c.blindMode = c.veryLow ? 'prone' : c.blindSide ? 'side' : c.high ? 'up' : 'over';
       }
     } else c.blindLocked = false;
-    const peekTarget = aiming && c.mode === 'side' ? c.peekGoal : 0;
+    // Apuntando o disparando da el paso entero; solo para mirar, una parte.
+    const peekTarget = c.mode !== 'side' ? 0 : aiming ? c.peekGoal : c.stickPeek ? c.peekGoal * PEEK_LOOK : 0;
     let peekV = THREE.MathUtils.clamp((peekTarget - c.peek) * 8, -2.8, 2.8);
     if (c.peek + peekV * dt < 0) peekV = -c.peek / dt;
     c.peek += peekV * dt;
@@ -751,7 +769,8 @@ export class Player {
       this.leaveCover(); // saltar, golpear o quedarse sin suelo saca de la cobertura
     }
     // Solo apuntando se levanta o se asoma; disparar sin apuntar es a ciegas, sin salir.
-    const coverAim = aimHeld;
+    // (Asomado con el mando, disparar también lo saca del todo.)
+    const coverAim = aimHeld || (!!this.cover?.stickPeek && this.aimT > 0);
     if (this.cover) this.coverMove(dt, _v, moving, coverAim, cam);
 
     if (!this.cover) {
@@ -769,7 +788,7 @@ export class Player {
       if (cover.mode === 'side') {
         const rest = cover.high ? 0 : CROUCH_HIDE;
         coverCrouchTarget = THREE.MathUtils.lerp(rest, cover.high ? CROUCH_SIDE_HIGH : CROUCH_SIDE_LOW, out);
-        leanTarget = cover.peekDir * PEEK_LEAN * out;
+        leanTarget = cover.peekDir * PEEK_LEAN * Math.min(1, out / PEEK_LOOK);
       } else if (cover.mode === 'over') coverCrouchTarget = cover.veryLow ? POSES.rodillas.agachado : CROUCH_OVER;
       else if (cover.veryLow) proneTarget = 1;
       else if (!cover.high) coverCrouchTarget = CROUCH_HIDE;
@@ -872,13 +891,14 @@ export class Player {
     // cambia); a cubierto saca el arma a ciegas.
     if (this.wantsFire) {
       if (aimHeld) this.aimT = cover ? AIM_HOLD_COVER : AIM_HOLD;
+      else if (cover?.stickPeek) this.aimT = AIM_HOLD_COVER; // asomado con el mando: dispara desde ahí
       else if (cover) this.blindT = BLIND_HOLD;
       else this.aimT = AIM_HOLD;
     }
     this.aimT -= dt;
     this.blindT -= dt;
     if (aimHeld || !gun) this.blindT = 0;
-    const aiming = (this.aimT > 0 && (!cover || aimHeld)) || (aimHeld && this.punchT < 0);
+    const aiming = (this.aimT > 0 && (!cover || aimHeld || cover.stickPeek)) || (aimHeld && this.punchT < 0);
     this.aiming = aimHeld && this.punchT < 0;
     this.aimWeight = THREE.MathUtils.damp(this.aimWeight, aiming ? 1 : 0, aiming ? 25 : 10, dt);
     // Quieto de pie: la postura relajada sustituye a la guardia del clip de reposo.
@@ -1826,6 +1846,13 @@ export class Player {
         Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc), Math.max(0.45 * jc, coverLean), 0.7 * jc,
         this.coverLean,
       );
+    }
+
+    // Asomado con el mando, sin apuntar: gira el tronco y la cabeza para mirar por el borde.
+    const look = cv?.stickPeek && cv.mode === 'side' ? cv.peekDir : 0;
+    this.peekLook = THREE.MathUtils.damp(this.peekLook, look * (1 - this.aimWeight), 9, dt);
+    if (Math.abs(this.peekLook) > 0.01) {
+      this.applyTorso(1, { giro: PEEK_HEAD.giro * this.peekLook, lado: 0, frente: 0, cuello: PEEK_HEAD.cuello * this.peekLook, cabeza: 0 });
     }
 
     const armed = this.aimWeight > 0.05 || this.blindW > 0.05;

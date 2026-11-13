@@ -84,7 +84,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   0 ninguno; `LIMIT_RANGE`). El disparo a ciegas se decide con eso (`cover.blindMode`: `side`
   por el borde, girado hacia él; `over` por encima del muro bajo; `up` brazo en alto y tiro
   hacia arriba tras un muro alto; `prone` acostado). El modelo se arrima al muro (`COVER_HUG`)
-  aunque la cápsula quede más lejos.
+  aunque la cápsula quede más lejos. Asomarse con el mando (`cover.stickPeek`): en un límite,
+  mantener la dirección hacia ese lado `PEEK_HOLD` s da parte del paso lateral (`PEEK_LOOK`),
+  inclina el tronco y gira la cabeza; disparando da el paso entero, como al apuntar.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 

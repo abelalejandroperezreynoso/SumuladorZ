@@ -197,7 +197,10 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   Disparando sin apuntar no sale de la cobertura: saca los brazos y dispara a ciegas, con más desvío.
   El personaje sabe si está en el límite izquierdo o derecho del muro (a menos de 0,55 m de su
   final): en un límite se gira hacia ese borde y saca el arma por él; lejos de los límites
-  dispara por encima de la cobertura baja y, tras una alta, levanta el brazo y dispara hacia arriba. Apuntando se asoma: por encima de una cobertura baja, o inclinándose
+  dispara por encima de la cobertura baja y, tras una alta, levanta el brazo y dispara hacia arriba.
+  Asomarse con el mando: en un límite del muro, mantener `A`/`D` (o el stick) hacia ese lado un
+  cuarto de segundo hace que se incline y gire la cabeza para mirar por el borde; disparando así
+  sale del todo y tira desde ahí, sin cerrar la cámara. Al soltar vuelve a cubrirse. Apuntando se asoma: por encima de una cobertura baja, o inclinándose
   por el borde si hay uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
   Tras una cobertura muy baja (menos de unos 60 cm) se acuesta boca arriba, perpendicular al
   bloque, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho; la
