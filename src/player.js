@@ -43,6 +43,9 @@ const LAND_SLOWDOWN = 0.8; // fracción de velocidad horizontal que se conserva 
 // uno alto permanece de pie y se asoma por el borde.
 const COVER_RANGE = 2.4; // distancia máxima desde la que se desliza a cubierto (m)
 const COVER_GAP = 0.05; // separación entre la cápsula y el muro
+const COVER_HUG = 0.27; // cuánto se arrima el cuerpo al muro, hasta apoyar la espalda (m)
+const COVER_HUG_AIM = 0.12; // ...y al levantarse de cara al muro para apuntar por encima
+const LIMIT_RANGE = 0.55; // a menos de esto del final del muro, está en su límite (m)
 const COVER_SLIDE_SPEED = 7; // velocidad del deslizamiento de entrada (m/s)
 const COVER_SPEED = 1.7; // velocidad pegado al muro (m/s)
 const COVER_CROUCH_SPEED = 1.3; // ...y agachado tras una cobertura baja
@@ -219,12 +222,16 @@ const TORSO_BLIND = {
   // Agachado tras una cobertura baja: el hombro derecho sube y va atrás, por encima del muro;
   // la cabeza se queda abajo, mirando al frente.
   baja: { giro: -0.4, lado: 0.3, frente: -0.12, cuello: 0.3, cabeza: 0.25 },
-  // Tras un muro alto (hacia un borde a la izquierda; se refleja para la derecha).
-  alta: { giro: 0.35, lado: 0.18, frente: 0, cuello: -0.25, cabeza: 0.1 },
+  // Tras un muro alto, lejos de sus límites: erguido, el hombro derecho arriba y la cabeza gacha.
+  arriba: { giro: 0, lado: 0.12, frente: 0, cuello: 0, cabeza: 0.2 },
+  // En un límite del muro, girado hacia el borde: se inclina hacia él, la cabeza atrás.
+  borde: { giro: 0, lado: 0, frente: 0.22, cuello: 0, cabeza: -0.15 },
   // Acostado (objetivo a la izquierda; se refleja).
   muyBaja: { giro: 0.25, lado: 0.2, frente: 0.4, cuello: 0, cabeza: 0.15 },
 };
-const BLIND_EDGE = 0.55; // tras un muro alto, distancia máxima al borde para sacar el arma por él (m)
+// A ciegas tras un muro alto y lejos de sus límites: brazo en alto y tiro hacia arriba, por
+// encima del muro (cuánto se inclina el tiro hacia el otro lado; 0 = vertical).
+const BLIND_UP_TILT = 0.2;
 
 const _v = new THREE.Vector3();
 const _a = new THREE.Vector3();
@@ -259,7 +266,7 @@ export const TUNING = {
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
-  HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, BLIND_EDGE,
+  HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
 };
 
 function dampAngle(a, b, lambda, dt) {
@@ -329,6 +336,8 @@ export class Player {
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando la pistola (al apuntar)
     this.batReady = 0; // 0-1: bate en guardia, sobre el hombro derecho
+    this.coverHug = 0; // cuánto se arrima ahora el modelo al muro (m)
+    this.hugN = { x: 0, z: 0 }; // normal del último muro (para separarse poco a poco al salir)
     this.armFrame = null; // marco del tronco para los límites de los brazos, si está girado (reachArm)
     this.armCross = 0; // margen extra para cruzar el brazo (dos manos en un arma)
     this.batGrip = 0; // 0-1: mano izquierda sujetando el bate
@@ -563,6 +572,10 @@ export class Player {
       nx: best.nx, nz: best.nz, high: false, veryLow: false, proneDir: 1, attached: false, away: 0,
       mode: null, // al apuntar: 'over' (por encima), 'side' (por el borde) o 'blocked'
       peek: 0, peekDir: 0, peekGoal: 0,
+      // Límites del muro: distancia a cada final (Infinity si queda lejos) y en cuál está:
+      // -1 el derecho del personaje (de espaldas al muro), +1 el izquierdo, 0 ninguno.
+      edgeR: Infinity, edgeL: Infinity, limit: 0,
+      blindMode: 'over', blindSide: 0, blindLocked: false,
     };
     this.jumpT = -1;
     return true;
@@ -615,19 +628,27 @@ export class Player {
       c.away = 0;
     }
 
+    // ¿Está en un límite del muro? Se mide la distancia a cada final (mientras no se asoma).
+    const edge = (side) => {
+      for (let r = 0.1; r <= PEEK_REACH; r += 0.07) if (ends(side, r)) return r;
+      return Infinity;
+    };
+    if (c.attached && c.peek < 0.02) {
+      c.edgeR = edge(-1);
+      c.edgeL = edge(1);
+      const near = Math.min(c.edgeR, c.edgeL);
+      c.limit = near > LIMIT_RANGE ? 0 : c.edgeR <= c.edgeL ? -1 : 1;
+    }
+
     // Al empezar a apuntar decide cómo asomarse: por el borde si hay uno cerca (siempre en
-    // cobertura alta; en la baja, solo si se apunta hacia ese lado) o por encima.
+    // cobertura alta, por el más cercano; en la baja, solo si se apunta hacia ese lado) o por
+    // encima.
     if (c.attached && aiming && !c.mode) {
-      const edge = (side) => {
-        for (let r = 0.1; r <= PEEK_REACH; r += 0.07) if (ends(side, r)) return r;
-        return Infinity;
-      };
-      const left = edge(-1), right = edge(1);
+      const left = c.edgeR, right = c.edgeL;
       const aimSide = -Math.sin(cam.yaw) * tx - Math.cos(cam.yaw) * tz; // hacia dónde mira la cámara
       let dir = 0;
       if (c.high) {
-        const camSide = Math.sign(Math.cos(cam.yaw) * tx - Math.sin(cam.yaw) * tz) || 1;
-        dir = left < Infinity && right < Infinity ? camSide : right < Infinity ? 1 : left < Infinity ? -1 : 0;
+        dir = right < left ? 1 : left < Infinity ? -1 : 0;
       } else if (c.veryLow) dir = 0; // tumbado solo se dispara incorporándose
       else if (right < Infinity && aimSide > 0.3) dir = 1;
       else if (left < Infinity && aimSide < -0.3) dir = -1;
@@ -637,25 +658,16 @@ export class Player {
       c.mode = dir ? 'side' : c.high ? 'blocked' : 'over';
     }
     if (!aiming && c.peek < 0.02) c.mode = null;
-    // A ciegas tras un muro alto el brazo sale por un borde cercano (el del lado de la cámara
-    // si hay dos); sin borde al alcance de la mano no hay disparo.
-    if (c.attached && c.high && this.blindT > 0) {
-      if (c.blindSide === undefined) {
-        // Hasta dónde llega la mano del arma hacia cada lado: depende de dónde queda el hombro.
-        this.upperArm.getWorldPosition(_a);
-        const shoulder = (_a.x - t.x) * tx + (_a.z - t.z) * tz;
-        const reach = (side) => {
-          if (shoulder * side < 0) return false; // por el otro lado el brazo cruzaría el cuerpo
-          const max = Math.min(BLIND_EDGE, shoulder * side + BLIND_REACH - 0.1);
-          for (let r = 0.1; r <= max; r += 0.05) if (ends(side, r)) return true;
-          return false;
-        };
-        const l = reach(-1), r = reach(1);
-        const camSide = Math.sign(-Math.sin(cam.yaw) * tx - Math.cos(cam.yaw) * tz) || 1;
-        c.blindSide = l && r ? camSide : r ? 1 : l ? -1 : 0;
-        if (c.blindSide) c.blindArm = c.blindSide; // el brazo lo recuerda mientras se recoge
+    // A ciegas: en un límite del muro saca el arma por ese lado; si no, por encima (muro bajo)
+    // o con el brazo en alto, tirando hacia arriba (muro alto). Se decide al empezar a disparar
+    // y el brazo lo recuerda mientras se recoge.
+    if (c.attached && this.blindT > 0) {
+      if (!c.blindLocked) {
+        c.blindLocked = true;
+        c.blindSide = c.veryLow ? 0 : c.limit;
+        c.blindMode = c.veryLow ? 'prone' : c.blindSide ? 'side' : c.high ? 'up' : 'over';
       }
-    } else c.blindSide = undefined;
+    } else c.blindLocked = false;
     const peekTarget = aiming && c.mode === 'side' ? c.peekGoal : 0;
     let peekV = THREE.MathUtils.clamp((peekTarget - c.peek) * 8, -2.8, 2.8);
     if (c.peek + peekV * dt < 0) peekV = -c.peek / dt;
@@ -787,7 +799,7 @@ export class Player {
     this.canFire = !cover || (cover.attached && (
       cover.mode === 'side' ? cover.peek > cover.peekGoal * 0.8
         : cover.mode === 'over' ? (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
-          : this.blindW > 0.7 && (!cover.high || !!cover.blindSide)
+          : this.blindW > 0.7
     ));
 
     // --- Salto y gravedad ---
@@ -887,6 +899,10 @@ export class Player {
       if (cover.attached && cover.veryLow) {
         // Acostado: perpendicular a la cobertura, con la cabeza hacia ella.
         this.turnToward(Math.atan2(-cover.nx, -cover.nz), 10, dt);
+      } else if (blind && cover.blindMode === 'side') {
+        // A ciegas en un límite del muro: se gira hacia ese borde, con el hombro en el muro,
+        // para sacar el brazo de frente por él.
+        this.turnToward(Math.atan2(cover.nz * cover.blindSide, -cover.nx * cover.blindSide), 14, dt);
       } else
       this.turnToward(Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
     } else if (moving && !punching) {
@@ -1564,13 +1580,8 @@ export class Player {
       const side = Math.sign(_v.dot(_axis)) || 1; // + objetivo a la izquierda del cuerpo
       return { ...TORSO_BLIND.muyBaja, giro: TORSO_BLIND.muyBaja.giro * -side };
     }
-    if (c.high) {
-      // Muro alto: se inclina y gira hacia el borde por el que saca el arma.
-      _axis.set(1, 0, 0).applyQuaternion(this.model.quaternion);
-      const side = Math.sign((c.nz * _axis.x - c.nx * _axis.z) * (c.blindSide || c.blindArm || 1)) || 1; // + borde a la izquierda
-      const T = TORSO_BLIND.alta;
-      return { giro: -T.giro * side, lado: T.lado * side, frente: T.frente, cuello: T.cuello * side, cabeza: T.cabeza };
-    }
+    if (c.blindMode === 'up') return TORSO_BLIND.arriba;
+    if (c.blindMode === 'side') return TORSO_BLIND.borde;
     return TORSO_BLIND.baja;
   }
 
@@ -1590,14 +1601,16 @@ export class Player {
     const back = new THREE.Vector3(-c.nx, 0, -c.nz); // hacia el muro (y lo que hay detrás)
     const dir = new THREE.Vector3(0, 1, 0);
     if (c.veryLow) dir.addScaledVector(toward, 0.45); // acostado: brazo en alto sobre el pecho
-    else if (c.high) {
-      // Muro alto: brazo estirado hacia el borde por el que saca el arma.
-      const side = c.blindSide || c.blindArm || Math.sign(toward.x * c.nz - toward.z * c.nx) || 1;
-      dir.set(c.nz * side, 0.2, -c.nx * side).addScaledVector(back, 0.2);
-    } else dir.addScaledVector(back, 0.5).addScaledVector(toward, 0.15); // por encima y hacia atrás
+    else if (c.blindMode === 'side') {
+      // En un límite del muro: brazo estirado hacia el borde por el que saca el arma.
+      const side = c.blindSide;
+      dir.set(c.nz * side, 0.12, -c.nx * side).addScaledVector(back, 0.1);
+    } else if (c.blindMode === 'up') dir.addScaledVector(back, 0.12); // brazo en alto, pegado al muro
+    else dir.addScaledVector(back, 0.5).addScaledVector(toward, 0.15); // por encima y hacia atrás
     const target = shoulder.clone().addScaledVector(dir.normalize(), BLIND_REACH);
     const straight = this.coverReady > 0.5; // parte de la postura de espera, ya calculada
     this.reachArm(-1, target, w, straight);
+    if (c.blindMode === 'up') return; // con el brazo en alto, la izquierda se queda abajo
     // La mano izquierda va junto a la derecha.
     const left = new THREE.Vector3(1, 0, 0).applyQuaternion(this.model.quaternion); // +X = izquierda
     this.reachArm(1, this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(left, 0.06), w, straight);
@@ -1748,6 +1761,15 @@ export class Player {
     const t = this.body.translation();
     this.position.set(t.x, t.y - FOOT - 0.02, t.z);
     this.model.position.copy(this.position);
+    // A cubierto el cuerpo se arrima al muro hasta apoyar la espalda (la cápsula queda más
+    // lejos); menos al levantarse de cara al muro, y nada al asomarse más allá del borde.
+    const cv = this.cover;
+    const out = cv?.peekGoal ? THREE.MathUtils.clamp(cv.peek / cv.peekGoal, 0, 1) : 0;
+    const hug = !cv?.attached || cv.veryLow ? 0 : (cv.mode === 'over' || cv.mode === 'blocked' || (cv.blindLocked && cv.blindMode === 'side') ? COVER_HUG_AIM : COVER_HUG) * (1 - out);
+    this.coverHug = THREE.MathUtils.damp(this.coverHug, hug, 9, dt);
+    if (cv) { this.hugN.x = cv.nx; this.hugN.z = cv.nz; }
+    this.model.position.x -= this.hugN.x * this.coverHug;
+    this.model.position.z -= this.hugN.z * this.coverHug;
     // Acostado: el modelo se tumba hacia el objeto y gira sobre su eje hasta quedar boca
     // arriba, con la cabeza junto a él y los pies hacia fuera.
     const prone = this.prone > 0.005 ? this.prone : 0;
@@ -1850,7 +1872,13 @@ export class Player {
     if (blind > 0.01) {
       // A ciegas no hay mira: tira hacia donde mira la cámara (el punto de la mira caería en
       // el propio muro que lo cubre).
-      this.upperArm.getWorldPosition(_v).addScaledVector(cam.forward, 40);
+      this.upperArm.getWorldPosition(_v);
+      if (cover?.blindMode === 'up') {
+        // Muro alto, lejos de sus límites: tira hacia arriba, por encima del muro.
+        _v.x -= cover.nx * 40 * BLIND_UP_TILT;
+        _v.z -= cover.nz * 40 * BLIND_UP_TILT;
+        _v.y += 40;
+      } else _v.addScaledVector(cam.forward, 40);
       this.aimPoint.lerp(_v, blind);
       this.applyBlindFire(blind);
     }
