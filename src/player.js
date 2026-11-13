@@ -219,9 +219,9 @@ const BAT_LEFT = new THREE.Vector3(0, 0, -0.075);
 const GUN_LEFT = new THREE.Vector3(0.045, -0.025, 0);
 const GRIP_SHIFT = 0.25; // cuánto puede acercarse el arma a la mano izquierda si esta no llega (m)
 const GRIP_SLACK = 0.004; // separación admitida entre la mano y su agarre (m)
-// Brazos a cubierto con la pistola (m, desde el pecho): manos delante, algo más abajo y
-// hacia el centro del cuerpo, y separación entre las dos manos.
-const COVER_ARMS = { frente: 0.26, bajo: 0.12, centro: 0.02, manos: 0.05 };
+// Brazo derecho a cubierto con la pistola (m, desde el pecho): la mano delante, algo más
+// abajo y hacia su lado. La izquierda queda libre: sin apuntar el arma va en una mano.
+const COVER_ARMS = { frente: 0.26, bajo: 0.12, lado: 0.1 };
 // Giro del tronco (rad, ver applyTorso) al disparar: el cuerpo acompaña a los brazos.
 const TORSO_AIM = { giro: 0.3, lado: 0, frente: 0.08, cuello: -0.22, cabeza: 0 };
 const TORSO_BLIND = {
@@ -1357,7 +1357,8 @@ export class Player {
 
     // Tronco encorvado hacia las rodillas.
     if (this.abdomen) this.turnBone(this.abdomen, _right.set(1, 0, 0).applyQuaternion(this.model.quaternion), R.tronco * w);
-    // Brazos: codos junto al cuerpo y las dos manos delante del pecho, donde va el arma.
+    // Brazos: codos junto al cuerpo y las manos delante del pecho (con la pistola, la
+    // izquierda baja después al suelo: ver applyCrawl).
     for (const [upper, lower, hand, side] of [
       [this.upperArmL, this.lowerArmL, this.handL, 1], [this.upperArm, this.lowerArm, this.hand, -1],
     ]) {
@@ -1379,14 +1380,17 @@ export class Player {
       if (_right.lengthSq() > 1e-6) this.turnBone(this.neck, _right.normalize(), -R.cabeza * w);
     }
     this.applyAdjust('recostado', w);
-    if (k > 0.001) this.applyCrawl(k);
+    // Con la pistola (en la mano derecha, sobre el pecho) la izquierda descansa en el suelo
+    // junto a la cadera, también parado: sin apuntar el arma va en una sola mano.
+    const kL = this.weapon === 'pistola' ? w : k;
+    if (kL > 0.001) this.applyCrawl(k, kL);
   }
 
   /**
    * Desplazamiento acostado, con peso `k`: manos y pies se apoyan en el suelo según la fase
    * del ciclo (`crawlPhase`) y quedan quietos mientras el cuerpo se desliza entre ellos.
    */
-  applyCrawl(k) {
+  applyCrawl(k, kL = k) {
     this.model.updateMatrixWorld(true);
     const c = this.crawlPhase(this.scoot);
     const floor = this.position.y;
@@ -1399,11 +1403,15 @@ export class Player {
       [this.upperArmL, this.lowerArmL, this.handL, 1], [this.upperArm, this.lowerArm, this.hand, -1],
     ]) {
       if (!upper || !lower || !hand || hand === lower) continue;
+      // Con la pistola, la mano derecha la sostiene sobre el pecho: se arrastra con la
+      // izquierda y los pies.
+      if (s < 0 && this.weapon === 'pistola') continue;
       upper.getWorldPosition(_hip);
-      const target = _hip.clone().addScaledVector(side, s * CRAWL_HAND_OUT + step).addScaledVector(down, CRAWL_HAND_DOWN);
-      target.y = floor + 0.04 + CRAWL_HAND_LIFT * c.up;
+      const kh = s > 0 ? kL : k; // peso de esta mano
+      const target = _hip.clone().addScaledVector(side, s * CRAWL_HAND_OUT + step * k).addScaledVector(down, CRAWL_HAND_DOWN);
+      target.y = floor + 0.04 + CRAWL_HAND_LIFT * c.up * k;
       const now = hand.getWorldPosition(_knee2).clone();
-      if (k < 1) target.lerp(now, 1 - k);
+      if (kh < 1) target.lerp(now, 1 - kh);
       this.reach(upper, lower, now, target, side.clone().multiplyScalar(s).addScaledVector(up, 0.6));
     }
     // Pies: desde donde los deja la pose de rodillas dobladas, quietos o adelantándose.
@@ -1540,11 +1548,11 @@ export class Player {
   }
 
   /**
-   * Brazos a cubierto, con peso `w`. Con la pistola, las dos manos juntas delante del pecho y
-   * el cañón hacia arriba; sin ella, agachado apoya las manos en las rodillas y de pie las
-   * deja delante del vientre, con los codos doblados.
+   * Brazos a cubierto, con peso `w` (`wLeft` el del izquierdo). Agachado apoya las manos en
+   * las rodillas y de pie las deja delante del vientre, con los codos doblados; con la
+   * pistola, la derecha la lleva delante del pecho con el cañón hacia arriba.
    */
-  applyCoverArms(w, withGun) {
+  applyCoverArms(w, withGun, wLeft = w) {
     if (!this.upperArm || !this.lowerArm || !this.upperArmL || !this.lowerArmL) return;
     if (this.hand === this.lowerArm || this.handL === this.lowerArmL) return;
     this.savePose();
@@ -1556,10 +1564,7 @@ export class Player {
     const chest = (this.spine[this.spine.length - 1] ?? this.bodyBone).getWorldPosition(new THREE.Vector3());
     const A = COVER_ARMS;
     let right, left;
-    if (withGun) {
-      right = chest.clone().addScaledVector(F, A.frente).addScaledVector(U, -A.bajo).addScaledVector(X, -A.centro);
-      left = right.clone().addScaledVector(X, A.manos).addScaledVector(F, -0.02).addScaledVector(U, -0.03);
-    } else if (this.coverCrouch > 0.5) {
+    if (this.coverCrouch > 0.5) {
       // Manos sobre las rodillas.
       const knee = (side) => {
         const leg = this.legs.find((l) => l.side === side);
@@ -1571,11 +1576,10 @@ export class Player {
       right = chest.clone().addScaledVector(F, 0.2).addScaledVector(U, -0.34).addScaledVector(X, -0.1);
       left = chest.clone().addScaledVector(F, 0.2).addScaledVector(U, -0.34).addScaledVector(X, 0.1);
     }
-    const nowR = this.hand.getWorldPosition(new THREE.Vector3());
+    // Con la pistola, la derecha la lleva delante del pecho; la izquierda queda libre.
+    if (withGun) right = chest.clone().addScaledVector(F, A.frente).addScaledVector(U, -A.bajo).addScaledVector(X, -A.lado);
     this.reachArm(-1, right, w);
-    // Con la pistola la izquierda va a la mano derecha ya colocada.
-    if (withGun) left = this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(X, A.manos).addScaledVector(U, -0.03);
-    this.reachArm(1, left, w);
+    this.reachArm(1, left, wLeft);
   }
 
   /**
@@ -1616,8 +1620,8 @@ export class Player {
 
   /**
    * Disparo a ciegas desde la cobertura, con peso `w`: el brazo derecho sale por encima del
-   * objeto (por el lado si el muro es alto) mientras el cuerpo sigue cubierto, y la mano
-   * izquierda lo acompaña. El arma se orienta después hacia la mira.
+   * objeto (por el borde en un límite del muro, o en alto tras un muro alto) mientras el cuerpo
+   * sigue cubierto; el arma va en una sola mano y se orienta después hacia la mira.
    */
   applyBlindFire(w) {
     const c = this.cover;
@@ -1639,10 +1643,6 @@ export class Player {
     const target = shoulder.clone().addScaledVector(dir.normalize(), BLIND_REACH);
     const straight = this.coverReady > 0.5; // parte de la postura de espera, ya calculada
     this.reachArm(-1, target, w, straight);
-    if (c.blindMode === 'up') return; // con el brazo en alto, la izquierda se queda abajo
-    // La mano izquierda va junto a la derecha.
-    const left = new THREE.Vector3(1, 0, 0).applyQuaternion(this.model.quaternion); // +X = izquierda
-    this.reachArm(1, this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(left, 0.06), w, straight);
   }
 
   /**
@@ -1874,7 +1874,9 @@ export class Player {
     // A cubierto, los brazos esperan en una postura propia (no la del clip de reposo ni el
     // balanceo de la zancada lateral); apuntar o disparar a ciegas la van sustituyendo.
     const ready = this.coverReady * (1 - this.aimWeight) * (1 - this.blindW) * (1 - prone);
-    if (ready > 0.01) this.applyCoverArms(ready, gun);
+    // (Disparando a ciegas la izquierda sigue en esa postura: el arma va en una mano.)
+    const readyL = this.coverReady * (1 - this.aimWeight * this.coverGrip) * (1 - prone);
+    if (readyL > 0.01) this.applyCoverArms(ready, gun, readyL);
     this.placeBat();
     this.gun.visible = gun && (armed || prone > 0.5 || ready > 0.3);
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
@@ -1882,13 +1884,11 @@ export class Player {
     if (!armed) {
       // Acostado lleva el arma en las manos, sobre el pecho, apuntando hacia los pies y arriba.
       // A cubierto, junto al pecho con el cañón hacia arriba.
-      // La mano izquierda va anclada a la empuñadura, junto a la derecha.
+      // Sin apuntar, el arma va en una sola mano.
       this.model.updateMatrixWorld(true);
-      this.holdTwoHanded(this.gun, this.hand.getWorldPosition(new THREE.Vector3()), 1, () => {
-        this.palm(this.gun.position);
-        _v.set(prone > 0.5 ? 0.15 : 0.1, prone > 0.5 ? -0.8 : 0.75, prone > 0.5 ? 0.45 : 0.5).applyQuaternion(this.model.quaternion);
-        this.gun.lookAt(_v.add(this.gun.position));
-      }, GUN_LEFT, Math.max(ready, THREE.MathUtils.smoothstep(prone, 0.5, 1)), true, true);
+      this.palm(this.gun.position);
+      _v.set(prone > 0.5 ? 0.15 : 0.1, prone > 0.5 ? -0.8 : 0.75, prone > 0.5 ? 0.45 : 0.5).applyQuaternion(this.model.quaternion);
+      this.gun.lookAt(_v.add(this.gun.position));
       return;
     }
 

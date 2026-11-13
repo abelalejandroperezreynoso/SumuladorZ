@@ -75,8 +75,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
 - **Armas a dos manos** — `Player.holdTwoHanded` ancla las manos al arma como `gait.js` los
   pies al suelo: el arma va en la palma derecha, la izquierda en su agarre (`BAT_LEFT`,
   `GUN_LEFT`, en el marco del arma) y, si no llega, el arma se acerca hasta `GRIP_SHIFT`.
-  `player.gripGap` es la separación que queda (m); debe dar unos milímetros. Disparando a
-  ciegas la izquierda no alcanza el arma y va a una mano. El batazo va entero por código
+  `player.gripGap` es la separación que queda (m); debe dar unos milímetros. La pistola solo
+  se sujeta con las dos manos al apuntar: a cubierto, acostado, a ciegas o disparando sin
+  apuntar va en la derecha (acostado se arrastra con la mano izquierda y los pies). El batazo va entero por código
   (`SWING_KEYS`, `swingPhase`, `placeBat`): impulso atrás, golpe y acompañamiento, sin clip;
   durante el giro los límites de los brazos se miden en el marco del pecho (`armFrame`).
 - **Cobertura** — `coverMove` mide cada fotograma la distancia a cada final del muro
