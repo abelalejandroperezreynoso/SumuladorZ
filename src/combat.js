@@ -106,21 +106,24 @@ export class Combat {
    * Golpe contra el suelo en `point` (a ras de suelo): onda, `chunks` trozos que saltan,
    * sacudida de cámara (`jolt`, m) y pausa del impacto (`freeze`, s).
    */
-  impact(point, jolt, freeze = 0, chunks = 0) {
+  impact(point, jolt, freeze = 0, chunks = 0, ground = null) {
     this.impacts++;
     this.jolt = Math.max(this.jolt, jolt);
     this.freeze = Math.max(this.freeze, freeze);
-    const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }));
-    ring.position.copy(point).y += 0.03;
-    this.scene.add(ring);
-    this.sparks.push({ mesh: ring, t: 0, size: RING_SIZE * (freeze ? 1 : 0.5) });
+    // `ground`: altura del suelo si el golpe fue en el aire (entonces no hay onda).
+    if (ground === null) {
+      const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }));
+      ring.position.copy(point).y += 0.03;
+      this.scene.add(ring);
+      this.sparks.push({ mesh: ring, t: 0, size: RING_SIZE * (freeze ? 1 : 0.5) });
+    }
     for (let i = 0; i < chunks; i++) {
       const mesh = new THREE.Mesh(this.chunkGeo, this.chunkMat);
       const a = (i / chunks) * Math.PI * 2 + Math.random(), out = CHUNK_SPEED * (0.35 + 0.65 * Math.random());
-      mesh.position.copy(point).y += 0.15;
+      mesh.position.copy(point).y += ground === null ? 0.15 : 0;
       mesh.rotation.set(Math.random() * 6, Math.random() * 6, 0);
       this.scene.add(mesh);
-      this.chunks.push({ mesh, vx: Math.cos(a) * out, vy: CHUNK_SPEED * (0.6 + 0.8 * Math.random()), vz: Math.sin(a) * out, t: 0, floor: point.y + 0.03 });
+      this.chunks.push({ mesh, vx: Math.cos(a) * out, vy: CHUNK_SPEED * (0.6 + 0.8 * Math.random()), vz: Math.sin(a) * out, t: 0, floor: (ground ?? point.y) + 0.03 });
     }
   }
 

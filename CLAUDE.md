@@ -117,7 +117,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   carga atrás y cae sobre el golpe (`SLAM_BODY`, `slamDrop`/`slamLoad` en `poseStomp`, vía
   `applyCrouch`) y al aplastar, `Combat.impact` da sacudida de cámara (`cam.kick`), pausa del
   impacto (`combat.freeze`, `HIT_STOP` en `main.js`), onda y trozos; el zombi muerto rebota
-  (`damage(…, slam)`). Escenas `pisoton` y `bate-suelo`.
+  (`damage(…, slam)`). El batazo normal también (`SLAM_BODY.batazo`, `slamKey`): más giro
+  de tronco, se hunde al conectar y, si da a un zombi, sacudida, pausa, trozos y sale
+  despedido más lejos (`empuje`). Escenas `pisoton`, `bate-suelo` y `bate`.
 - **Muerte de los zombis** — no hay clip de muerte: `Zombie.startRagdoll` (`src/horde.js`) crea
   un cuerpo físico por segmento (`RAGDOLL`, cápsulas en `GROUPS.debris`, unidos por rótulas)
   sobre la pose del momento y `poseRagdoll` lleva los huesos a esos cuerpos. Cuando todos

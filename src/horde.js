@@ -402,14 +402,14 @@ class Zombie {
     if (this.state === 'wander') this.state = 'chase';
   }
 
-  /** `slam`: golpe de arriba abajo; si lo mata a rastras, rebota contra el suelo a esa velocidad (m/s). */
-  damage(amount, player, slam = 0) {
+  /** `power`: multiplica lo lejos que sale despedido al morir de pie. `slam`: golpe de arriba abajo; si lo mata a rastras, rebota contra el suelo a esa velocidad (m/s). */
+  damage(amount, player, slam = 0, power = 1) {
     if (!this.alive) return;
     this.hp -= amount;
     this.alert(player.position);
     if (this.hp <= 0) {
       // A golpes: sale despedido lejos de quien le pega.
-      _to.subVectors(this.position, player.position).setY(0).normalize().multiplyScalar(2.2).setY(0.8);
+      _to.subVectors(this.position, player.position).setY(0).normalize().multiplyScalar(2.2 * power).setY(0.8 * (1 + power) / 2);
       if (this.crawler) _to.multiplyScalar(slam ? 0.3 : 0.15).setY(slam || _to.y * 0.15); // aplastado contra el suelo: no sale despedido; rebota
       return this.die(_to.clone());
     }
