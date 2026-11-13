@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { SkeletonView, SKELETON_DEFAULT } from './skeleton.js';
 import { RAPIER, GROUPS } from './physics.js';
 
 const RADIUS = 0.35;
@@ -89,6 +90,8 @@ class Zombie {
     this.model = cloneSkinned(horde.template);
     this.model.position.copy(this.position);
     horde.scene.add(this.model);
+    this.skel = new SkeletonView(this.model, horde.scene, 'zombie');
+    this.skel.set(horde.skeletonOnly);
     this.mixer = new THREE.AnimationMixer(this.model);
     const action = (name) => this.mixer.clipAction(horde.clips[name]);
     this.actions = Object.fromEntries(Object.entries(ZOMBIE_CLIPS).map(([state, name]) => [state, action(name)]));
@@ -195,6 +198,7 @@ class Zombie {
 
   dispose() {
     this.horde.scene.remove(this.model);
+    this.skel.dispose();
     this.mixer.stopAllAction();
     if (this.body) {
       this.horde.physics.meta.delete(this.collider.handle);
@@ -399,6 +403,7 @@ class Zombie {
 /** Horda por oleadas: la oleada N suelta N zombis y la siguiente llega al matarlos a todos. */
 export class Horde {
   constructor(scene, physics, assets) {
+    this.skeletonOnly = SKELETON_DEFAULT;
     this.scene = scene;
     this.physics = physics;
     this.zombies = [];
@@ -528,6 +533,15 @@ export class Horde {
   }
 
   postPhysics() {
-    for (const z of this.zombies) z.postPhysics();
+    for (const z of this.zombies) {
+      z.postPhysics();
+      z.skel.update();
+    }
+  }
+
+  /** Zombis con solo el esqueleto (true) o con su modelo (false), también los que lleguen después. */
+  setSkeleton(only) {
+    this.skeletonOnly = only;
+    for (const z of this.zombies) z.skel.set(only);
   }
 }

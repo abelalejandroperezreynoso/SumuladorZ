@@ -67,7 +67,12 @@ async function start() {
   const autopilot = new Autopilot({ player, horde, cam, input, physics });
   let catalog = null; // catálogo de mecánicas (se crea al final, cuando existe tick)
 
-  const toggleSkeleton = () => player.toggleSkeleton();
+  // Jugador y zombis cambian juntos entre esqueleto y modelo.
+  const toggleSkeleton = () => {
+    const only = player.toggleSkeleton();
+    horde.setSkeleton(only);
+    return only;
+  };
   const toggleHorde = () => {
     if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
   };
@@ -154,6 +159,7 @@ async function start() {
     player.postPhysics(dt, cam, combat);
     // Si un obstáculo empuja la cámara hasta la cabeza, se oculta el modelo para no taparlo todo.
     player.model.visible = cam.current > 0.75;
+    player.skeleton.visible = player.skeletonOnly && player.model.visible;
     // Con el catálogo abierto se dibuja desde su cámara lateral (la del juego sigue apuntando).
     const viewing = catalog?.active;
     if (viewing) catalog.beforeRender();

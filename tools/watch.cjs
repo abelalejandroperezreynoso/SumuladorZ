@@ -4,7 +4,7 @@
 // calidad del movimiento: pies que resbalan, saltos bruscos de pose y tirones de cámara.
 //
 // Uso:  npx vite --port 5199 &   y luego   node tools/watch.cjs [carpeta de salida] [escena...]
-// Con SKELETON=1 las tiras muestran solo el esqueleto del personaje.
+// Las tiras muestran los esqueletos, como el juego por ahora; con SKELETON=0, los modelos.
 // Con EVERY=4 guarda una imagen cada 4 fotogramas (15 por segundo): tiras más cortas para un catálogo.
 // Requiere Playwright con Chromium disponible en el entorno.
 const { chromium } = require('playwright');
@@ -25,7 +25,8 @@ function install(skeleton) {
   document.querySelectorAll('body > div, body > button').forEach((e) => { e.style.display = 'none'; });
   const realRender = g.renderer.render.bind(g.renderer);
   g.renderer.render = () => {};
-  if (skeleton) g.player.toggleSkeleton(); // SKELETON=1: tiras con solo el esqueleto
+  g.player.setSkeleton(skeleton); // SKELETON=0: tiras con los modelos
+  g.horde.setSkeleton(skeleton);
   const THREE_V = g.player.position.constructor;
   const bonesOf = (model, names) => {
     const out = {};
@@ -163,7 +164,7 @@ function install(skeleton) {
   page.on('pageerror', (e) => console.log('ERROR', e.message));
   await page.goto(URL);
   await page.waitForFunction(() => window.__game, null, { timeout: 60000 });
-  await page.evaluate(install, !!process.env.SKELETON);
+  await page.evaluate(install, process.env.SKELETON !== '0');
   const report = {};
   const names = await page.evaluate(() => window.__game.catalog.scenes.map((s) => s.id));
   for (const name of names) {
