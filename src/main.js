@@ -63,7 +63,7 @@ async function start() {
   combat.player = player;
   const horde = new Horde(scene, physics, player.assets);
   horde.onWave = (n) => showToast(`Oleada ${n}`);
-  let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '';
+  let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '', aimShown = false;
   const weaponBtn = document.getElementById('weapon-btn');
   // Tocar (o pulsar) el arma de la esquina cambia a la siguiente.
   weaponBtn.addEventListener('touchstart', (e) => {
@@ -198,6 +198,11 @@ async function start() {
         + (autopilot.active ? '<span class="auto">Piloto automático</span>' : '');
     }
     // Carrera rápida: el botón queda marcado y la cámara abre un poco el campo de visión.
+    // La mira solo aparece al apuntar; disparar sin apuntar no la muestra.
+    if (player.aiming !== aimShown) {
+      aimShown = player.aiming;
+      document.getElementById('crosshair')?.classList.toggle('off', !aimShown);
+    }
     if (player.sprinting !== sprintShown) {
       sprintShown = player.sprinting;
       document.getElementById('t-sprint')?.classList.toggle('held', sprintShown);

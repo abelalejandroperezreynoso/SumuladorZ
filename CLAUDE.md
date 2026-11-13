@@ -47,6 +47,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   disparando (`stand`) llega lejos, el juego es demasiado fácil. Juega con la pistola y munición
   infinita (`player.infiniteAmmo`), como el piloto automático, para comparar con análisis
   anteriores; en una partida real se empieza sin armas y las balas se recogen (`src/pickups.js`).
+  Apuntar (botón 2) y disparar (botón 0) son mandos separados: el piloto y `gameplay.cjs`
+  pulsan los dos para disparar apuntando; solo el 0 es disparo sin apuntar (a ciegas a cubierto).
 - **Piloto automático** — tecla `P` en el juego (`src/autopilot.js`). Su registro está en
   `window.__game.autopilot.log` y `.stats`. Busca cobertura de forma activa y va rotando
   entre alta, baja y muy baja (`stats.coverTypes`). La escena `piloto` de `tools/watch.cjs`

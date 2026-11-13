@@ -51,6 +51,7 @@ export class Autopilot {
     this.active = !this.active;
     this.input.auto = null;
     this.input.buttons.delete(0);
+    this.input.buttons.delete(2);
     this.fleeing = false;
     this.note(this.active ? 'piloto activado' : 'piloto desactivado');
   }
@@ -170,7 +171,7 @@ export class Autopilot {
     if (!H.active) {
       this.action = 'esperando';
       if (this.ready('horde', dt)) this.press('KeyH', 'horde', 2.5);
-      I.buttons.delete(0);
+      I.buttons.delete(0); I.buttons.delete(2);
       return;
     }
 
@@ -184,7 +185,7 @@ export class Autopilot {
     }
     if (!target) {
       this.action = 'entre oleadas';
-      I.buttons.delete(0);
+      I.buttons.delete(0); I.buttons.delete(2);
       return; // si está a cubierto, espera ahí la siguiente oleada
     }
     const dx = target.position.x - P.position.x, dz = target.position.z - P.position.z;
@@ -316,6 +317,7 @@ export class Autopilot {
       }
     }
 
-    if (fire) I.buttons.add(0); else I.buttons.delete(0);
+    // Apunta siempre al disparar (levantarse o asomarse a cubierto, sin desvío).
+    if (fire) { I.buttons.add(0); I.buttons.add(2); } else { I.buttons.delete(0); I.buttons.delete(2); }
   }
 }
