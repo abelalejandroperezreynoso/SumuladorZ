@@ -4,6 +4,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
 import { SkeletonView, SKELETON_DEFAULT } from './skeleton.js';
 import { makeGun, makeBat } from './pickups.js';
+import { fixProportions } from './proportions.js';
 import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
 // se confunde con uno antiguo guardado en la caché del navegador.
@@ -200,6 +201,7 @@ export class Player {
     const gltf = embedded
       ? await loader.parseAsync(Uint8Array.from(atob(embedded), (c) => c.charCodeAt(0)).buffer, '')
       : await loader.parseAsync(await preloadModel(), '');
+    fixProportions(gltf.scene, gltf.animations); // brazos y manos a medidas humanas
     // Copia intacta del modelo (antes de vestir al jugador) para crear los zombis.
     const assets = { scene: cloneSkinned(gltf.scene), animations: gltf.animations };
     const player = new Player(scene, physics, gltf);
