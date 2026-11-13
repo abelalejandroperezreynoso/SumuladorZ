@@ -35,6 +35,7 @@ const PLAYER_LAYERS = [
   ['A ciegas (con giro del tronco)', (p) => p.blindW],
   ['Inclinación', (p) => Math.abs(p.coverLean) / TUNING.PEEK_LEAN],
   ['Recostado', (p) => p.prone],
+  ['De pie relajado', (p) => p.standW],
 ];
 const ZOMBIE_LAYERS = [['Brazos al frente', (z) => z.arms]];
 

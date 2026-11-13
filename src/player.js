@@ -71,6 +71,13 @@ export const POSES = {
   },
   // Incorporado para apuntar por encima de una cobertura muy baja.
   rodillas: { agachado: 0.9, tronco: 0.27, ajustes: {} },
+  // De pie en reposo, relajado (el clip del modelo es una guardia con brazos abiertos y
+  // rodillas dobladas). Medidas desde los pies, en metros, hacia fuera, arriba y adelante.
+  parado: {
+    manosAfuera: 0.2, manosAltura: 0.86, manosAdelante: 0.13,
+    piesAfuera: 0.11, piesAdelante: 0.06, cadera: 0.04, tronco: -0.04, cabeza: -0.18,
+    ajustes: {},
+  },
 };
 // `ajustes` guarda giros libres por hueso, hechos en el editor seleccionando una parte del
 // cuerpo y arrastrando: { NombreDelHueso: [x, y, z, w] }, un cuaternión en el marco del hueso
@@ -86,7 +93,7 @@ const PARTS = [
 ];
 // Partes que una postura no deja girar porque otra capa las coloca después (al apuntar, los
 // brazos van hacia la mira).
-export const POSE_FIXED = { recostado: [], rodillas: ['UpperArmL', 'UpperArmR'] };
+export const POSE_FIXED = { recostado: [], rodillas: ['UpperArmL', 'UpperArmR'], parado: [] };
 export const POSE_SPEC = {
   recostado: [
     ['giro', 'Giro del cuerpo (90° de lado, 180° boca arriba)', 1.0, 2.6, 'rad'],
@@ -109,7 +116,18 @@ export const POSE_SPEC = {
     ['agachado', 'Cuánto se agacha', 0.3, 1, ''],
     ['tronco', 'Tronco inclinado', -0.2, 0.8, 'rad'],
   ],
+  parado: [
+    ['manosAfuera', 'Manos: separación del centro', 0.1, 0.35, 'm'],
+    ['manosAltura', 'Manos: altura', 0.7, 1.1, 'm'],
+    ['manosAdelante', 'Manos: hacia delante', -0.05, 0.3, 'm'],
+    ['piesAfuera', 'Pies: separación del centro', 0.05, 0.25, 'm'],
+    ['piesAdelante', 'Pies: hacia delante', -0.1, 0.2, 'm'],
+    ['cadera', 'Cadera más alta (estira las rodillas)', -0.1, 0.08, 'm'],
+    ['tronco', 'Tronco hacia delante', -0.3, 0.3, 'rad'],
+    ['cabeza', 'Cabeza hacia delante', -0.5, 0.4, 'rad'],
+  ],
 };
+const BREATH_RATE = 1.6; // respiración en reposo (rad/s: un ciclo cada ~4 s)
 // Desplazamiento acostado: ciclo de oruga. Manos y pies se apoyan en el suelo, la cadera se
 // levanta un poco y el cuerpo se desliza entre ellos; luego manos y pies se adelantan.
 const CRAWL_STEP = 0.4; // lo que avanza en cada ciclo (m)
@@ -159,8 +177,9 @@ const BLIND_REACH = 0.5; // distancia del hombro a la mano con el brazo fuera (m
 // detrás del cuerpo (componente hacia la espalda, 0-1), y `atrasArriba` lo que se suma con el
 // brazo en alto; `cruce`, cuánto puede pasar al otro lado, y `cruceDelante` lo que se suma
 // cuanto más por delante va. Distancia hombro→mano, en fracción del brazo: `cerrado` (codo
-// doblado del todo, ~145°) y `estirado`.
-const ARM_LIMITS = { atras: 0.3, atrasArriba: 0.45, cruce: 0.15, cruceDelante: 0.55, cerrado: 0.32, estirado: 0.97 };
+// doblado del todo, ~145°) y `estirado`. `codoFuera`: cuánto apunta el codo hacia fuera (el
+// resto, atrás y abajo).
+const ARM_LIMITS = { codoFuera: 0.45, atras: 0.3, atrasArriba: 0.45, cruce: 0.15, cruceDelante: 0.55, cerrado: 0.32, estirado: 0.97 };
 const AIM_REACH = 0.5; // del hombro a la muñeca al apuntar: brazo casi estirado (m)
 // Brazos a cubierto con la pistola (m, desde el pecho): manos delante, algo más abajo y
 // hacia el centro del cuerpo, y separación entre las dos manos.
@@ -276,6 +295,8 @@ export class Player {
     this.blindT = 0; // tiempo que le queda con el arma fuera a ciegas tras disparar a cubierto
     this.blindW = 0; // 0-1: brazos fuera de la cobertura disparando a ciegas
     this.coverReady = 0; // 0-1: brazos en la postura de espera de la cobertura
+    this.standW = 0; // 0-1: postura de pie relajada (en reposo, sin moverse)
+    this.breath = 0; // fase de la respiración
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando el arma
     this.canFire = true;
@@ -806,6 +827,11 @@ export class Player {
     const aiming = (this.aimT > 0 && (!cover || aimHeld)) || (aimHeld && this.punchT < 0);
     this.aiming = aimHeld && this.punchT < 0;
     this.aimWeight = THREE.MathUtils.damp(this.aimWeight, aiming ? 1 : 0, aiming ? 25 : 10, dt);
+    // Quieto de pie: la postura relajada sustituye a la guardia del clip de reposo.
+    const still = this.state === 'Idle' && !cover && this.prone < 0.01 && this.punchT < 0 && this.grounded
+      && this.crouch < 0.02 && this.speed < 0.3;
+    this.standW = THREE.MathUtils.damp(this.standW, still ? 1 : 0, still ? 5 : 12, dt);
+    this.breath += BREATH_RATE * dt;
     this.coverReady = THREE.MathUtils.damp(this.coverReady, cover?.attached ? 1 : cover ? 0.5 : 0, 8, dt);
     const blind = this.blindT > 0 && !!cover?.attached && !cover.mode && cover.peek < 0.02;
     this.blindW = THREE.MathUtils.damp(this.blindW, blind ? 1 : 0, blind ? 14 : 9, dt);
@@ -1192,8 +1218,8 @@ export class Player {
     }
     u.normalize();
     const goal = u.applyQuaternion(q).multiplyScalar(dist).add(S);
-    // El codo apunta hacia fuera, abajo y atrás.
-    const pole = new THREE.Vector3(side * 0.7, -0.5, -0.4).applyQuaternion(q);
+    // El codo apunta sobre todo atrás, algo abajo y hacia fuera.
+    const pole = new THREE.Vector3(side * ARM_LIMITS.codoFuera, -0.45, -0.75).applyQuaternion(q);
     const qu = upper.quaternion.clone(), ql = lower.quaternion.clone();
     this.reach(upper, lower, H, goal, pole);
     if (w < 1) {
@@ -1297,6 +1323,58 @@ export class Player {
       target.y = THREE.MathUtils.lerp(now.y, floor + 0.08 + CRAWL_FOOT_LIFT * c.up, k);
       this.reach(leg.upper, leg.lower, now, target, up.clone().addScaledVector(side, leg.side * 0.4), leg.foot);
     }
+  }
+
+  /**
+   * De pie en reposo, con peso `w` (valores en POSES.parado): pies bajo la cadera con las
+   * rodillas casi rectas, brazos colgando junto a los muslos, tronco y cabeza erguidos y una
+   * respiración suave. Sustituye a la guardia del clip de reposo.
+   */
+  applyStand(w) {
+    const S = POSES.parado;
+    this.savePose();
+    this.model.updateMatrixWorld(true);
+    const q = this.model.quaternion;
+    const F = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+    const U = new THREE.Vector3(0, 1, 0);
+    const X = new THREE.Vector3(1, 0, 0).applyQuaternion(q); // a la izquierda
+    const base = this.model.position;
+    const breath = Math.sin(this.breath);
+    // La cadera del clip está baja (rodillas dobladas): se sube un poco. Los pies se quedan.
+    const feet = this.legs.map((l) => [l.foot.getWorldPosition(new THREE.Vector3()), l.foot.getWorldQuaternion(new THREE.Quaternion())]);
+    if (this.bodyBone && S.cadera) {
+      this.bodyBone.getWorldPosition(_v);
+      _v.y += S.cadera * w;
+      this.bodyBone.position.copy(this.bodyBone.parent.worldToLocal(_v));
+      this.bodyBone.updateMatrixWorld(true);
+      this.legs.forEach((l, i) => {
+        l.foot.position.copy(l.foot.parent.worldToLocal(_v.copy(feet[i][0])));
+        l.foot.parent.getWorldQuaternion(_pq);
+        l.foot.quaternion.copy(_pq.invert().multiply(feet[i][1]));
+        l.foot.updateMatrixWorld(true);
+      });
+    }
+    // Piernas: el pie va bajo la cadera, plano como estaba; las rodillas apenas se doblan.
+    for (const leg of this.legs) {
+      const foot = leg.foot.getWorldPosition(new THREE.Vector3());
+      const rot = leg.foot.getWorldQuaternion(new THREE.Quaternion());
+      const target = base.clone().addScaledVector(X, leg.side * S.piesAfuera).addScaledVector(F, S.piesAdelante);
+      target.y = foot.y;
+      this.reach(leg.upper, leg.lower, foot, foot.clone().lerp(target, w), F.clone().addScaledVector(X, leg.side * 0.15), leg.foot);
+      leg.foot.parent.getWorldQuaternion(_pq);
+      leg.foot.quaternion.copy(_pq.invert().multiply(rot));
+      leg.foot.updateMatrixWorld(true);
+    }
+    // Tronco y cabeza erguidos; el pecho sube y baja un poco al respirar.
+    this.applyTorso(w, { giro: 0, lado: 0, frente: S.tronco - 0.012 * breath, cuello: 0, cabeza: S.cabeza + 0.01 * breath });
+    // Brazos colgando junto a los muslos (no cuando apunta).
+    const arms = w * (1 - this.aimWeight) * (1 - this.blindW);
+    for (const side of [1, -1]) {
+      const hand = base.clone().addScaledVector(X, side * S.manosAfuera)
+        .addScaledVector(F, S.manosAdelante + 0.006 * breath).addScaledVector(U, S.manosAltura);
+      this.reachArm(side, hand, arms);
+    }
+    this.applyAdjust('parado', w);
   }
 
   /** Centro de la palma derecha, donde va la empuñadura del arma. */
@@ -1566,6 +1644,7 @@ export class Player {
       }
       this.applyRecline(ease);
     }
+    if (this.standW > 0.01 && !prone) this.applyStand(this.standW);
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
     if (jc > 0.01 || cc > 0.01 || Math.abs(this.coverLean) > 0.005 || this.coverGrip > 0.01) {

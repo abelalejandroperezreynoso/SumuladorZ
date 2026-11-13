@@ -202,6 +202,8 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   bloque, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho; la
   cámara baja casi a ras del bloque. Se desplaza de lado apoyándose en manos y pies, y se
   incorpora de rodillas para apuntar.
+- **De pie, en reposo**: quieto, el personaje se relaja (pies bajo la cadera, brazos colgando,
+  tronco y cabeza erguidos y una respiración suave) en vez de la guardia del clip del modelo.
 - **Apuntar y disparar** son mandos separados. Con el clic derecho levanta el arma y la cámara
   pasa a un plano cerrado sobre el hombro, con menos campo de visión, la mira en pantalla y
   más lenta; las balas van exactas. Disparar sin apuntar no mueve la cámara ni muestra la
