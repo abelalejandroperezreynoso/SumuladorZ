@@ -21,10 +21,13 @@ El juego detecta la pantalla táctil y muestra un joystick y botones. Dos formas
    `Network` que muestra la terminal (por ejemplo `http://192.168.1.20:5173`).
 2. **GitHub Pages:** en el repositorio, *Settings → Pages → Source: GitHub Actions*. Cada cambio en
    `main` publica el juego en `https://<usuario>.github.io/SumuladorZ/`.
+3. **Netlify:** el proyecto está conectado al repositorio y `netlify.toml` fija la compilación
+   (`npm run build`, carpeta `dist`) y la caché. Cada cambio en `main` se publica solo. Sirve
+   cuando la red del móvil no llega a `github.io` (algunas líneas de datos no lo abren).
 
 ### Instalarlo como app (PWA)
 
-Con el juego publicado por HTTPS (GitHub Pages), ábrelo en **Safari** en el iPhone →
+Con el juego publicado por HTTPS (GitHub Pages o Netlify), ábrelo en **Safari** en el iPhone →
 botón **Compartir** → **Añadir a pantalla de inicio**. Se abre a pantalla completa, sin barras del
 navegador, y tras la primera carga funciona sin conexión. En Android: menú de Chrome →
 *Instalar aplicación*.
