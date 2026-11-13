@@ -5,6 +5,7 @@
 //
 // Uso:  npx vite --port 5199 &   y luego   node tools/watch.cjs [carpeta de salida] [escena...]
 // Con EVERY=4 guarda una imagen cada 4 fotogramas (15 por segundo): tiras más cortas para un catálogo.
+// DIST, VIEW (radianes) y HIGH (altura de la cámara, m) cambian el encuadre de las tiras; p. ej. DIST=1.8 para un primer plano.
 // Requiere Playwright con Chromium disponible en el entorno.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -40,7 +41,7 @@ function install() {
      * Ejecuta una escena. steps: [{ t, do(g) }] acciones en el segundo t.
      * subject: () => { model, position, facing, state } a observar (jugador por defecto).
      */
-    record({ seconds, steps = [], every = EVERY, view = 1.2, dist = 3.6, subject, cols = 8, rowsPerSheet = 6 }) {
+    record({ seconds, steps = [], every = EVERY, view = 1.2, dist = 3.6, high = 1.25, subject, cols = 8, rowsPerSheet = 6 }) {
       const sub = subject ? subject() : g.player;
       const bones = bonesOf(sub.model, NAMES);
       const frames = Math.round(seconds * 60);
@@ -116,8 +117,8 @@ function install() {
           const saved = { p: cam.position.clone(), q: cam.quaternion.clone(), fov: cam.fov, aspect: cam.aspect };
           const a = typeof view === 'function' ? view(sub) : view;
           cam.aspect = cell.w / cell.h; cam.fov = 42; cam.updateProjectionMatrix();
-          cam.position.set(root.x + Math.sin(a) * dist, root.y + 1.25, root.z + Math.cos(a) * dist);
-          cam.lookAt(root.x, root.y + 0.85, root.z); cam.updateMatrixWorld(true);
+          cam.position.set(root.x + Math.sin(a) * dist, root.y + high, root.z + Math.cos(a) * dist);
+          cam.lookAt(root.x, root.y + Math.min(0.85, high * 0.5), root.z); cam.updateMatrixWorld(true);
           const wasVisible = g.player.model.visible; g.player.model.visible = true;
           realRender(g.scene, cam);
           const shot = f / every, i = shot % perSheet;
@@ -166,15 +167,16 @@ function install() {
   const names = await page.evaluate(() => window.__game.catalog.scenes.map((s) => s.id));
   for (const name of names) {
     if (ONLY.length && !ONLY.includes(name)) continue;
-    const res = await page.evaluate(({ name, every }) => {
+    const res = await page.evaluate(({ name, every, frame }) => {
       const g = window.__game;
       const sc = g.catalog.scenes.find((s) => s.id === name);
       W.place(...sc.place);
       sc.before?.(g);
       const steps = sc.steps.filter((s) => s[1]).map(([t, run]) => ({ t, do: run }));
       if (sc.keepAlive) steps.push(...Array.from({ length: 40 }, (_, i) => ({ t: i * 0.25, do: (g) => { g.player.health = 100; } })));
-      return W.record({ ...sc, ...(every ? { every } : {}), steps, subject: sc.subject ? () => sc.subject(g) : null });
-    }, { name, every: +process.env.EVERY || 0 });
+      return W.record({ ...sc, ...(every ? { every } : {}), ...frame, steps, subject: sc.subject ? () => sc.subject(g) : null });
+    }, { name, every: +process.env.EVERY || 0, frame: Object.fromEntries(
+      [['dist', 'DIST'], ['view', 'VIEW'], ['high', 'HIGH']].filter(([, e]) => process.env[e]).map(([k, e]) => [k, +process.env[e]])) });
     res.pngs.forEach((png, i) => {
       const file = res.pngs.length > 1 ? `${name}_${i + 1}.png` : `${name}.png`;
       fs.writeFileSync(path.join(OUT, file), Buffer.from(png.split(',')[1], 'base64'));

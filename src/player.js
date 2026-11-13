@@ -110,8 +110,14 @@ export const POSE_SPEC = {
     ['tronco', 'Tronco inclinado', -0.2, 0.8, 'rad'],
   ],
 };
-const SCOOT_SWING = 0.2; // vaivén de las piernas al arrastrarse (rad)
-const SCOOT_RATE = 7; // ritmo de ese vaivén (rad por metro recorrido)
+// Desplazamiento acostado: ciclo de oruga. Manos y pies se apoyan en el suelo, la cadera se
+// levanta un poco y el cuerpo se desliza entre ellos; luego manos y pies se adelantan.
+const CRAWL_STEP = 0.4; // lo que avanza en cada ciclo (m)
+const CRAWL_LIFT = 0.07; // cuánto levanta el cuerpo mientras empuja (m)
+const CRAWL_HAND_LIFT = 0.09; // altura a la que levanta las manos al adelantarlas (m)
+const CRAWL_FOOT_LIFT = 0.08; // ...y los pies
+const CRAWL_HAND_OUT = 0.14; // manos apoyadas: separación hacia fuera desde el hombro (m)
+const CRAWL_HAND_DOWN = 0.3; // ...y hacia la cadera (m)
 const PRONE_VIEW = 0.8; // altura de la cámara recostado: justo por encima del objeto (m)
 const AIM_VIEW = 0.12; // al apuntar, la cámara queda esto por encima de la cabeza (m)
 const CROUCH_SIDE_LOW = 0.78; // asomado por el borde de una cobertura baja
@@ -176,7 +182,7 @@ export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
-  PRONE_SPEED, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
+  PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
 };
 
 function dampAngle(a, b, lambda, dt) {
@@ -233,7 +239,9 @@ export class Player {
     this.prone = 0; // 0 = erguido, 1 = recostado tras una cobertura muy baja
     this.proneSide = 1; // hacia qué lado gira al recostarse para dar la espalda al objeto
     this.proneN = { x: 0, z: 1 }; // normal de esa cobertura (del objeto hacia el personaje)
-    this.scoot = 0; // fase del vaivén de piernas al arrastrarse
+    this.scoot = 0; // fase (0-1) del ciclo de desplazamiento acostado
+    this.scootW = 0; // 0-1: cuánto se nota ese ciclo (se apaga al quedarse quieto)
+    this.scootDir = 1; // hacia qué lado del cuerpo (+X o -X del modelo) se desplaza
     this.kneel = 0; // 0-1: usa la postura «rodillas» (cobertura muy baja) en vez del agachado normal
     this.aiming = false; // apunta (mantiene el botón de apuntar o acaba de disparar)
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
@@ -653,8 +661,6 @@ export class Player {
       // Gira hacia el lado que deja el pecho hacia fuera: depende solo de hacia dónde queda la
       // cabeza, así que no cambia mientras se recuesta ni al girar para disparar.
       this.proneSide = -cover.proneDir;
-      // Vaivén de piernas al arrastrarse, al ritmo de lo que avanza.
-      this.scoot += this.speed * SCOOT_RATE * dt;
     }
     this.coverCrouch = THREE.MathUtils.damp(this.coverCrouch, coverCrouchTarget, 11, dt);
     this.kneel = THREE.MathUtils.damp(this.kneel, cover?.attached && cover.veryLow ? 1 : 0, 10, dt);
@@ -1014,17 +1020,73 @@ export class Player {
    * apoyado, la otra pierna estirada, manos sobre el pecho y cabeza recostada en el objeto.
    * Se define sobre el modelo de pie; `postPhysics` ya lo ha tumbado boca arriba.
    */
+  /**
+   * Fase `ph` (0-1) del ciclo de desplazamiento acostado. Primera mitad: manos y pies quietos
+   * en el suelo y el cuerpo, algo levantado, se desliza un paso entero entre ellos. Segunda
+   * mitad: el cuerpo descansa y manos y pies se levantan y se adelantan. Devuelve, en metros
+   * y hacia donde avanza: `body`, adelanto del cuerpo sobre la cápsula (que va a velocidad
+   * constante); `lift`, cuánto se levanta; `limb`, posición de manos y pies respecto a su
+   * sitio de reposo; `up`, 0-1, cuánto están levantados.
+   */
+  crawlPhase(ph) {
+    const L = CRAWL_STEP;
+    const ss = THREE.MathUtils.smoothstep;
+    if (ph < 0.5) {
+      const u = ph / 0.5, P = L * ss(u, 0, 1);
+      return { body: P - L * ph - L / 4, lift: CRAWL_LIFT * Math.sin(Math.PI * u), limb: L / 2 - P, up: 0 };
+    }
+    const u = (ph - 0.5) / 0.5;
+    return { body: L - L * ph - L / 4, lift: 0, limb: -L / 2 + L * ss(u, 0, 1), up: Math.sin(Math.PI * u) };
+  }
+
+  /**
+   * Cadena de dos huesos (`upper`, `lower`) que lleva el punto `endPos` (mundial, unido a
+   * `lower`) hasta `target`, doblando la articulación hacia `pole`. Con `foot`, ese hueso,
+   * que en este modelo no cuelga de la pierna, se recoloca para seguir a la tibia.
+   */
+  reach(upper, lower, endPos, target, pole, foot = null) {
+    const end = lower.worldToLocal(_foot.copy(endPos));
+    if (foot) {
+      foot.getWorldQuaternion(_fq);
+      lower.getWorldQuaternion(_qb);
+    }
+    for (let i = 0; i < 2; i++) {
+      upper.getWorldPosition(_hip);
+      lower.getWorldPosition(_knee);
+      const l1 = _hip.distanceTo(_knee);
+      const l2 = _knee.distanceTo(_h.copy(end).applyMatrix4(lower.matrixWorld));
+      _dir.subVectors(target, _hip);
+      const d = THREE.MathUtils.clamp(_dir.length(), Math.abs(l1 - l2) + 1e-3, (l1 + l2) * 0.999);
+      _dir.normalize();
+      _axis.copy(pole).addScaledVector(_dir, -pole.dot(_dir)).normalize();
+      const along = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+      const out = Math.sqrt(Math.max(l1 * l1 - along * along, 0));
+      _v.copy(_hip).addScaledVector(_dir, along).addScaledVector(_axis, out); // codo o rodilla
+      this.aimBone(upper, _knee.sub(_hip).normalize(), _h.copy(_v).sub(_hip).normalize());
+      lower.getWorldPosition(_knee);
+      _h.copy(end).applyMatrix4(lower.matrixWorld).sub(_knee).normalize();
+      this.aimBone(lower, _h, _v.copy(target).sub(_knee).normalize());
+    }
+    if (foot) {
+      lower.getWorldQuaternion(_q2).multiply(_qb.invert()); // giro total de la tibia
+      foot.position.copy(foot.parent.worldToLocal(_h.copy(end).applyMatrix4(lower.matrixWorld)));
+      foot.parent.getWorldQuaternion(_pq);
+      foot.quaternion.copy(_pq.invert().multiply(_q2).multiply(_fq));
+      foot.updateMatrixWorld(true);
+    }
+  }
+
   applyRecline(w) {
     if (!this.bodyBone || !this.legs.length) return;
     this.savePose();
     this.model.updateMatrixWorld(true);
     const R = POSES.recostado;
-    const swing = Math.sin(this.scoot) * SCOOT_SWING * THREE.MathUtils.clamp(this.speed / PRONE_SPEED, 0, 1);
+    const k = this.scootW * w; // al desplazarse dobla las dos rodillas para empujar con los pies
 
     for (const leg of this.legs) {
       const i = leg.side < 0 ? 0 : 1; // la pierna derecha es la que levanta la rodilla
-      const hip = (i ? R.caderaAbajo : R.caderaArriba) + (i ? -swing : swing);
-      const knee = (i ? R.rodillaAbajo : R.rodillaArriba) + (i ? swing : -swing) * 0.6;
+      const hip = THREE.MathUtils.lerp(i ? R.caderaAbajo : R.caderaArriba, R.caderaArriba, k);
+      const knee = THREE.MathUtils.lerp(i ? R.rodillaAbajo : R.rodillaArriba, R.rodillaArriba, k);
       // El pie no cuelga de la pierna en este modelo: se recoloca para que siga a la tibia.
       // (Sin matrices: los huesos de la pierna tienen escala no uniforme y las deforman.)
       const kneeOld = leg.lower.getWorldPosition(_knee2);
@@ -1074,6 +1136,40 @@ export class Player {
       if (_right.lengthSq() > 1e-6) this.turnBone(this.neck, _right.normalize(), -R.cabeza * w);
     }
     this.applyAdjust('recostado', w);
+    if (k > 0.001) this.applyCrawl(k);
+  }
+
+  /**
+   * Desplazamiento acostado, con peso `k`: manos y pies se apoyan en el suelo según la fase
+   * del ciclo (`crawlPhase`) y quedan quietos mientras el cuerpo se desliza entre ellos.
+   */
+  applyCrawl(k) {
+    this.model.updateMatrixWorld(true);
+    const c = this.crawlPhase(this.scoot);
+    const floor = this.position.y;
+    const side = _a.set(1, 0, 0).applyQuaternion(this.model.quaternion).setY(0).normalize().clone(); // +X del modelo
+    const down = _a.set(0, -1, 0).applyQuaternion(this.model.quaternion).setY(0).normalize().clone(); // hacia los pies
+    const step = this.scootDir * c.limb;
+    const up = _a.set(0, 1, 0);
+    // Manos apoyadas junto a la cadera, con los codos hacia fuera.
+    for (const [upper, lower, hand, s] of [
+      [this.upperArmL, this.lowerArmL, this.handL, 1], [this.upperArm, this.lowerArm, this.hand, -1],
+    ]) {
+      if (!upper || !lower || !hand || hand === lower) continue;
+      upper.getWorldPosition(_hip);
+      const target = _hip.clone().addScaledVector(side, s * CRAWL_HAND_OUT + step).addScaledVector(down, CRAWL_HAND_DOWN);
+      target.y = floor + 0.04 + CRAWL_HAND_LIFT * c.up;
+      const now = hand.getWorldPosition(_knee2).clone();
+      if (k < 1) target.lerp(now, 1 - k);
+      this.reach(upper, lower, now, target, side.clone().multiplyScalar(s).addScaledVector(up, 0.6));
+    }
+    // Pies: desde donde los deja la pose de rodillas dobladas, quietos o adelantándose.
+    for (const leg of this.legs) {
+      const now = leg.foot.getWorldPosition(_knee2).clone();
+      const target = now.clone().addScaledVector(side, step * k);
+      target.y = THREE.MathUtils.lerp(now.y, floor + 0.08 + CRAWL_FOOT_LIFT * c.up, k);
+      this.reach(leg.upper, leg.lower, now, target, up.clone().addScaledVector(side, leg.side * 0.4), leg.foot);
+    }
   }
 
   /**
@@ -1212,6 +1308,19 @@ export class Player {
       this.model.position.x -= (fx * R.centrado + n.x * R.arrimo) * ease;
       this.model.position.z -= (fz * R.centrado + n.z * R.arrimo) * ease;
       this.model.position.y += R.altura * ease;
+      // Ciclo de desplazamiento: la velocidad de lado, vista desde el cuerpo tumbado (+X del modelo).
+      _right.set(1, 0, 0).applyQuaternion(this.model.quaternion).setY(0);
+      const lat = _right.lengthSq() > 1e-6 ? (this.velocity.x * _right.x + this.velocity.z * _right.z) / _right.length() : 0;
+      if (Math.abs(lat) > 0.15) this.scootDir = Math.sign(lat);
+      this.scootW = THREE.MathUtils.damp(this.scootW, Math.abs(lat) > 0.15 && prone > 0.6 ? 1 : 0, 7, dt);
+      this.scoot = (this.scoot + Math.abs(lat) / CRAWL_STEP * dt) % 1;
+      const c = this.crawlPhase(this.scoot);
+      const k = this.scootW * ease;
+      if (k > 0.001 && _right.lengthSq() > 1e-6) {
+        _right.normalize();
+        this.model.position.addScaledVector(_right, c.body * this.scootDir * k);
+        this.model.position.y += c.lift * k;
+      }
       this.applyRecline(ease);
     }
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
