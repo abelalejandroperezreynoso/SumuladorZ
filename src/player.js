@@ -58,9 +58,11 @@ const PEEK_CLEAR_GUN = 0.28; // cuánto sobrepasa el borde al asomarse por el la
 const PEEK_CLEAR_OFF = 0.46; // ...y por el lado contrario, para que el arma libre el muro
 const PEEK_LEAN = 0.3; // inclinación lateral del tronco al asomarse (rad)
 // Asomarse con el mando: en un límite del muro, mantener la dirección hacia ese lado.
-const PEEK_HOLD = 0.25; // tiempo empujando contra el final del muro hasta asomarse (s)
+const PEEK_HOLD = 0; // tiempo empujando contra el final del muro hasta asomarse (s): 0 = sin pausa
 const PEEK_LOOK = 0.5; // fracción del paso completo que da solo para mirar (al disparar, entero)
-const PEEK_HEAD = { giro: 0.2, cuello: 0.8 }; // giro del tronco y de la cabeza hacia ese lado (rad)
+// Giro del tronco y de la cabeza hacia ese lado, para ver qué hay tras el muro (rad), y cuánto
+// de ese giro adelanta ya al acercarse caminando al límite.
+const PEEK_HEAD = { giro: 0.55, cuello: 1.05, antes: 0.45 };
 // Cuánto se agacha (0-1) en cada postura de cobertura.
 const CROUCH_HIDE = 1; // oculto tras una cobertura baja
 const CROUCH_OVER = 0.14; // disparando por encima
@@ -643,6 +645,8 @@ export class Player {
     c.stickT = stick && stick === c.stickSide ? c.stickT + dt : 0;
     c.stickSide = stick;
     c.stickPeek = stick !== 0 && c.stickT >= PEEK_HOLD;
+    // Hacia dónde mira: por el borde al asomarse, y ya algo girada al acercarse a ese límite.
+    c.look = c.stickPeek ? c.stickSide : along && (along < 0 ? c.edgeR : c.edgeL) < Infinity ? along * PEEK_HEAD.antes : 0;
 
     // ¿Está en un límite del muro? Se mide la distancia a cada final (mientras no se asoma).
     const edge = (side) => {
@@ -687,7 +691,12 @@ export class Player {
     } else c.blindLocked = false;
     // Apuntando o disparando da el paso entero; solo para mirar, una parte.
     const peekTarget = c.mode !== 'side' ? 0 : aiming ? c.peekGoal : c.stickPeek ? c.peekGoal * PEEK_LOOK : 0;
-    let peekV = THREE.MathUtils.clamp((peekTarget - c.peek) * 8, -2.8, 2.8);
+    // Asomarse con el mando continúa el paso lateral a su misma velocidad y frena al final,
+    // sin parada intermedia; apuntando sale más deprisa.
+    const walk = c.high ? COVER_SPEED : COVER_CROUCH_SPEED;
+    const fast = aiming || !c.stickPeek;
+    let peekV = fast ? THREE.MathUtils.clamp((peekTarget - c.peek) * 8, -2.8, 2.8)
+      : THREE.MathUtils.clamp((peekTarget - c.peek) * 7, -walk, walk);
     if (c.peek + peekV * dt < 0) peekV = -c.peek / dt;
     c.peek += peekV * dt;
     if (c.peek > 0.02 || peekTarget) along = 0;
@@ -1849,8 +1858,8 @@ export class Player {
     }
 
     // Asomado con el mando, sin apuntar: gira el tronco y la cabeza para mirar por el borde.
-    const look = cv?.stickPeek && cv.mode === 'side' ? cv.peekDir : 0;
-    this.peekLook = THREE.MathUtils.damp(this.peekLook, look * (1 - this.aimWeight), 9, dt);
+    const look = cv?.attached ? cv.look ?? 0 : 0;
+    this.peekLook = THREE.MathUtils.damp(this.peekLook, look * (1 - this.aimWeight) * (1 - this.blindW), 7, dt);
     if (Math.abs(this.peekLook) > 0.01) {
       this.applyTorso(1, { giro: PEEK_HEAD.giro * this.peekLook, lado: 0, frente: 0, cuello: PEEK_HEAD.cuello * this.peekLook, cabeza: 0 });
     }
