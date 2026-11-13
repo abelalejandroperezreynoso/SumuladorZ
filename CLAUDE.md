@@ -57,6 +57,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   (fracciones de la estatura, 1,75 m) escalando huesos y pistas de posición de los clips; se
   aplica al cargar, antes de clonar el modelo para los zombis. El modelo original trae brazos
   de 40 cm de hombro a muñeca; corregidos miden 56 cm. Piernas y tronco ya estaban bien.
+- **Brazos** — toda pose de brazo calculada por código pasa por `Player.reachArm`, que aplica
+  `ARM_LIMITS` (el codo se dobla hacia fuera, abajo y atrás; la mano no va muy detrás de la
+  espalda ni cruza el cuerpo salvo por delante). Usarlo en vez de girar huesos a mano.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 

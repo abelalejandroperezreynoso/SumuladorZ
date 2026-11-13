@@ -207,6 +207,8 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   más lenta; las balas van exactas. Disparar sin apuntar no mueve la cámara ni muestra la
   mira: levanta el brazo hacia el centro de la pantalla y las balas se desvían un poco.
   A cubierto, al soltar el apuntado vuelve a esconderse en 0,3 s.
+  Las poses de brazos calculadas por código respetan límites de las articulaciones: el codo no
+  se dobla al revés y la mano no va muy por detrás de la espalda ni cruza el cuerpo por detrás.
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
 - **Escalera y rampa** (detrás): suben a una plataforma de 2 m.
 
