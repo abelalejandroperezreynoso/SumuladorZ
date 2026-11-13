@@ -54,7 +54,11 @@ const COVER_ARRIVE = 1.1; // distancia al muro a la que empieza (m)
 const COVER_SPEED = 1.7; // velocidad pegado al muro (m/s)
 const COVER_CROUCH_SPEED = 1.3; // ...y agachado tras una cobertura baja
 const COVER_EXIT_TIME = 0.2; // tiempo tirando hacia fuera para despegarse (s)
-const COVER_CROUCH = 0.46; // cuánto baja la cadera tras una cobertura baja (m)
+const COVER_CROUCH = 0.52; // cuánto baja la cadera tras una cobertura baja (m)
+// Sentado contra una cobertura baja: los pies van por delante de la cadera (m), algo abiertos
+// y el izquierdo más adelantado; las rodillas suben y se abren un poco. Así el peso descansa
+// en la espalda contra el muro, en vez de quedar con las rodillas al frente y los pies debajo.
+const COVER_SIT = { frente: 0.24, abierto: 0.05, adelantado: 0.08, rodillaArriba: 0.6, rodillaFuera: 0.08 };
 const COVER_NEAR = 1.5; // radio en el que se busca cobertura en cualquier dirección (m)
 const COVER_FAN = 32; // rayos de esa búsqueda alrededor del personaje
 const PEEK_REACH = 0.8; // distancia máxima al borde para poder asomarse por él (m)
@@ -350,6 +354,7 @@ export class Player {
     this.coverGrip = 0; // 0-1: mano izquierda sujetando la pistola (al apuntar)
     this.batReady = 0; // 0-1: bate en guardia, sobre el hombro derecho
     this.peekLook = 0; // -1..1: mira por el borde derecho o izquierdo, asomado con el mando
+    this.coverSit = 0; // 0-1: sentado contra una cobertura baja, con los pies por delante
     this.coverHug = 0; // cuánto se arrima ahora el modelo al muro (m)
     this.hugN = { x: 0, z: 0 }; // normal del último muro (para separarse poco a poco al salir)
     this.armFrame = null; // marco del tronco para los límites de los brazos, si está girado (reachArm)
@@ -827,6 +832,8 @@ export class Player {
       this.proneSide = -cover.proneDir;
     }
     this.coverCrouch = THREE.MathUtils.damp(this.coverCrouch, coverCrouchTarget, 11, dt);
+    // Sentado contra el muro bajo mientras se oculta (no al levantarse o asomarse a disparar).
+    this.coverSit = THREE.MathUtils.damp(this.coverSit, cover && !cover.high && !cover.veryLow && !cover.mode ? 1 : 0, 9, dt);
     this.kneel = THREE.MathUtils.damp(this.kneel, cover?.attached && cover.veryLow ? 1 : 0, 10, dt);
     this.coverLean = THREE.MathUtils.damp(this.coverLean, leanTarget, 11, dt);
     // Apuntando sujeta el arma con las dos manos (a cubierto o no); sin apuntar, con una.
@@ -1024,6 +1031,7 @@ export class Player {
     let next;
     if (punching && this.meleeKind !== 'bate') next = 'Punch'; // el batazo va por código sobre el clip en curso
     else if (this.airTime > 0.18) next = 'Jump';
+    else if (this.cover && !this.cover.attached && this.cover.arrive > 0.25) next = 'Idle'; // llega deslizándose, sin zancadas
     else if (this.cover?.attached) {
       // Paso lateral según hacia qué lado del personaje se desplaza.
       const side = this.velocity.x * -Math.cos(this.facing) + this.velocity.z * Math.sin(this.facing);
@@ -1667,7 +1675,7 @@ export class Player {
    * (IK de dos huesos, con los pies fijos en el suelo), inclina el tronco y lleva los
    * brazos hacia atrás, como al tomar impulso o al amortiguar una caída.
    */
-  applyCrouch(depth, lean, arms, side = 0) {
+  applyCrouch(depth, lean, arms, side = 0, sit = 0) {
     if (!this.bodyBone || !this.legs.length) return;
     this.savePose();
     this.model.updateMatrixWorld(true);
@@ -1689,6 +1697,15 @@ export class Player {
     // golpe hacía que las rodillas dieran un salto al empezar o terminar de agacharse.
     const ik = THREE.MathUtils.smoothstep(depth, 0, 0.08);
     for (const leg of ik > 0 ? this.legs : []) {
+      if (sit > 0.001) {
+        // Sentado contra el muro: adelanta y separa los pies.
+        const S = COVER_SIT, f = (S.frente + (leg.side > 0 ? S.adelantado : 0)) * sit, o = S.abierto * leg.side * sit;
+        leg.foot.getWorldPosition(_a);
+        _a.x += fx * f + fz * o;
+        _a.z += fz * f - fx * o;
+        leg.foot.position.copy(leg.foot.parent.worldToLocal(_a));
+        leg.foot.updateMatrixWorld(true);
+      }
       const target = leg.foot.getWorldPosition(_a);
       _qa.copy(leg.upper.quaternion);
       _qb.copy(leg.lower.quaternion);
@@ -1700,8 +1717,9 @@ export class Player {
         _dir.subVectors(target, _hip);
         const d = Math.min(_dir.length(), (l1 + l2) * 0.999);
         _dir.normalize();
-        // La rodilla se dobla hacia delante.
-        _pole.set(fx, 0, fz).addScaledVector(_dir, -(fx * _dir.x + fz * _dir.z)).normalize();
+        // La rodilla se dobla hacia delante (sentado, además hacia arriba y algo hacia fuera).
+        _pole.set(fx + fz * leg.side * COVER_SIT.rodillaFuera * sit, COVER_SIT.rodillaArriba * sit, fz - fx * leg.side * COVER_SIT.rodillaFuera * sit);
+        _pole.addScaledVector(_dir, -_pole.dot(_dir)).normalize();
         const along = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
         const out = Math.sqrt(Math.max(l1 * l1 - along * along, 0));
         _v.copy(_hip).addScaledVector(_dir, along).addScaledVector(_pole, out); // rodilla deseada
@@ -1870,7 +1888,7 @@ export class Player {
       const coverLean = THREE.MathUtils.lerp(0.3, K.tronco / Math.max(K.agachado, 0.05), this.kneel) * cc;
       this.applyCrouch(
         Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc), Math.max(0.45 * jc, coverLean), 0.7 * jc,
-        this.coverLean,
+        this.coverLean, this.coverSit * cc,
       );
     }
 
