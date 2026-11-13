@@ -513,6 +513,7 @@ export class Horde {
   postPhysics() {
     for (const z of this.zombies) {
       z.postPhysics();
+      if (z.alive) z.skel.straightenFeet();
       z.skel.update();
     }
   }

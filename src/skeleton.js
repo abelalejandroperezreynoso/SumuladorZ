@@ -49,6 +49,12 @@ const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _q = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
+const _f = new THREE.Vector3();
+// Giro de cada pie sobre la vertical respecto al rumbo del cuerpo (rad, + hacia la izquierda):
+// lo que se admite, con una ligera apertura hacia fuera. Las animaciones de caminar y correr
+// del modelo llevan el pie izquierdo girado unos 60° hacia dentro.
+const FOOT_YAW = { L: [0.08, 0.26], R: [-0.26, -0.08] };
 
 export class SkeletonView {
   /** model: el modelo animado; kind: 'player' o 'zombie'. */
@@ -110,11 +116,43 @@ export class SkeletonView {
         // de la pose de reposo (el modelo mira a su +Z).
         const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(_q)
           .applyQuaternion(foot.getWorldQuaternion(new THREE.Quaternion()).invert());
-        addLink(foot, null).toe = forward;
+        const link = addLink(foot, null);
+        link.toe = forward;
+        link.side = side;
       }
       // Mano: de la muñeca a la punta del dedo medio.
       const wrist = bones['Wrist' + side], tip = bones['Middle4' + side];
       if (wrist && tip) addLink(wrist, tip);
+    }
+  }
+
+  /**
+   * Endereza los pies con peso `w`: gira cada hueso del pie sobre la vertical para que la
+   * punta no se aparte del rumbo del modelo más de lo que admite FOOT_YAW. Los pies son
+   * huesos finales, así que no mueve nada más. Con el pie casi vertical (punta hacia abajo o
+   * hacia arriba) apenas actúa, porque su giro horizontal no está definido.
+   */
+  straightenFeet(w = 1) {
+    if (w < 0.01) return;
+    this.model.updateMatrixWorld(true);
+    this.model.getWorldQuaternion(_q);
+    _f.set(0, 0, 1).applyQuaternion(_q);
+    const facing = Math.atan2(_f.x, _f.z);
+    for (const l of this.links) {
+      if (!l.toe) continue;
+      const foot = l.from;
+      foot.getWorldQuaternion(_q2);
+      _a.copy(l.toe).applyQuaternion(_q2);
+      const flat = Math.hypot(_a.x, _a.z);
+      if (flat < 0.2) continue;
+      const yaw = Math.atan2(Math.sin(Math.atan2(_a.x, _a.z) - facing), Math.cos(Math.atan2(_a.x, _a.z) - facing));
+      const [lo, hi] = FOOT_YAW[l.side];
+      const fix = (THREE.MathUtils.clamp(yaw, lo, hi) - yaw) * w * THREE.MathUtils.smoothstep(flat, 0.2, 0.6);
+      if (Math.abs(fix) < 1e-4) continue;
+      _q.setFromAxisAngle(_up, fix).multiply(_q2); // nuevo giro mundial del pie
+      foot.parent.getWorldQuaternion(_q2);
+      foot.quaternion.copy(_q2.invert().multiply(_q));
+      foot.updateMatrixWorld(true);
     }
   }
 

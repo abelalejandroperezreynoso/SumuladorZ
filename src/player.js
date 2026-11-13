@@ -650,6 +650,8 @@ export class Player {
 
   /** Coloca los huesos y articulaciones dibujados sobre la pose final de este fotograma. */
   updateSkeleton() {
+    // Pies hacia el frente (las animaciones de caminar y correr tuercen el izquierdo).
+    this.skel.straightenFeet(1 - THREE.MathUtils.clamp(this.prone * 3, 0, 1));
     this.skel.update();
   }
 
