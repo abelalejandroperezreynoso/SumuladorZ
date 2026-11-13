@@ -36,6 +36,7 @@ const PLAYER_LAYERS = [
   ['A ciegas (con giro del tronco)', (p) => p.blindW],
   ['Inclinación', (p) => Math.abs(p.coverLean) / TUNING.PEEK_LEAN],
   ['Pisotón', (p) => p.stomp],
+  ['Pasando una barda', (p) => (p.vault ? Math.sin(Math.PI * p.vaultU) : 0)],
   ['Caída sobre el golpe', (p) => p.slamDrop],
   ['Recostado', (p) => p.prone],
   ['De pie relajado', (p) => p.standW],

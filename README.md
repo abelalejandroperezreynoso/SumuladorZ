@@ -100,6 +100,18 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Piloto automático | `P` |
 | Catálogo de mecánicas y animaciones | `G` |
 
+## Bardas
+
+Corriendo de frente contra un muro (o pulsando saltar junto a él), el personaje lo pasa solo,
+según su altura:
+
+- **Muy baja** (hasta 0,62 m): la salta sin tocarla y sigue corriendo.
+- **Media** (hasta 1,4 m): apoya la mano izquierda arriba y pasa las piernas por un lado.
+- **Alta** (hasta 2,7 m): salta, se cuelga del borde, se sube a pulso y se deja caer al otro lado.
+
+Si arriba hay sitio (una plataforma), se queda de pie encima. Más de 2,7 m no se puede
+escalar. Caminando no ocurre, y en diagonal tampoco: hay que ir de frente.
+
 ## Armas y balas
 
 Se empieza sin armas. Para recoger algo basta pasar por encima: los objetos flotan y giran sobre

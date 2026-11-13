@@ -201,6 +201,25 @@ const SLAM_BODY = {
   batazo: { carga: 0, baja: 0.13, tronco: 0, brazos: 0, antes: 0.16, despues: 0.34, sacudida: 0.1, pausa: 0.1, rebote: 0, empuje: 2.2 },
   bate: { carga: 0, baja: 0.24, tronco: 0, brazos: 0, antes: 0.14, despues: 0.38, sacudida: 0.13, pausa: 0.11, rebote: 3.4 },
 };
+// Bardas: corriendo de frente contra un muro (o saltando junto a él) lo pasa por encima. Según
+// su altura sobre los pies (m): hasta `salto` lo salta sin tocarlo; hasta `apoyo` lo pasa
+// apoyando la mano izquierda, con las piernas por un lado; hasta `escala` se cuelga del borde,
+// se sube a pulso y se deja caer al otro lado. Si arriba hay sitio (más de `grosor` de fondo)
+// se queda de pie encima. `rango`: a qué distancia del muro empieza (m, desde la cápsula);
+// `frente`: cuánto de frente hay que ir (coseno); `bajo`: menos que esto no es una barda.
+const VAULT = {
+  rango: 0.5, frente: 0.8, bajo: 0.3, salto: 0.62, apoyo: 1.4, escala: 2.7, grosor: 1.2,
+  sobra: 0.18, // el salto pasa con los pies esto por encima (m)
+  cadera: 0.5, // apoyando la mano, los pies suben hasta la altura del muro menos esto (el cuerpo va ladeado)
+  ladeo: 1.15, // ...y esto se ladea el cuerpo (rad)
+  colgado: 1.95, // de los pies al borde, colgado con los brazos estirados (m)
+  pulso: 0.95, // ...y subido a pulso, con la cadera a la altura del borde
+  salida: 2.2, // velocidad con la que sale de una escalada (m/s)
+  // Escalada, fracción del tiempo en que termina cada tramo: salta al borde, queda colgado,
+  // se sube a pulso, pone los pies arriba; el resto es cruzar hasta el otro lado.
+  fases: [0.2, 0.3, 0.64, 0.86],
+  tiempo: 0.85, porMetro: 0.3, // duración de la escalada: base (s) y lo que suma cada metro por encima de `apoyo`
+};
 export const MAX_AMMO = 99;
 export const WEAPON_NAMES = { manos: 'Sin arma', bate: 'Bate', pistola: 'Pistola' };
 const WEAPON_ORDER = ['manos', 'bate', 'pistola'];
@@ -317,7 +336,7 @@ export const PLAYER_CLIPS = {
 // Valores que el catálogo muestra en sus fichas (así nunca quedan desfasados).
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
-  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, LOW_RANGE, SLAM_BODY, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
+  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, LOW_RANGE, SLAM_BODY, VAULT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SLIDE_SPEED, COVER_ARRIVE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, PEEK_HOLD, PEEK_LOOK,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
   HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
@@ -420,6 +439,9 @@ export class Player {
     this.slamDrop = 0; // golpe bajo: cuánto se ha dejado caer sobre el golpe (0-1)
     this.slamLoad = 0; // ...y cuánto se echa atrás para cargarlo (0-1)
     this.stomp = 0;
+    this.vault = null; // barda que está pasando: ver tryVault
+    this.vaultU = 0; // 0-1: avance de ese paso
+    this.vaultTuck = 0; // cuánto encoge las piernas al pasarla (m)
     this.fireWas = false;
     this.dryFire = 0; // >0 un instante tras apretar el gatillo sin balas (la interfaz lo avisa)
 
@@ -529,6 +551,7 @@ export class Player {
     this.jumpT = -1;
     this.jumpBuffer = this.landT = this.crouch = 0;
     this.cover = null;
+    this.vault = null;
     this.sprinting = false;
     this.health = MAX_HEALTH;
     this.dead = false;
@@ -772,6 +795,132 @@ export class Player {
     this.velocity.z = tz * vt - c.nz * vn;
   }
 
+  /**
+   * ¿Hay delante, hacia `dir`, una barda que se pueda pasar? Mide su altura, su fondo y lo
+   * que hay al otro lado, y deja en `this.vault` el recorrido: `kind` (salto, apoyo o escala),
+   * `h` altura sobre los pies, `s0` distancia a su cara, `sEnd` y `endY` dónde termina (a lo
+   * largo de `dx,dz` y en altura) y `onTop` si se queda encima.
+   */
+  tryVault(dir) {
+    const V = VAULT, world = this.physics.world, t = this.body.translation(), feet = t.y - FOOT;
+    const hit = probeWall(world, t.x, feet + 0.25, t.z, dir.x, dir.z, RADIUS + V.rango);
+    if (!hit) return false;
+    const along = -(dir.x * hit.nx + dir.z * hit.nz);
+    if (along < V.frente) return false;
+    const dx = -hit.nx, dz = -hit.nz, s0 = hit.dist * along;
+    // Altura de lo que hay a distancia `s` (sobre los pies): Infinity si está macizo hasta arriba.
+    const TOP = V.escala + 0.3, DEEP = 3;
+    const topAt = (s) => {
+      const r = world.castRay(new RAPIER.Ray({ x: t.x + dx * s, y: feet + TOP, z: t.z + dz * s }, { x: 0, y: -1, z: 0 }),
+        TOP + DEEP, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC, GROUPS.cover);
+      return !r ? -DEEP : r.timeOfImpact < 1e-3 ? Infinity : TOP - r.timeOfImpact;
+    };
+    const h = topAt(s0 + 0.08);
+    if (h < V.bajo || h > V.escala) return false;
+    // Fondo: hasta dónde sigue a esa altura.
+    let far = null;
+    for (let s = s0 + 0.2; s <= s0 + V.grosor; s += 0.15) {
+      const y = topAt(s);
+      if (y > h + 0.3) return false; // detrás hay algo más alto
+      if (y < h - 0.25) { far = s; break; }
+    }
+    const onTop = far === null;
+    let kind = h <= V.salto ? 'salto' : h <= V.apoyo ? 'apoyo' : 'escala';
+    if (onTop && kind === 'apoyo') kind = 'escala'; // a una plataforma se sube a pulso
+    const sEnd = onTop ? s0 + 0.6 : far + RADIUS + (kind === 'escala' ? 0.15 : 0.3);
+    let endY = h;
+    if (!onTop) {
+      endY = topAt(sEnd);
+      if (endY > 0.3) return false; // al otro lado no hay sitio
+      if (kind !== 'escala') endY = Math.max(endY, -0.5); // si el suelo queda más abajo, cae el resto
+    }
+    // Sitio libre por encima: sobre su cabeza y a lo largo del paso.
+    const free = (x, y, z, ax, ay, az, len) => !world.castRay(new RAPIER.Ray({ x, y, z }, { x: ax, y: ay, z: az }), len, true,
+      RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC, GROUPS.cover);
+    const head = kind === 'salto' ? 1.5 : kind === 'apoyo' ? 1.0 : 1.7;
+    if (!free(t.x, feet + 1, t.z, 0, 1, 0, h + head - 1 + 0.2)) return false;
+    if (!free(t.x, feet + h + 0.3, t.z, dx, 0, dz, sEnd + RADIUS)) return false;
+    if (!free(t.x, feet + h + head, t.z, dx, 0, dz, sEnd + RADIUS)) return false;
+    const speed = Math.max(this.speed, RUN_SPEED * 0.8);
+    const dur = kind === 'escala' ? V.tiempo + V.porMetro * Math.max(0, h - V.apoyo)
+      : THREE.MathUtils.clamp(sEnd / speed, kind === 'apoyo' ? 0.5 : 0.4, 0.8);
+    this.vault = { kind, h, s0, sEnd, endY, onTop, dx, dz, speed, dur, t: 0, from: { x: t.x, y: t.y, z: t.z } };
+    this.vaultU = 0;
+    this.cover = null;
+    this.punchT = this.jumpT = -1;
+    return true;
+  }
+
+  /** Dónde va el cuerpo en la fracción `u` del paso de una barda: avance y altura (m). */
+  vaultPath(v, u) {
+    const V = VAULT, sm = THREE.MathUtils.smoothstep, lerp = THREE.MathUtils.lerp;
+    if (v.kind !== 'escala') {
+      const arc = Math.sin(Math.PI * u) ** 0.9;
+      if (v.onTop) return { s: v.sEnd * u, y: v.h * sm(u, 0, 0.6) + V.sobra * arc };
+      const peak = v.kind === 'salto' ? v.h + V.sobra : Math.max(0.12, v.h - V.cadera);
+      return { s: v.sEnd * u, y: v.endY * sm(u, 0.5, 1) + (peak - v.endY * 0.5) * arc };
+    }
+    const [a, b, c, d] = V.fases;
+    const hang = Math.max(0, v.h - V.colgado), up = Math.max(hang, v.h - V.pulso), near = Math.max(0, v.s0 - RADIUS + 0.02);
+    if (u < a) { const k = u / a; return { s: near * sm(k, 0, 1), y: hang * (1 - (1 - k) ** 2) }; }
+    if (u < b) return { s: near, y: hang };
+    if (u < c) { const k = sm(u, b, c); return { s: lerp(near, v.s0 - 0.2, k), y: lerp(hang, up, k) }; }
+    if (u < d) { const k = sm(u, c, d); return { s: lerp(v.s0 - 0.2, v.s0 + 0.25, k), y: lerp(up, v.h, k) }; }
+    return { s: lerp(v.s0 + 0.25, v.sEnd, sm(u, d, 1)), y: v.h };
+  }
+
+  /** Mientras pasa una barda el cuerpo sigue su recorrido, sin mandos ni choques. */
+  updateVault(dt) {
+    const v = this.vault;
+    v.t += dt;
+    const u = this.vaultU = Math.min(1, v.t / v.dur);
+    const p = this.vaultPath(v, u);
+    this.body.setNextKinematicTranslation({ x: v.from.x + v.dx * p.s, y: v.from.y + p.y, z: v.from.z + v.dz * p.s });
+    const out = v.kind === 'escala' ? (v.onTop ? 0 : VAULT.salida) : v.speed;
+    this.velocity.set(v.dx * out, 0, v.dz * out);
+    this.turnToward(Math.atan2(v.dx, v.dz), 18, dt);
+    this.grounded = true;
+    this.airTime = 0;
+    this.jumpT = -1;
+    this.jumpBuffer = this.landT = this.aimT = this.blindT = 0;
+    this.aiming = false;
+    this.sprintIdle = 0;
+    const damp = (key, lambda) => { this[key] = THREE.MathUtils.damp(this[key], 0, lambda, dt); };
+    for (const key of ['crouch', 'coverCrouch', 'coverSit', 'coverLean', 'kneel', 'prone', 'coverGrip', 'aimWeight', 'standW',
+      'coverReady', 'blindW']) damp(key, 14);
+    damp('batReady', 22); damp('batGrip', 22);
+    this.fireCooldown -= dt;
+    if (u >= 1) this.vault = null; // la física sigue: si no hay suelo debajo, cae
+    this.updateAnimation(dt, false);
+  }
+
+  /**
+   * Postura al pasar una barda (después de la física): ladea el cuerpo y apoya la mano, o se
+   * agarra al borde con las dos y se dobla sobre él. Devuelve cuánto encoge las piernas (m).
+   */
+  poseVault() {
+    const v = this.vault;
+    this.vaultTuck = 0;
+    if (!v) return;
+    const V = VAULT, u = this.vaultU, sm = THREE.MathUtils.smoothstep;
+    const feet0 = v.from.y - FOOT - 0.02, lx = v.dz, lz = -v.dx; // hacia su izquierda
+    const edge = (side, into, wide) => _a.set(v.from.x + v.dx * (v.s0 + into) + lx * wide * side, feet0 + v.h,
+      v.from.z + v.dz * (v.s0 + into) + lz * wide * side).clone();
+    if (v.kind === 'salto') {
+      this.vaultTuck = 0.22 * Math.sin(Math.PI * u);
+    } else if (v.kind === 'apoyo') {
+      this.vaultTuck = 0.12 * Math.sin(Math.PI * u);
+      this.reachArm(1, edge(1, 0.18, 0.3), sm(u, 0.08, 0.3) * (1 - sm(u, 0.62, 0.85)), true, true);
+    } else {
+      const [a, b, c, d] = V.fases;
+      const grip = sm(u, 0.03, a) * (1 - sm(u, d - 0.06, d + 0.06));
+      const over = sm(u, b, c) * (1 - sm(u, d, 1));
+      this.applyTorso(over, { giro: 0, lado: 0, frente: 0.75, cuello: 0, cabeza: -0.4 });
+      this.vaultTuck = 0.42 * sm(u, (b + c) / 2, d) * (1 - sm(u, d, 1));
+      for (const side of [1, -1]) this.reachArm(side, edge(side, 0.07, 0.22), grip, true, true);
+    }
+  }
+
   /** Gira el cuerpo hacia un rumbo con suavizado y velocidad máxima de giro. */
   turnToward(angle, lambda, dt, max = MAX_TURN) {
     const turned = dampAngle(this.facing, angle, lambda, dt);
@@ -803,6 +952,7 @@ export class Player {
     this.hurtT += dt;
     if (this.hurtT > REGEN_DELAY) this.health = Math.min(MAX_HEALTH, this.health + REGEN_RATE * dt);
 
+    if (this.vault) return this.updateVault(dt);
     const punching = this.punchT >= 0;
     // Carrera rápida: se activa con un toque y dura mientras se siga avanzando.
     if (input.justPressed('KeyQ')) this.sprinting = !this.sprinting && moving && !this.cover;
@@ -894,6 +1044,13 @@ export class Player {
         : cover.mode === 'over' ? (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
           : this.blindW > 0.7
     ));
+
+    // --- Bardas: corriendo de frente contra una, o saltando junto a ella, la pasa ---
+    if (!cover && this.grounded && moving && !punching && !aimHeld && this.jumpT < 0
+      && (this.speed > (WALK_SPEED + RUN_SPEED) / 2 || this.jumpBuffer > 0) && this.tryVault(_v)) {
+      this.jumpBuffer = 0;
+      return this.updateVault(0);
+    }
 
     // --- Salto y gravedad ---
     // En el suelo no se acumula gravedad: un empuje mínimo hacia abajo mantiene el contacto
@@ -1085,6 +1242,7 @@ export class Player {
     const s = this.speed;
     let next;
     if (punching && this.meleeKind !== 'bate' && !this.meleeLow) next = 'Punch'; // el batazo va por código sobre el clip en curso
+    else if (this.vault) next = this.vault.kind === 'escala' ? 'Idle' : 'Jump'; // la postura va por código
     else if (this.airTime > 0.18) next = 'Jump';
     else if (this.cover && !this.cover.attached && this.cover.arrive > 0.25) next = 'Idle'; // llega deslizándose, sin zancadas
     else if (this.cover?.attached) {
@@ -1951,6 +2109,16 @@ export class Player {
     // arriba, con la cabeza junto a él y los pies hacia fuera.
     const prone = this.prone > 0.005 ? this.prone : 0;
     this.model.rotation.set(0, this.facing, 0);
+    // Pasando una barda con la mano apoyada: el cuerpo se ladea en torno a la cadera, la
+    // cabeza sobre la mano izquierda y las piernas por la derecha.
+    if (this.vault?.kind === 'apoyo') {
+      const HIP = 0.95;
+      this.model.rotateZ(VAULT.ladeo * Math.sin(Math.PI * this.vaultU) ** 1.3);
+      _v.set(0, HIP, 0).applyQuaternion(this.model.quaternion);
+      this.model.position.x -= _v.x;
+      this.model.position.y += HIP - _v.y;
+      this.model.position.z -= _v.z;
+    }
     // Caminar y correr de frente: zancada a la medida del avance y pie de apoyo clavado.
     const striding = this.state === 'Walking' || this.state === 'Running';
     const ahead = this.speed > 0.3
@@ -1960,7 +2128,7 @@ export class Player {
     const gaitOn = striding && this.grounded && !this.cover && !prone && this.crouch < 0.05
       && (ahead > 0.8 || this.aimWeight < 0.3);
     // De pie y quieto los pies se quedan donde pisaron y dan pasos cortos (tras la postura).
-    const standOn = !gaitOn && this.state === 'Idle' && this.grounded && !this.cover && !prone && this.crouch < 0.05
+    const standOn = !gaitOn && !this.vault && this.state === 'Idle' && this.grounded && !this.cover && !prone && this.crouch < 0.05
       && this.coverCrouch < 0.02;
     if (gaitOn || standOn || this.gait.weight > 0.01) this.savePose();
     this.proneYaw = this.proneSquat = 0;
@@ -2003,15 +2171,17 @@ export class Player {
     else this.gait.update(dt, this.model, this.position.y, this.facing, this.speed * Math.max(ahead, 0),
       (this.state === 'Running' ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), gaitOn);
     this.poseStomp();
+    this.poseVault();
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
     const sd = this.slamDrop, SB = SLAM_BODY[this.slamKey];
-    if (jc > 0.01 || cc > 0.01 || sd > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
+    const vt = this.vaultTuck;
+    if (jc > 0.01 || cc > 0.01 || sd > 0.01 || vt > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
       // Inclinación del tronco a cubierto: 0,3 rad agachado del todo; de rodillas, la de su postura.
       const K = POSES.rodillas;
       const coverLean = THREE.MathUtils.lerp(0.3, K.tronco / Math.max(K.agachado, 0.05), this.kneel) * cc;
       this.applyCrouch(
-        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc, this.proneSquat, SB.baja * sd), Math.max(0.45 * jc, coverLean, SB.tronco * sd),
+        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc, this.proneSquat, SB.baja * sd, vt), Math.max(0.45 * jc, coverLean, SB.tronco * sd),
         Math.max(0.7 * jc, SB.brazos * sd),
         this.coverLean, this.coverSit * cc,
       );
