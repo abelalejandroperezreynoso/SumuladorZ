@@ -25,6 +25,9 @@ const ATTACK_TIME = 1.0;
 const ATTACK_HIT = 0.45; // fracción del ataque en la que muerde
 const BITE_REACH = 1.5;
 const BITE_DAMAGE = 15;
+const BITE_WINDUP = 0.35; // cuánto se echa atrás antes de morder (fracción del lanzamiento)
+// Mordida de pie: cuánto se dobla hacia delante cada hueso con la cabeza lanzada (rad).
+const BITE_BEND = [['Abdomen', 0.22], ['Torso', 0.25], ['Neck', 0.3], ['Head', -0.12]];
 const HEALTH = 3; // una bala quita 1; un puñetazo, 1,5
 const STAGGER = 0.35;
 const SPAWN_MIN = 14, SPAWN_MAX = 22; // distancia al jugador al aparecer (m)
@@ -84,7 +87,7 @@ for (const s of ['L', 'R']) {
 
 // Estado del zombi -> clip del modelo, y los valores que muestra el catálogo.
 export const ZOMBIE_CLIPS = {
-  Idle: 'Idle', Walk: 'Walk', Run: 'Run', Attack: 'Punch_Left', Hit: 'HitRecieve',
+  Idle: 'Idle', Walk: 'Walk', Run: 'Run', Hit: 'HitRecieve',
 };
 export const ZOMBIE_TUNING = {
   VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
@@ -158,6 +161,16 @@ function subtree(bone, set = new Set()) {
   return set;
 }
 
+// Gira un hueso `angle` radianes sobre un eje del mundo.
+function turnWorld(bone, axis, angle) {
+  _q.setFromAxisAngle(axis, angle);
+  bone.getWorldQuaternion(_q2);
+  _q.multiply(_q2);
+  bone.parent.getWorldQuaternion(_pq);
+  bone.quaternion.copy(_q.premultiply(_pq.invert()));
+  bone.updateMatrixWorld(true);
+}
+
 // Gira un hueso para que apunte a su hijo en la dirección `dir` (mundo), con peso w.
 function aimBone(bone, child, dir, w) {
   bone.getWorldPosition(_c);
@@ -201,6 +214,7 @@ class Zombie {
     this.pushZ = 0;
     this.bit = false;
     this.arms = 0; // 0 = brazos caídos, 1 = extendidos hacia la presa
+    this.lunge = 0; // mordida: -1 = echado atrás, 0 = normal, 1 = cabeza lanzada sobre la presa
     this.lost = new Set(); // huesos desprendidos
     this.torsoCut = false; // el tronco ya está separado de las piernas
     this.limbs = 2; // brazos enteros (hombro y codo): con ellos se arrastra
@@ -220,11 +234,8 @@ class Zombie {
     this.mixer = new THREE.AnimationMixer(this.model);
     const action = (name) => this.mixer.clipAction(horde.clips[name]);
     this.actions = Object.fromEntries(Object.entries(ZOMBIE_CLIPS).map(([state, name]) => [state, action(name)]));
-    for (const name of ['Attack', 'Hit']) {
-      this.actions[name].setLoop(THREE.LoopOnce);
-      this.actions[name].clampWhenFinished = true;
-    }
-    this.actions.Attack.timeScale = this.actions.Attack.getClip().duration / ATTACK_TIME;
+    this.actions.Hit.setLoop(THREE.LoopOnce);
+    this.actions.Hit.clampWhenFinished = true;
     this.current = this.actions.Idle;
     this.current.play();
     this.armBones = [];
@@ -398,6 +409,7 @@ class Zombie {
     if (this.hp <= 0) {
       // A golpes: sale despedido lejos de quien le pega.
       _to.subVectors(this.position, player.position).setY(0).normalize().multiplyScalar(2.2).setY(0.8);
+      if (this.crawler) _to.multiplyScalar(0.15); // aplastado contra el suelo: no sale despedido
       return this.die(_to.clone());
     }
     this.state = 'stagger';
@@ -502,7 +514,6 @@ class Zombie {
           // Sigue a tiro: encadena otra mordida sin pasar un fotograma por la carrera.
           this.timer = 0;
           this.bit = false;
-          if (!this.crawler) this.current.reset().play();
         } else {
           this.state = 'chase';
         }
@@ -514,7 +525,7 @@ class Zombie {
         this.state = 'attack';
         this.timer = 0;
         this.bit = false;
-        if (!this.crawler) this.play('Attack', 0.1);
+        this.play('Idle', 0.15); // la mordida va por código (ver lunge)
       } else if (!this.sees && (td < 0.7 || this.memory <= 0)) {
         this.state = 'wander'; // llegó al último lugar donde te vio y ya no estás
         this.wanderT = 0;
@@ -535,7 +546,18 @@ class Zombie {
     }
     if (wantFacing !== null) this.facing = dampAngle(this.facing, wantFacing, 6, dt);
     // Brazos al frente al perseguir; al morder bajan para que mande la animación de ataque.
-    const armsTarget = this.crawler ? 0 : this.state === 'chase' ? 1 : this.state === 'attack' ? 0.35 : 0;
+    // Al morder agarra con los brazos y lanza la cabeza hacia la presa.
+    const armsTarget = this.crawler ? 0 : this.state === 'chase' || this.state === 'attack' ? 1 : 0;
+    // Mordida: se echa un poco atrás, lanza el tronco y la cabeza hacia delante justo al
+    // morder (ATTACK_HIT), aguanta un instante y se recoge.
+    let lunge = 0;
+    if (this.state === 'attack') {
+      const u = this.timer / ATTACK_TIME, hit = ATTACK_HIT;
+      lunge = u < hit * 0.6 ? -BITE_WINDUP * THREE.MathUtils.smoothstep(u, 0, hit * 0.6)
+        : u < hit ? THREE.MathUtils.lerp(-BITE_WINDUP, 1, ((u - hit * 0.6) / (hit * 0.4)) ** 2)
+          : u < hit + 0.15 ? 1 : 1 - THREE.MathUtils.smoothstep(u, hit + 0.15, 1);
+    }
+    this.lunge = THREE.MathUtils.damp(this.lunge, lunge, 30, dt);
     if (this.crawler) this.crawl = THREE.MathUtils.damp(this.crawl, 1, 7, dt);
     this.arms = THREE.MathUtils.damp(this.arms, armsTarget, 6, dt);
 
@@ -634,15 +656,25 @@ class Zombie {
     // Pies que no resbalan mientras deambula o persigue.
     const run = this.current === this.actions.Run;
     const walking = this.alive && (run || this.current === this.actions.Walk) && (this.moveSpeed ?? 0) > 0.15;
-    const standing = this.alive && !walking && (this.current === this.actions.Idle || this.current === this.actions.Attack);
+    const standing = this.alive && !walking && this.current === this.actions.Idle;
     if (standing) this.gait.stand(this.mixerDt ?? 0, this.model, this.position.y, this.facing);
     else this.gait.update(this.mixerDt ?? 0, this.model, this.position.y, this.facing, this.moveSpeed ?? 0,
       (run ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), walking);
 
-    // Brazos extendidos hacia la presa mientras la persigue.
+    _axis.set(Math.cos(this.facing), 0, -Math.sin(this.facing)); // hacia su izquierda
+    // Mordida: el tronco se dobla hacia la presa y el cuello estira la cabeza.
+    if (Math.abs(this.lunge) > 0.01) {
+      this.model.updateMatrixWorld(true);
+      for (const [name, angle] of BITE_BEND) {
+        const bone = this.bones[name];
+        if (!bone || this.lost.has(bone)) continue;
+        this.saved.push(bone, bone.quaternion.clone());
+        turnWorld(bone, _axis, angle * this.lunge);
+      }
+    }
+    // Brazos extendidos hacia la presa mientras la persigue y al agarrarla para morder.
     if (this.arms > 0.02) {
       this.model.updateMatrixWorld(true);
-      _axis.set(Math.cos(this.facing), 0, -Math.sin(this.facing));
       for (const a of this.armBones) {
         if (this.lost.has(a.bone)) continue;
         a.quat.copy(a.bone.quaternion);
@@ -738,6 +770,8 @@ Zombie.prototype.poseCrawl = function poseCrawl() {
   this.model.position.x += e * (this.position.x - (_c.x + _d.x) / 2);
   this.model.position.z += e * (this.position.z - (_c.z + _d.z) / 2);
   this.model.position.y += e * (this.position.y + CRAWL_HIPS - _c.y);
+  // Al morder se impulsa hacia la presa.
+  this.model.position.addScaledVector(_fwd.set(Math.sin(this.facing), 0, Math.cos(this.facing)), 0.18 * this.lunge * e);
   this.model.updateMatrixWorld(true);
   _fwd.set(Math.sin(this.facing), 0, Math.cos(this.facing));
   _axis.set(Math.cos(this.facing), 0, -Math.sin(this.facing)); // hacia su izquierda
@@ -757,15 +791,11 @@ Zombie.prototype.poseCrawl = function poseCrawl() {
     _to.y = -0.45 + 0.4 * lift;
     if (this.has('LowerArm' + s)) aimBone(lower, wrist, _to.normalize(), e);
   }
+  // La cabeza se levanta hacia la presa; al morder, el cuello la lanza hacia delante y abajo.
   for (const bone of [B.Neck, B.Head]) {
     if (!bone || this.lost.has(bone)) continue;
     turn(bone);
-    _q.setFromAxisAngle(_axis, -0.55 * e);
-    bone.getWorldQuaternion(_q2);
-    _q.multiply(_q2);
-    bone.parent.getWorldQuaternion(_pq);
-    bone.quaternion.copy(_q.premultiply(_pq.invert()));
-    bone.updateMatrixWorld(true);
+    turnWorld(bone, _axis, -0.55 * e + 0.35 * this.lunge);
   }
 };
 
