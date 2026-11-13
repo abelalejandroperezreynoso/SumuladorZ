@@ -107,7 +107,7 @@ un aro de color delante del punto de inicio y por el escenario.
 
 - **Pistola** (aro amarillo): trae 12 balas. Cada disparo gasta una; sin balas no dispara y el
   indicador de arriba a la derecha avisa en rojo.
-- **Bate de béisbol** (aro naranja): el batazo (clic izquierdo o `F`) alcanza más lejos que el
+- **Bate de béisbol** (aro naranja): quieto o caminando se lleva en guardia con las dos manos; el batazo (clic izquierdo o `F`) alcanza más lejos que el
   puño, mata a un zombi de un golpe y empuja con fuerza los objetos.
 - **Cajas de balas** (aro verde): 10 balas cada una, hasta un máximo de 99. Las del escenario
   reaparecen a los 25 s; además, los zombis sueltan a veces una caja de 5 balas que desaparece a
@@ -207,7 +207,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 - **De pie, en reposo**: quieto, el personaje se relaja (pies bajo la cadera, brazos colgando,
   tronco y cabeza erguidos y una respiración suave) en vez de la guardia del clip del modelo.
 - **Apuntar y disparar** son mandos separados. Con el clic derecho levanta el arma y la cámara
-  pasa a un plano cerrado sobre el hombro, con menos campo de visión, la mira en pantalla y
+  pasa a un plano cerrado sobre el hombro (el arma, sujeta con las dos manos), con menos campo de visión, la mira en pantalla y
   más lenta; las balas van exactas. Disparar sin apuntar no mueve la cámara ni muestra la
   mira: levanta el brazo hacia el centro de la pantalla y las balas se desvían un poco.
   A cubierto, al soltar el apuntado vuelve a esconderse en 0,3 s.

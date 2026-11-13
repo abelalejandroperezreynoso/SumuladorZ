@@ -4,7 +4,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
 import { SkeletonView } from './skeleton.js';
 import { Gait, CLIP_SPEED } from './gait.js';
-import { makeGun, makeBat } from './pickups.js';
+import { makeGun, makeBat, GUN_MUZZLE } from './pickups.js';
 import { fixProportions } from './proportions.js';
 import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
@@ -182,6 +182,9 @@ const BLIND_REACH = 0.5; // distancia del hombro a la mano con el brazo fuera (m
 // resto, atrás y abajo).
 const ARM_LIMITS = { codoFuera: 0.45, atras: 0.3, atrasArriba: 0.45, cruce: 0.15, cruceDelante: 0.55, cerrado: 0.32, estirado: 0.97 };
 const AIM_REACH = 0.5; // del hombro a la muñeca al apuntar: brazo casi estirado (m)
+// Bate en guardia (m, desde el pecho): mano derecha hacia su lado, más abajo y adelante; y
+// cuánto se inclina el bate hacia la derecha y hacia atrás (0 = vertical).
+const BAT_READY = { lado: 0.12, bajo: 0.16, frente: 0.24, inclinado: 0.25, atras: 0.45 };
 // Brazos a cubierto con la pistola (m, desde el pecho): manos delante, algo más abajo y
 // hacia el centro del cuerpo, y separación entre las dos manos.
 const COVER_ARMS = { frente: 0.26, bajo: 0.12, centro: 0.02, manos: 0.05 };
@@ -299,7 +302,9 @@ export class Player {
     this.standW = 0; // 0-1: postura de pie relajada (en reposo, sin moverse)
     this.breath = 0; // fase de la respiración
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
-    this.coverGrip = 0; // 0-1: mano izquierda sujetando el arma
+    this.coverGrip = 0; // 0-1: mano izquierda sujetando la pistola (al apuntar)
+    this.batReady = 0; // 0-1: bate en guardia, sobre el hombro derecho
+    this.batGrip = 0; // 0-1: mano izquierda sujetando el bate
     this.canFire = true;
     this.state = 'Idle';
     this.stateT = 0;
@@ -382,10 +387,9 @@ export class Player {
     this.current.play();
 
     // --- Arma (se coloca cada frame en la mano) ---
-    const gunMat = new THREE.MeshStandardMaterial({ color: 0x22262b, metalness: 0.7, roughness: 0.35 });
-    this.gun = makeGun(gunMat);
+    this.gun = makeGun();
     this.flash = new THREE.PointLight(0xffc066, 0, 6);
-    this.flash.position.z = 0.4;
+    this.flash.position.copy(GUN_MUZZLE).z += 0.1;
     this.gun.add(this.flash);
     this.gun.visible = false;
     // Bate de béisbol (pickups.js): va en la mano cuando es el arma elegida.
@@ -745,7 +749,14 @@ export class Player {
     this.coverCrouch = THREE.MathUtils.damp(this.coverCrouch, coverCrouchTarget, 11, dt);
     this.kneel = THREE.MathUtils.damp(this.kneel, cover?.attached && cover.veryLow ? 1 : 0, 10, dt);
     this.coverLean = THREE.MathUtils.damp(this.coverLean, leanTarget, 11, dt);
-    this.coverGrip = THREE.MathUtils.damp(this.coverGrip, cover?.attached && coverAim ? 1 : 0, 10, dt);
+    // Apuntando sujeta el arma con las dos manos (a cubierto o no); sin apuntar, con una.
+    this.coverGrip = THREE.MathUtils.damp(this.coverGrip, aimHeld && (!cover || cover.attached) ? 1 : 0, 10, dt);
+    // Bate: en guardia con las dos manos mientras está quieto o camina; la izquierda lo
+    // sigue también durante el batazo.
+    const batOut = this.weapon === 'bate' && !cover && this.grounded && this.prone < 0.01;
+    const calm = this.state === 'Idle' || this.state === 'Walking';
+    this.batReady = THREE.MathUtils.damp(this.batReady, batOut && calm && this.punchT < 0 ? 1 : 0, this.punchT >= 0 ? 16 : 7, dt);
+    this.batGrip = THREE.MathUtils.damp(this.batGrip, batOut && (calm || this.punchT >= 0) ? 1 : 0, 9, dt);
     this.canFire = !cover || (cover.attached && (
       cover.mode === 'side' ? cover.peek > cover.peekGoal * 0.8
         : cover.mode === 'over' ? (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
@@ -1604,12 +1615,32 @@ export class Player {
   /** El bate va en la mano derecha si es el arma elegida, inclinado hacia atrás sobre el hombro. */
   placeBat() {
     this.bat.visible = this.weapon === 'bate';
-    if (!this.bat.visible || !this.hand) return;
+    // Al cambiar de arma las manos sueltan el bate poco a poco, aunque ya no se vea.
+    if ((!this.bat.visible && this.batReady < 0.01 && this.batGrip < 0.01) || !this.hand) return;
     this.model.updateMatrixWorld(true);
-    this.hand.getWorldPosition(this.bat.position);
+    const q = this.model.quaternion;
+    const ready = this.batReady * (1 - THREE.MathUtils.clamp(this.coverReady * 2, 0, 1));
+    if (ready > 0.01) {
+      // En guardia: la mano derecha delante del hombro derecho, a la altura del pecho.
+      this.savePose();
+      const chest = (this.spine[this.spine.length - 1] ?? this.bodyBone).getWorldPosition(new THREE.Vector3());
+      chest.add(_v.set(-BAT_READY.lado, -BAT_READY.bajo, BAT_READY.frente).applyQuaternion(q));
+      this.reachArm(-1, chest, ready, true);
+    }
+    this.palm(this.bat.position);
     this.hand.getWorldQuaternion(this.bat.quaternion);
     this.bat.quaternion.multiply(BAT_GRIP);
+    if (ready > 0.01) {
+      // ...y el bate levantado, echado hacia atrás sobre el hombro.
+      _v.set(-BAT_READY.inclinado, 1, -BAT_READY.atras).normalize().applyQuaternion(q);
+      this.bat.quaternion.slerp(_q.setFromUnitVectors(_a.set(0, 0, 1), _v), ready);
+    }
     this.bat.updateMatrixWorld(true);
+    // La mano izquierda agarra el mango por debajo de la derecha.
+    if (this.batGrip > 0.01) {
+      this.savePose();
+      this.reachArm(1, new THREE.Vector3(0, 0, -0.075).applyMatrix4(this.bat.matrixWorld), this.batGrip, true);
+    }
     this.batTip.set(0, 0, 0.72).applyMatrix4(this.bat.matrixWorld);
   }
 
@@ -1666,7 +1697,7 @@ export class Player {
       (this.state === 'Running' ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), gaitOn);
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
-    if (jc > 0.01 || cc > 0.01 || Math.abs(this.coverLean) > 0.005 || this.coverGrip > 0.01) {
+    if (jc > 0.01 || cc > 0.01 || Math.abs(this.coverLean) > 0.005) {
       // Inclinación del tronco a cubierto: 0,3 rad agachado del todo; de rodillas, la de su postura.
       const K = POSES.rodillas;
       const coverLean = THREE.MathUtils.lerp(0.3, K.tronco / Math.max(K.agachado, 0.05), this.kneel) * cc;
@@ -1708,7 +1739,10 @@ export class Player {
     // El tronco acompaña a los brazos: gira y se inclina antes de colocarlos.
     if (!cover && this.aimWeight > 0.01) {
       // Al descubierto, perfil de tirador: hombro derecho adelante y algo inclinado al frente.
-      this.applyTorso(this.aimWeight * (1 - blind), TORSO_AIM);
+      // Con las dos manos en el arma se cuadra más, para que la izquierda llegue.
+      const two = this.coverGrip;
+      this.applyTorso(this.aimWeight * (1 - blind), two > 0.01
+        ? { ...TORSO_AIM, giro: TORSO_AIM.giro * (1 - 0.8 * two), cuello: TORSO_AIM.cuello * (1 - 0.8 * two) } : TORSO_AIM);
     }
     if (blind > 0.01 && cover) this.applyTorso(blind, this.blindTorso(cover));
     if (blind > 0.01) {
@@ -1735,8 +1769,10 @@ export class Player {
     // A cubierto sujeta el arma con las dos manos: el brazo izquierdo va hacia la pistola.
     const grip = this.coverGrip * aimW;
     if (grip > 0.02) {
+      // La izquierda envuelve la empuñadura por debajo de la derecha.
       const left = new THREE.Vector3(1, 0, 0).applyQuaternion(this.model.quaternion);
-      this.reachArm(1, this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(left, 0.05), grip, this.coverReady > 0.5);
+      this.reachArm(1, this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(left, 0.05).setY(this.hand.getWorldPosition(_v).y - 0.02),
+        grip, this.coverReady > 0.5);
     }
 
     this.palm(this.gun.position);
@@ -1744,7 +1780,7 @@ export class Player {
       this.aimPoint.y + kick * 1.6 * this.gun.position.distanceTo(this.aimPoint),
     ));
     this.gun.updateMatrixWorld(true);
-    this.muzzle.set(0, 0, 0.4).applyMatrix4(this.gun.matrixWorld);
+    this.muzzle.copy(GUN_MUZZLE).applyMatrix4(this.gun.matrixWorld);
 
     if (this.wantsFire && this.canFire && this.fireCooldown <= 0 && (this.aimWeight > 0.6 || blind > 0.7)) {
       this.fireCooldown = FIRE_INTERVAL;
