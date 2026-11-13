@@ -127,7 +127,7 @@ llegan dos, luego tres, y así sucesivamente.
   esté de espaldas, y los disparos atraen a los que estén a menos de 28 m.
 - **Persecución**: al verte te sigue con los brazos extendidos. Si te pierde, va al último
   lugar donde te vio y, si no te encuentra, vuelve a deambular.
-- **Ataque**: a corta distancia te muerde (15 de vida). La vida se recupera sola tras 5 s sin
+- **Ataque**: a corta distancia te agarra con los brazos y te muerde, lanzando la cabeza (15 de vida). La vida se recupera sola tras 5 s sin
   daño; si llega a cero, la horda termina y reapareces.
 - **Matarlos**: solo mueren al perder la cabeza (o a golpes: 2 puñetazos o un batazo). Hasta
   entonces siguen intentando atacar como puedan.
@@ -144,6 +144,9 @@ llegan dos, luego tres, y así sucesivamente.
   piernas con física propia, unidos por rótulas) que choca con el suelo y los muros, desde la
   postura y el impulso que llevaba. Los cadáveres y los trozos se quedan en el escenario hasta
   que termina la horda (se conservan los 240 más recientes).
+- **Rematar en el suelo**: si golpeas con un zombi arrastrándose delante (a menos de 1,6 m), el
+  golpe va al suelo: sin arma lo aplastas de un pisotón; con el bate, lo descargas de arriba abajo.
+  Los dos lo matan de un golpe.
 
 El zombi usa el mismo esqueleto del personaje, en verde.
 

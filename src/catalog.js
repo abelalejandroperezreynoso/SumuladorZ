@@ -35,11 +35,12 @@ const PLAYER_LAYERS = [
   ['Bate en guardia', (p) => p.batReady],
   ['A ciegas (con giro del tronco)', (p) => p.blindW],
   ['Inclinación', (p) => Math.abs(p.coverLean) / TUNING.PEEK_LEAN],
+  ['Pisotón', (p) => p.stomp],
   ['Recostado', (p) => p.prone],
   ['De pie relajado', (p) => p.standW],
   ['Pies clavados', (p) => p.gait.weight],
 ];
-const ZOMBIE_LAYERS = [['Brazos al frente', (z) => z.arms], ['Arrastre', (z) => z.crawl]];
+const ZOMBIE_LAYERS = [['Brazos al frente', (z) => z.arms], ['Arrastre', (z) => z.crawl], ['Mordida', (z) => Math.max(z.lunge, 0)]];
 
 export class Catalog {
   /**

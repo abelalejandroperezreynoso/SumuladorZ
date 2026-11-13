@@ -10,6 +10,19 @@ import { PICKUP_TUNING as K2 } from './pickups.js';
 import { CAMERA_TUNING as K } from './camera.js';
 import { GAIT_TUNING as G } from './gait.js';
 
+// Pone un zombi sin piernas delante del jugador, arrastrándose hacia él.
+function crawlerAhead(g) {
+  g.horde.start();
+  for (let i = 0; i < 40; i++) g.tick(1 / 60);
+  const z = g.horde.zombies[0], P = g.player.position, f = g.player.facing;
+  const at = { x: P.x + Math.sin(f) * 2.3, y: 0.9, z: P.z + Math.cos(f) * 2.3 };
+  z.body.setTranslation(at, true);
+  z.body.setNextKinematicTranslation(at);
+  z.facing = f + Math.PI;
+  g.tick(1 / 60);
+  z.shoot('stomach', null, g.player);
+}
+
 const n = (x, digits = 2) => String(+x.toFixed(digits)).replace('.', ',');
 const jumpHeight = (v) => (v * v) / (2 * T.GRAVITY);
 
@@ -88,6 +101,20 @@ export const SCENES = [
     place: [20, 30, 0], seconds: 2.6, view: Math.PI * 0.6,
     before: (g) => g.player.pickUp('bate'),
     steps: [[0.1, null, 'En guardia, a dos manos'], [1.0, press('KeyF'), 'Toma impulso atrás'], [1.0 + T.SWING_TIME * T.SWING_LOAD, null, 'Golpea'], [1.0 + T.SWING_TIME * T.SWING_HIT, null, 'Conecta'], [1.0 + T.SWING_TIME, null, 'Recupera']] },
+  { id: 'pisoton', group: 'combate', title: 'Pisotón a un zombi que se arrastra',
+    how: 'F · mando X, sin arma, con el zombi a rastras delante',
+    desc: `Si hay un zombi arrastrándose delante, a menos de ${n(T.LOW_RANGE)} m, el golpe va al suelo: sin arma levanta la rodilla derecha y lo aplasta con el pie. Dura lo que un puñetazo (${n(T.PUNCH_TIME)} s), conecta al ${n(T.PUNCH_HIT * 100)} % y quita ${n(T.MELEE.pisotón.damage)} de vida (tienen ${n(Z.HEALTH)}): lo remata. Va por código, recalculando la pierna.`,
+    place: [20, 30, 0], seconds: 3.2, view: Math.PI * 0.6, dist: 3.2,
+    before: crawlerAhead,
+    steps: [[0, null, 'El zombi se arrastra hacia ti'], [1.9, press('KeyF'), 'Levanta la rodilla'], [1.9 + T.PUNCH_TIME * T.PUNCH_HIT, null, 'Aplasta'], [1.9 + T.PUNCH_TIME, null, 'Recupera']],
+    keepAlive: true },
+  { id: 'bate-suelo', group: 'combate', title: 'Batazo al suelo',
+    how: 'Con el bate: clic izquierdo o F, con el zombi a rastras delante',
+    desc: `Con el bate en la mano y un zombi arrastrándose delante (a menos de ${n(T.LOW_RANGE)} m), el batazo va de arriba abajo: sube el bate por encima de la cabeza y lo descarga en el suelo doblando el tronco. Dura ${n(T.SWING_TIME)} s, conecta al ${n(T.SWING_HIT * 100)} % y quita ${n(T.MELEE.bateBajo.damage)} de vida.`,
+    place: [20, 30, 0], seconds: 3.6, view: Math.PI * 0.6, dist: 3.2,
+    before: (g) => { g.player.pickUp('bate'); crawlerAhead(g); },
+    steps: [[0, null, 'El zombi se arrastra hacia ti'], [1.8, press('KeyF'), 'Sube el bate'], [1.8 + T.SWING_TIME * T.SWING_HIT, null, 'Golpea en el suelo'], [1.8 + T.SWING_TIME, null, 'Recupera']],
+    keepAlive: true },
   { id: 'recoger', group: 'combate', title: 'Recoger armas y balas',
     how: 'Pasar por encima del objeto',
     desc: `Se empieza sin armas. Basta acercarse a menos de ${n(K2.REACH)} m: la pistola trae ${K2.GUN_AMMO} balas y cada caja ${K2.BOX_AMMO} (máximo ${T.MAX_AMMO}). Las cajas del escenario reaparecen a los ${K2.AMMO_RESPAWN} s; un zombi suelta ${K2.DROP_AMMO} balas el ${n(K2.DROP_CHANCE * 100, 0)} % de las veces. Al morir, las armas vuelven a su sitio.`,
@@ -142,7 +169,7 @@ export const SCENES = [
 
   { id: 'zombi', group: 'enemigos', title: 'Zombi: persecución, mordida y caída al morir',
     how: 'H inicia la horda',
-    desc: `Persigue a ${n(Z.CHASE_SPEED)} m/s con los brazos extendidos, usando el clip de correr a ritmo lento. A ${n(Z.ATTACK_RANGE)} m muerde: cada mordida dura ${n(Z.ATTACK_TIME)} s y quita ${n(Z.BITE_DAMAGE)} de vida. Un impacto lo aturde ${n(Z.STAGGER)} s; las balas no le quitan vida (solo muere al perder la cabeza; ver la ficha siguiente), pero ${n(Z.HEALTH)} de daño a golpes lo matan. Al morir se desploma como un cuerpo articulado: cadera, pecho, cabeza, brazos y piernas son cuerpos físicos unidos por rótulas que chocan con el suelo y los muros. Cuando se queda quieto (o a los ${n(Z.RAGDOLL_MAX)} s) el cadáver se queda en el escenario; se conservan hasta ${Z.REMAINS_MAX} cadáveres y trozos.`,
+    desc: `Persigue a ${n(Z.CHASE_SPEED)} m/s con los brazos extendidos, usando el clip de correr a ritmo lento. A ${n(Z.ATTACK_RANGE)} m muerde, por código y sin clip: agarra con los brazos, se echa atrás y lanza el tronco y la cabeza sobre la presa. Cada mordida dura ${n(Z.ATTACK_TIME)} s y quita ${n(Z.BITE_DAMAGE)} de vida. Un impacto lo aturde ${n(Z.STAGGER)} s; las balas no le quitan vida (solo muere al perder la cabeza; ver la ficha siguiente), pero ${n(Z.HEALTH)} de daño a golpes lo matan. Al morir se desploma como un cuerpo articulado: cadera, pecho, cabeza, brazos y piernas son cuerpos físicos unidos por rótulas que chocan con el suelo y los muros. Cuando se queda quieto (o a los ${n(Z.RAGDOLL_MAX)} s) el cadáver se queda en el escenario; se conservan hasta ${Z.REMAINS_MAX} cadáveres y trozos.`,
     place: [20, 20, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
     before: (g) => {
       g.horde.start();
@@ -195,7 +222,7 @@ export const SCENES = [
 const ROLES = {
   player: { Idle: 'reposo', Walking: 'caminar y arrastrarse', Running: 'correr', Punch: 'puñetazo',
     Jump: 'pose de salto (congelado)', CoverLeft: 'paso lateral a cubierto', CoverRight: 'paso lateral a cubierto' },
-  zombie: { Idle: 'quieto', Walk: 'deambular', Run: 'perseguir', Attack: 'morder', Hit: 'aturdido' },
+  zombie: { Idle: 'quieto', Walk: 'deambular', Run: 'perseguir', Hit: 'aturdido' },
 };
 
 /** Todos los clips del modelo con quién los usa y para qué; se calcula del código en uso. */

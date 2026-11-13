@@ -123,6 +123,27 @@ export class Gait {
     this.hasLast = true;
   }
 
+  /**
+   * Lleva un pie (side: 1 izquierdo, -1 derecho) a `target` (mundo) recalculando su pierna,
+   * sobre la pose ya armada: pisotones y otros gestos por código. Llamar después de stand() o
+   * update(); restore() lo deshace igual que a ellos.
+   */
+  place(side, target, facing) {
+    const leg = this.legs.find((l) => l.side === side);
+    if (!leg) return;
+    _fwd.set(Math.sin(facing), 0, Math.cos(facing));
+    if (!this.posed) {
+      for (const l of this.legs) for (const r of l.rest) { r.pos.copy(r.bone.position); r.quat.copy(r.bone.quaternion); }
+      this.posed = true;
+    }
+    leg.foot.getWorldPosition(_foot);
+    leg.foot.getWorldQuaternion(_fq);
+    this.solve(leg, _foot, target, side);
+    leg.foot.parent.getWorldQuaternion(_pq);
+    leg.foot.quaternion.copy(_pq.invert().multiply(_fq));
+    leg.foot.updateMatrixWorld(true);
+  }
+
   /** Deshace la pose del fotograma anterior. Llamar antes de actualizar el mezclador. */
   restore() {
     if (!this.posed) return;

@@ -181,7 +181,15 @@ const MELEE = {
   // [alcance del centro del golpe (m), radio (m), daño a un zombi, empuje]
   puño: { reach: 0.75, radius: 0.6, damage: 1.5, push: 1 },
   bate: { reach: 1.0, radius: 0.85, damage: 3, push: 1.8 },
+  // Contra un zombi que se arrastra, el golpe va al suelo: pisotón, o el bate de arriba abajo.
+  pisotón: { reach: 0.5, radius: 0.55, damage: 3, push: 0.5 },
+  bateBajo: { reach: 0.85, radius: 0.7, damage: 3, push: 1 },
 };
+const LOW_RANGE = 1.6; // un zombi a rastras a menos de esto, y delante, recibe el golpe bajo (m)
+const LOW_Y = 0.3; // altura del centro del golpe bajo (m)
+// Pisotón: adónde sube el pie derecho antes de bajar (m: al frente, a su lado y de alto) y
+// en qué fracción del golpe está arriba; baja de golpe hasta conectar (PUNCH_HIT).
+const STOMP = { frente: 0.12, lado: 0.1, alto: 0.5, arriba: 0.28, suelta: 0.6 };
 export const MAX_AMMO = 99;
 export const WEAPON_NAMES = { manos: 'Sin arma', bate: 'Bate', pistola: 'Pistola' };
 const WEAPON_ORDER = ['manos', 'bate', 'pistola'];
@@ -220,10 +228,25 @@ const SWING_KEYS = [
   { mano: [0.14, -0.12, 0.3], bate: [1, 0.4, -0.2], giro: 0.8, frente: 0.1 }, // acompaña hasta el otro lado
 ];
 SWING_KEYS.push(SWING_KEYS[0]);
-const curve = (f) => new THREE.CatmullRomCurve3(SWING_KEYS.map((k) => new THREE.Vector3(...f(k))), false, 'centripetal');
-const SWING_HAND = curve((k) => k.mano);
-const SWING_BAT = curve((k) => new THREE.Vector3(...k.bate).normalize().toArray());
-const SWING_TORSO = curve((k) => [k.giro, k.frente, 0]);
+// Batazo al suelo (contra un zombi que se arrastra): los mismos momentos, pero el bate sube
+// por encima de la cabeza y baja en vertical hasta el suelo, con el tronco doblándose.
+const SLAM_KEYS = [
+  SWING_KEYS[0],
+  { mano: [-0.06, 0.2, 0.14], bate: [-0.1, 0.8, -0.7], giro: -0.12, frente: -0.12 }, // impulso: arriba y atrás
+  { mano: [-0.03, 0.18, 0.3], bate: [0, 1, 0.15], giro: -0.05, frente: 0.1 }, // las manos tiran hacia abajo
+  { mano: [0, -0.5, 0.36], bate: [0, -0.9, 0.45], giro: 0.05, frente: 0.85 }, // conecta en el suelo
+  { mano: [0, -0.44, 0.36], bate: [0, -0.75, 0.6], giro: 0.05, frente: 0.7 }, // rebota
+  SWING_KEYS[0],
+];
+const curves = (keys) => {
+  const curve = (f) => new THREE.CatmullRomCurve3(keys.map((k) => new THREE.Vector3(...f(k))), false, 'centripetal');
+  return {
+    hand: curve((k) => k.mano),
+    bat: curve((k) => new THREE.Vector3(...k.bate).normalize().toArray()),
+    torso: curve((k) => [k.giro, k.frente, 0]),
+  };
+};
+const SWING = curves(SWING_KEYS), SLAM = curves(SLAM_KEYS);
 // Dónde agarra la mano izquierda, en el marco del arma: el mango del bate, por debajo de la
 // derecha; y la empuñadura de la pistola, envolviendo la derecha por su lado y algo más abajo.
 const BAT_LEFT = new THREE.Vector3(0, 0, -0.075);
@@ -283,7 +306,7 @@ export const PLAYER_CLIPS = {
 // Valores que el catálogo muestra en sus fichas (así nunca quedan desfasados).
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
-  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
+  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, LOW_RANGE, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SLIDE_SPEED, COVER_ARRIVE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, PEEK_HOLD, PEEK_LOOK,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
   HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
@@ -382,6 +405,8 @@ export class Player {
     this.weapon = 'manos';
     this.infiniteAmmo = false; // piloto automático y pruebas
     this.meleeKind = 'puño';
+    this.meleeLow = null; // golpe bajo en curso: { x, z, d } hacia el zombi que se arrastra
+    this.stomp = 0;
     this.fireWas = false;
     this.dryFire = 0; // >0 un instante tras apretar el gatillo sin balas (la interfaz lo avisa)
 
@@ -906,6 +931,18 @@ export class Player {
       this.punchDone = false;
       this.aimT = 0;
       this.meleeKind = this.weapon === 'bate' ? 'bate' : 'puño';
+      // ¿Hay un zombi arrastrándose delante? Entonces el golpe va al suelo, sobre él.
+      this.meleeLow = null;
+      let best = LOW_RANGE;
+      for (const z of combat.horde?.zombies ?? []) {
+        if (!z.alive || !z.crawler) continue;
+        const dx = z.position.x - this.position.x, dz = z.position.z - this.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < best && (d < 0.4 || (dx * Math.sin(this.facing) + dz * Math.cos(this.facing)) / d > 0.2)) {
+          best = d;
+          this.meleeLow = { x: dx, z: dz, d };
+        }
+      }
     }
     if (this.punchT >= 0) {
       const bat = this.meleeKind === 'bate';
@@ -1034,7 +1071,7 @@ export class Player {
     if (this.previewAction) return this.finishAnimation(dt);
     const s = this.speed;
     let next;
-    if (punching && this.meleeKind !== 'bate') next = 'Punch'; // el batazo va por código sobre el clip en curso
+    if (punching && this.meleeKind !== 'bate' && !this.meleeLow) next = 'Punch'; // el batazo va por código sobre el clip en curso
     else if (this.airTime > 0.18) next = 'Jump';
     else if (this.cover && !this.cover.attached && this.cover.arrive > 0.25) next = 'Idle'; // llega deslizándose, sin zancadas
     else if (this.cover?.attached) {
@@ -1513,6 +1550,34 @@ export class Player {
     return out;
   }
 
+  /**
+   * Pisotón (golpe sin arma sobre un zombi que se arrastra): el pie derecho sube con la
+   * rodilla doblada, baja de golpe sobre el zombi al conectar y vuelve a su sitio.
+   */
+  poseStomp() {
+    const low = this.meleeLow;
+    this.stomp = 0;
+    if (this.punchT < 0 || !low || this.meleeKind === 'bate') return;
+    const u = this.punchT / PUNCH_TIME, S = STOMP;
+    const leg = this.legs.find((l) => l.side === -1);
+    if (!leg) return;
+    this.model.updateMatrixWorld(true);
+    const foot = leg.foot.getWorldPosition(new THREE.Vector3());
+    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+    // Arriba: rodilla levantada, el pie algo adelantado y a su lado.
+    const up = _v.set(this.position.x + fx * S.frente - fz * S.lado, this.position.y + S.alto, this.position.z + fz * S.frente + fx * S.lado);
+    // Abajo: sobre el zombi, hasta donde llega la pierna.
+    const d = THREE.MathUtils.clamp(low.d, 0.25, MELEE.pisotón.reach + 0.1);
+    const dx = low.d > 0.05 ? low.x / low.d : fx, dz = low.d > 0.05 ? low.z / low.d : fz;
+    const down = _knee.set(this.position.x + dx * d, this.position.y + 0.14, this.position.z + dz * d);
+    const smooth = (a, b) => THREE.MathUtils.smoothstep(u, a, b);
+    if (u < S.arriba) foot.lerp(up, smooth(0, S.arriba));
+    else if (u < PUNCH_HIT) foot.lerpVectors(up, down, ((u - S.arriba) / (PUNCH_HIT - S.arriba)) ** 2);
+    else foot.lerpVectors(down, foot.clone(), smooth(S.suelta, 1));
+    this.stomp = u < PUNCH_HIT ? smooth(0, S.arriba) : 1 - smooth(S.suelta, 1); // para el catálogo
+    this.gait.place(-1, foot, this.facing);
+  }
+
   /** ¿Está dando un batazo? (El golpe en curso empezó con el bate y sigue en la mano.) */
   get swinging() {
     return this.punchT >= 0 && this.meleeKind === 'bate' && this.weapon === 'bate';
@@ -1755,9 +1820,11 @@ export class Player {
 
   // Golpe (puño o bate): empuja todo lo que esté delante del personaje y hiere a los zombis.
   hitPunch(combat) {
-    const M = MELEE[this.meleeKind];
-    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    const center = { x: this.position.x + fx * M.reach, y: this.position.y + 1.05, z: this.position.z + fz * M.reach };
+    const low = this.meleeLow;
+    const M = MELEE[!low ? this.meleeKind : this.meleeKind === 'bate' ? 'bateBajo' : 'pisotón'];
+    let fx = Math.sin(this.facing), fz = Math.cos(this.facing), reach = M.reach;
+    if (low && low.d > 0.05) { fx = low.x / low.d; fz = low.z / low.d; reach = Math.min(low.d, M.reach); } // sobre el zombi
+    const center = { x: this.position.x + fx * reach, y: this.position.y + (low ? LOW_Y : 1.05), z: this.position.z + fz * reach };
     // Primero se recogen los colliders; los impulsos se aplican fuera de la consulta.
     const found = [];
     this.physics.world.intersectionsWithShape(
@@ -1803,18 +1870,19 @@ export class Player {
     const swinging = this.swinging;
     const ready = this.batReady * (swinging ? 1 : 1 - THREE.MathUtils.clamp(this.coverReady * 2, 0, 1));
     const k = (swinging ? this.swingPhase(this.punchT / SWING_TIME) : 0) / (SWING_KEYS.length - 1);
+    const S = swinging && this.meleeLow ? SLAM : SWING;
     let right = null;
     const aim = new THREE.Quaternion();
     if (ready > 0.01) {
       this.savePose();
       // El tronco carga hacia atrás y gira con el golpe; la cabeza sigue mirando al frente.
-      const torso = SWING_TORSO.getPoint(k);
+      const torso = S.torso.getPoint(k);
       if (swinging) this.applyTorso(ready, { giro: torso.x, lado: 0, frente: torso.y, cuello: -torso.x * 0.7, cabeza: -torso.y * 0.5 });
       this.model.updateMatrixWorld(true);
       const q = _q2.copy(this.model.quaternion).multiply(_q.setFromAxisAngle(_a.set(0, 1, 0), swinging ? torso.x * ready : 0));
       right = (this.spine[this.spine.length - 1] ?? this.bodyBone).getWorldPosition(new THREE.Vector3());
-      right.add(SWING_HAND.getPoint(k).applyQuaternion(q));
-      aim.setFromUnitVectors(_a.set(0, 0, 1), SWING_BAT.getPoint(k).normalize().applyQuaternion(q));
+      right.add(S.hand.getPoint(k).applyQuaternion(q));
+      aim.setFromUnitVectors(_a.set(0, 0, 1), S.bat.getPoint(k).normalize().applyQuaternion(q));
       this.armFrame = q.clone();
     }
     this.holdTwoHanded(this.bat, right, ready, () => {
@@ -1895,6 +1963,7 @@ export class Player {
     if (standOn) this.gait.stand(dt, this.model, this.position.y, this.facing);
     else this.gait.update(dt, this.model, this.position.y, this.facing, this.speed * Math.max(ahead, 0),
       (this.state === 'Running' ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), gaitOn);
+    this.poseStomp();
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
     if (jc > 0.01 || cc > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
