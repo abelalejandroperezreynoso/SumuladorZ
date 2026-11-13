@@ -113,7 +113,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   duermen (`settled`; entre `RAGDOLL_MIN` y `RAGDOLL_MAX`) se retira la física y el cadáver se
   funde en mallas fijas (`bakeStatic` en `src/skeleton.js`, `Horde.keep`, `horde.remains`). El
   usuario pidió **dejar los cuerpos, no eliminarlos**: solo se van al terminar la horda o al
-  pasar de `REMAINS_MAX`. Los trozos desprendidos siguen el mismo camino. Los restos no tienen
+  pasar de `REMAINS_MAX`. Los trozos desprendidos siguen el mismo camino y también son
+  articulados (`Horde.detach` crea un cuerpo por segmento de `RAGDOLL` con sus rótulas: unas
+  piernas sueltas se desploman, no quedan erguidas); solo cabeza, mano y pie caen rígidos. Los restos no tienen
   colisión: jugador y zombis pasan por encima.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
