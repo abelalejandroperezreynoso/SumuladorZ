@@ -107,7 +107,7 @@ un aro de color delante del punto de inicio y por el escenario.
 
 - **Pistola** (aro amarillo): trae 12 balas. Cada disparo gasta una; sin balas no dispara y el
   indicador de arriba a la derecha avisa en rojo.
-- **Bate de béisbol** (aro naranja): quieto o caminando se lleva en guardia con las dos manos; el batazo (clic izquierdo o `F`) alcanza más lejos que el
+- **Bate de béisbol** (aro naranja): quieto o caminando se lleva en guardia con las dos manos, ancladas al mango; el batazo (clic izquierdo o `F`) toma impulso llevando el bate atrás, gira el tronco con el golpe y alcanza más lejos que el
   puño, mata a un zombi de un golpe y empuja con fuerza los objetos.
 - **Cajas de balas** (aro verde): 10 balas cada una, hasta un máximo de 99. Las del escenario
   reaparecen a los 25 s; además, los zombis sueltan a veces una caja de 5 balas que desaparece a

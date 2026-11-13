@@ -153,8 +153,10 @@ const HALF = 0.5; // semialtura del tramo recto de la cápsula
 const FOOT = HALF + RADIUS; // del centro del cuerpo a los pies
 const PUNCH_TIME = 0.55; // duración del golpe (s)
 // Armas. Se empieza sin nada: la pistola, el bate y las balas se recogen del suelo (pickups.js).
-const SWING_TIME = 0.7; // duración del batazo (s)
-const SWING_HIT = 0.45; // fracción del batazo en la que conecta
+const SWING_TIME = 0.9; // duración del batazo (s)
+const SWING_LOAD = 0.36; // fracción del batazo que dura la toma de impulso, con el bate atrás
+const SWING_STRIKE = 0.32; // ...y el golpe en sí; el resto es recuperar la guardia
+const SWING_HIT = 0.56; // fracción del batazo en la que conecta (bate al frente, a máxima velocidad)
 const MELEE = {
   // [alcance del centro del golpe (m), radio (m), daño a un zombi, empuje]
   puño: { reach: 0.75, radius: 0.6, damage: 1.5, push: 1 },
@@ -178,13 +180,36 @@ const BLIND_REACH = 0.5; // distancia del hombro a la mano con el brazo fuera (m
 // detrás del cuerpo (componente hacia la espalda, 0-1), y `atrasArriba` lo que se suma con el
 // brazo en alto; `cruce`, cuánto puede pasar al otro lado, y `cruceDelante` lo que se suma
 // cuanto más por delante va. Distancia hombro→mano, en fracción del brazo: `cerrado` (codo
-// doblado del todo, ~145°) y `estirado`. `codoFuera`: cuánto apunta el codo hacia fuera (el
+// doblado del todo, ~145°) y `estirado`. `cruceDosManos`: lo que se suma a `cruce` con las dos
+// manos en un objeto (el hombro se adelanta para acompañar). `codoFuera`: cuánto apunta el codo hacia fuera (el
 // resto, atrás y abajo).
-const ARM_LIMITS = { codoFuera: 0.45, atras: 0.3, atrasArriba: 0.45, cruce: 0.15, cruceDelante: 0.55, cerrado: 0.32, estirado: 0.97 };
+const ARM_LIMITS = { codoFuera: 0.45, atras: 0.3, atrasArriba: 0.45, cruce: 0.15, cruceDelante: 0.55, cruceDosManos: 0.25, cerrado: 0.32, estirado: 0.97 };
 const AIM_REACH = 0.5; // del hombro a la muñeca al apuntar: brazo casi estirado (m)
 // Bate en guardia (m, desde el pecho): mano derecha hacia su lado, más abajo y adelante; y
 // cuánto se inclina el bate hacia la derecha y hacia atrás (0 = vertical).
 const BAT_READY = { lado: 0.12, bajo: 0.16, frente: 0.24, inclinado: 0.25, atras: 0.45 };
+// Batazo por código. Cada momento: dónde va la mano derecha (m, desde el pecho: +X izquierda,
+// +Y arriba, +Z al frente), hacia dónde apunta el bate y cuánto gira y se encorva el tronco
+// (rad; giro + lleva el hombro derecho adelante). Posiciones y direcciones van en el marco
+// del pecho ya girado. El recorrido pasa por todos con una curva suave (ver swingPhase).
+const SWING_KEYS = [
+  { mano: [-BAT_READY.lado, -BAT_READY.bajo, BAT_READY.frente], bate: [-BAT_READY.inclinado, 1, -BAT_READY.atras], giro: 0, frente: 0 }, // guardia
+  { mano: [-0.13, -0.04, 0.24], bate: [-0.3, 0.75, -0.95], giro: -0.8, frente: 0.06 }, // impulso: atrás, junto al hombro derecho
+  { mano: [-0.16, -0.13, 0.34], bate: [-1, 0.2, -0.1], giro: -0.25, frente: 0.12 }, // las manos tiran; el bate viene retrasado
+  { mano: [0.0, -0.2, 0.44], bate: [-0.12, -0.05, 1], giro: 0.3, frente: 0.18 }, // conecta, con los brazos estirados
+  { mano: [0.14, -0.12, 0.3], bate: [1, 0.4, -0.2], giro: 0.8, frente: 0.1 }, // acompaña hasta el otro lado
+];
+SWING_KEYS.push(SWING_KEYS[0]);
+const curve = (f) => new THREE.CatmullRomCurve3(SWING_KEYS.map((k) => new THREE.Vector3(...f(k))), false, 'centripetal');
+const SWING_HAND = curve((k) => k.mano);
+const SWING_BAT = curve((k) => new THREE.Vector3(...k.bate).normalize().toArray());
+const SWING_TORSO = curve((k) => [k.giro, k.frente, 0]);
+// Dónde agarra la mano izquierda, en el marco del arma: el mango del bate, por debajo de la
+// derecha; y la empuñadura de la pistola, envolviendo la derecha por su lado y algo más abajo.
+const BAT_LEFT = new THREE.Vector3(0, 0, -0.075);
+const GUN_LEFT = new THREE.Vector3(0.045, -0.025, 0);
+const GRIP_SHIFT = 0.25; // cuánto puede acercarse el arma a la mano izquierda si esta no llega (m)
+const GRIP_SLACK = 0.004; // separación admitida entre la mano y su agarre (m)
 // Brazos a cubierto con la pistola (m, desde el pecho): manos delante, algo más abajo y
 // hacia el centro del cuerpo, y separación entre las dos manos.
 const COVER_ARMS = { frente: 0.26, bajo: 0.12, centro: 0.02, manos: 0.05 };
@@ -224,14 +249,14 @@ const _fq = new THREE.Quaternion();
 
 // Estado del juego -> clip del modelo. El catálogo lo lee para saber qué clips se usan.
 export const PLAYER_CLIPS = {
-  Idle: 'Idle', Walking: 'Walk', Running: 'Run', Punch: 'Punch_Right', Swing: 'Sword_Slash',
+  Idle: 'Idle', Walking: 'Walk', Running: 'Run', Punch: 'Punch_Right',
   Jump: 'Run', // el modelo no trae salto: zancada de carrera congelada como pose en el aire
   CoverLeft: 'Run_Left', CoverRight: 'Run_Right', // pasos laterales pegado a una cobertura
 };
 // Valores que el catálogo muestra en sus fichas (así nunca quedan desfasados).
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
-  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
+  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
   HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, BLIND_EDGE,
@@ -304,6 +329,8 @@ export class Player {
     this.coverLean = 0; // inclinación lateral al asomarse (rad, + hacia la derecha del personaje)
     this.coverGrip = 0; // 0-1: mano izquierda sujetando la pistola (al apuntar)
     this.batReady = 0; // 0-1: bate en guardia, sobre el hombro derecho
+    this.armFrame = null; // marco del tronco para los límites de los brazos, si está girado (reachArm)
+    this.armCross = 0; // margen extra para cruzar el brazo (dos manos en un arma)
     this.batGrip = 0; // 0-1: mano izquierda sujetando el bate
     this.canFire = true;
     this.state = 'Idle';
@@ -359,6 +386,7 @@ export class Player {
     this.hand = bone('WristR') ?? bone('LowerArmR');
     this.handL = bone('WristL') ?? bone('LowerArmL');
     this.fingerR = bone('Middle4R'); // punta del dedo medio: con la muñeca da la palma
+    this.fingerL = bone('Middle4L');
     this.neck = bone('Neck');
     this.spine = ['Abdomen', 'Torso', 'Chest'].map(bone).filter(Boolean); // de la cadera al pecho
     this.neckRest = new THREE.Quaternion();
@@ -380,9 +408,6 @@ export class Player {
     this.actions.Punch.setLoop(THREE.LoopOnce);
     this.actions.Punch.clampWhenFinished = true;
     this.actions.Punch.timeScale = this.actions.Punch.getClip().duration / PUNCH_TIME;
-    this.actions.Swing.setLoop(THREE.LoopOnce);
-    this.actions.Swing.clampWhenFinished = true;
-    this.actions.Swing.timeScale = this.actions.Swing.getClip().duration / SWING_TIME;
     this.current = this.actions.Idle;
     this.current.play();
 
@@ -755,8 +780,10 @@ export class Player {
     // sigue también durante el batazo.
     const batOut = this.weapon === 'bate' && !cover && this.grounded && this.prone < 0.01;
     const calm = this.state === 'Idle' || this.state === 'Walking';
-    this.batReady = THREE.MathUtils.damp(this.batReady, batOut && calm && this.punchT < 0 ? 1 : 0, this.punchT >= 0 ? 16 : 7, dt);
-    this.batGrip = THREE.MathUtils.damp(this.batGrip, batOut && (calm || this.punchT >= 0) ? 1 : 0, 9, dt);
+    // El batazo se hace entero por código (placeBat), con las dos manos en el mango.
+    const swinging = this.swinging;
+    this.batReady = THREE.MathUtils.damp(this.batReady, swinging || (batOut && calm) ? 1 : 0, swinging ? 22 : 7, dt);
+    this.batGrip = THREE.MathUtils.damp(this.batGrip, swinging || (batOut && calm) ? 1 : 0, swinging ? 22 : 9, dt);
     this.canFire = !cover || (cover.attached && (
       cover.mode === 'side' ? cover.peek > cover.peekGoal * 0.8
         : cover.mode === 'over' ? (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
@@ -933,7 +960,7 @@ export class Player {
     if (this.previewAction) return this.finishAnimation(dt);
     const s = this.speed;
     let next;
-    if (punching) next = this.meleeKind === 'bate' ? 'Swing' : 'Punch';
+    if (punching && this.meleeKind !== 'bate') next = 'Punch'; // el batazo va por código sobre el clip en curso
     else if (this.airTime > 0.18) next = 'Jump';
     else if (this.cover?.attached) {
       // Paso lateral según hacia qué lado del personaje se desplaza.
@@ -980,7 +1007,7 @@ export class Player {
         action.setEffectiveWeight(1);
         if (next === 'Jump') action.time = JUMP_POSE_TIME;
         else if (phase) action.time = phase * action.getClip().duration;
-        const fade = next === 'Punch' || next === 'Swing' ? 0.08 : gait(next) && gait(this.state) ? 0.25 : 0.18;
+        const fade = next === 'Punch' ? 0.08 : gait(next) && gait(this.state) ? 0.25 : 0.18;
         action.crossFadeFrom(this.current, fade, false).play();
       }
       this.current = action;
@@ -1191,18 +1218,21 @@ export class Player {
    * cierra más de ~145°, y se dobla siempre hacia fuera, abajo y atrás, nunca al revés.
    * Con `straight`, el peso mueve la mano en línea recta desde donde está (si se mezclaran
    * los giros de los huesos, la mano podría pasar por detrás del cuerpo entre dos posturas).
+   * Con `palm`, lo que llega a `target` es el centro de la palma en vez de la muñeca.
    */
-  reachArm(side, target, w, straight = false) {
+  reachArm(side, target, w, straight = false, palm = false) {
     const upper = side > 0 ? this.upperArmL : this.upperArm;
     const lower = side > 0 ? this.lowerArmL : this.lowerArm;
     const hand = side > 0 ? this.handL : this.hand;
     if (!upper || !lower || !hand || hand === lower || w < 0.002) return;
     this.model.updateMatrixWorld(true);
-    const q = this.model.quaternion;
+    const q = this.model.quaternion.clone();
     const S = upper.getWorldPosition(new THREE.Vector3());
     const E = lower.getWorldPosition(new THREE.Vector3());
-    const H = hand.getWorldPosition(new THREE.Vector3());
+    const H = palm ? this.palm(new THREE.Vector3(), side) : hand.getWorldPosition(new THREE.Vector3());
     const len = S.distanceTo(E) + E.distanceTo(H);
+    // Los límites son respecto al tronco: si está girado (batazo), se miden en su marco.
+    if (this.armFrame) q.copy(this.armFrame);
     if (straight && w < 1) {
       target = H.clone().lerp(target, w);
       w = 1;
@@ -1223,7 +1253,7 @@ export class Player {
         u.z = back;
       }
       // Cruzar al otro lado solo por delante del pecho: el sobrante lleva la mano al frente.
-      const cross = ARM_LIMITS.cruce + ARM_LIMITS.cruceDelante * Math.max(u.z, 0);
+      const cross = ARM_LIMITS.cruce + this.armCross + ARM_LIMITS.cruceDelante * Math.max(u.z, 0);
       if (-u.x * side > cross) {
         u.x = -cross * side;
         const rest = 1 - u.x * u.x, lim = Math.sqrt(rest);
@@ -1392,11 +1422,76 @@ export class Player {
     this.applyAdjust('parado', w);
   }
 
-  /** Centro de la palma derecha, donde va la empuñadura del arma. */
-  palm(out) {
-    this.hand.getWorldPosition(out);
-    if (this.fingerR) out.lerp(this.fingerR.getWorldPosition(_h), 0.35);
+  /** Centro de la palma, donde va la empuñadura del arma (`side` +1 izquierda, -1 derecha). */
+  palm(out, side = -1) {
+    const hand = side > 0 ? this.handL : this.hand, finger = side > 0 ? this.fingerL : this.fingerR;
+    hand.getWorldPosition(out);
+    if (finger) out.lerp(finger.getWorldPosition(_h), 0.35);
     return out;
+  }
+
+  /** ¿Está dando un batazo? (El golpe en curso empezó con el bate y sigue en la mano.) */
+  get swinging() {
+    return this.punchT >= 0 && this.meleeKind === 'bate' && this.weapon === 'bate';
+  }
+
+  /**
+   * Avance del batazo (0-5, índice en SWING_KEYS) según la fracción `u` de su duración. Toma
+   * impulso despacio y se detiene un instante atrás; el golpe acelera hasta conectar y se
+   * frena al otro lado; después vuelve a la guardia.
+   */
+  swingPhase(u) {
+    const ease = (x) => THREE.MathUtils.smootherstep(x, 0, 1);
+    const hit = SWING_LOAD + SWING_STRIKE;
+    if (u < SWING_LOAD) return ease(u / SWING_LOAD);
+    if (u < hit) {
+      // Arranca de parado, va cada vez más rápido y solo frena pasado el contacto.
+      const x = (u - SWING_LOAD) / SWING_STRIKE;
+      const a = 0.6;
+      return 1 + 3 * (x < a ? (x * x) / a : 1 - ((1 - x) * (1 - x)) / (1 - a));
+    }
+    return 4 + ease((u - hit) / (1 - hit));
+  }
+
+  /**
+   * Sujeta un arma con las dos manos, como los pies se clavan al suelo: el arma va en la palma
+   * derecha y la izquierda se ancla a su agarre (`leftGrip`, en el marco del arma). Si la
+   * izquierda no llega (los brazos tienen límites), se acerca el arma hacia ella (hasta
+   * GRIP_SHIFT) y se repite, de modo que ninguna mano se despega. `right` es adónde va la muñeca derecha con peso `wR`
+   * (con `posed`, el brazo ya está ahí y solo se mueve si hay que acercar el arma); `place()` coloca el arma en la palma derecha y la
+   * orienta; `wL` es el peso de la mano izquierda.
+   */
+  holdTwoHanded(weapon, right, wR, place, leftGrip, wL, straight = true, posed = false) {
+    this.savePose();
+    this.armCross = ARM_LIMITS.cruceDosManos * wL;
+    this.solveTwoHanded(weapon, right, wR, place, leftGrip, wL, straight, posed);
+    this.armCross = 0;
+    this.armFrame = null;
+  }
+
+  solveTwoHanded(weapon, right, wR, place, leftGrip, wL, straight, posed) {
+    const arms = [this.upperArm, this.lowerArm, this.upperArmL, this.lowerArmL];
+    const saved = arms.map((b) => b.quaternion.clone());
+    const restore = (from) => {
+      for (let i = from; i < 4; i++) arms[i].quaternion.copy(saved[i]);
+      this.model.updateMatrixWorld(true);
+    };
+    const shift = new THREE.Vector3(), L = new THREE.Vector3(), P = new THREE.Vector3();
+    // A medio colocar no hay nada que corregir: la corrección entra poco a poco al final.
+    const firm = THREE.MathUtils.smoothstep(Math.min(wL, right ? wR : 1), 0.9, 1);
+    for (let i = 0; i < 4; i++) {
+      if (i) restore(right ? 0 : 2);
+      if (right && wR > 0.002 && (i || !posed)) this.reachArm(-1, right.clone().add(shift), wR, straight);
+      place();
+      weapon.updateMatrixWorld(true);
+      if (wL < 0.01 || !this.handL || this.handL === this.lowerArmL) return;
+      L.copy(leftGrip).applyMatrix4(weapon.matrixWorld);
+      this.reachArm(1, L, wL, straight, true);
+      const gap = this.palm(P, 1).distanceTo(L);
+      if (firm > 0.99) this.gripGap = gap; // para medirlo desde fuera
+      if (!firm || !right || gap < GRIP_SLACK) return;
+      shift.addScaledVector(P.sub(L), 0.8 * firm).clampLength(0, GRIP_SHIFT); // el arma va hacia donde sí llega la izquierda
+    }
   }
 
   /**
@@ -1612,35 +1707,39 @@ export class Player {
     if (hits) combat.spark(_v.set(center.x, center.y, center.z), 0.5, 0xffffff);
   }
 
-  /** El bate va en la mano derecha si es el arma elegida, inclinado hacia atrás sobre el hombro. */
+  /**
+   * El bate va en las manos si es el arma elegida: en guardia sobre el hombro derecho y, en el
+   * batazo, por el recorrido de SWING_KEYS (impulso atrás, golpe y acompañamiento), con el
+   * tronco girando con él. Las dos manos quedan ancladas al mango (holdTwoHanded).
+   */
   placeBat() {
     this.bat.visible = this.weapon === 'bate';
     // Al cambiar de arma las manos sueltan el bate poco a poco, aunque ya no se vea.
     if ((!this.bat.visible && this.batReady < 0.01 && this.batGrip < 0.01) || !this.hand) return;
     this.model.updateMatrixWorld(true);
-    const q = this.model.quaternion;
-    const ready = this.batReady * (1 - THREE.MathUtils.clamp(this.coverReady * 2, 0, 1));
+    const swinging = this.swinging;
+    const ready = this.batReady * (swinging ? 1 : 1 - THREE.MathUtils.clamp(this.coverReady * 2, 0, 1));
+    const k = (swinging ? this.swingPhase(this.punchT / SWING_TIME) : 0) / (SWING_KEYS.length - 1);
+    let right = null;
+    const aim = new THREE.Quaternion();
     if (ready > 0.01) {
-      // En guardia: la mano derecha delante del hombro derecho, a la altura del pecho.
       this.savePose();
-      const chest = (this.spine[this.spine.length - 1] ?? this.bodyBone).getWorldPosition(new THREE.Vector3());
-      chest.add(_v.set(-BAT_READY.lado, -BAT_READY.bajo, BAT_READY.frente).applyQuaternion(q));
-      this.reachArm(-1, chest, ready, true);
+      // El tronco carga hacia atrás y gira con el golpe; la cabeza sigue mirando al frente.
+      const torso = SWING_TORSO.getPoint(k);
+      if (swinging) this.applyTorso(ready, { giro: torso.x, lado: 0, frente: torso.y, cuello: -torso.x * 0.7, cabeza: -torso.y * 0.5 });
+      this.model.updateMatrixWorld(true);
+      const q = _q2.copy(this.model.quaternion).multiply(_q.setFromAxisAngle(_a.set(0, 1, 0), swinging ? torso.x * ready : 0));
+      right = (this.spine[this.spine.length - 1] ?? this.bodyBone).getWorldPosition(new THREE.Vector3());
+      right.add(SWING_HAND.getPoint(k).applyQuaternion(q));
+      aim.setFromUnitVectors(_a.set(0, 0, 1), SWING_BAT.getPoint(k).normalize().applyQuaternion(q));
+      this.armFrame = q.clone();
     }
-    this.palm(this.bat.position);
-    this.hand.getWorldQuaternion(this.bat.quaternion);
-    this.bat.quaternion.multiply(BAT_GRIP);
-    if (ready > 0.01) {
-      // ...y el bate levantado, echado hacia atrás sobre el hombro.
-      _v.set(-BAT_READY.inclinado, 1, -BAT_READY.atras).normalize().applyQuaternion(q);
-      this.bat.quaternion.slerp(_q.setFromUnitVectors(_a.set(0, 0, 1), _v), ready);
-    }
-    this.bat.updateMatrixWorld(true);
-    // La mano izquierda agarra el mango por debajo de la derecha.
-    if (this.batGrip > 0.01) {
-      this.savePose();
-      this.reachArm(1, new THREE.Vector3(0, 0, -0.075).applyMatrix4(this.bat.matrixWorld), this.batGrip, true);
-    }
+    this.holdTwoHanded(this.bat, right, ready, () => {
+      this.palm(this.bat.position);
+      this.hand.getWorldQuaternion(this.bat.quaternion);
+      this.bat.quaternion.multiply(BAT_GRIP);
+      if (ready > 0.01) this.bat.quaternion.slerp(aim, ready);
+    }, BAT_LEFT, this.batGrip);
     this.batTip.set(0, 0, 0.72).applyMatrix4(this.bat.matrixWorld);
   }
 
@@ -1725,10 +1824,13 @@ export class Player {
     if (!armed) {
       // Acostado lleva el arma en las manos, sobre el pecho, apuntando hacia los pies y arriba.
       // A cubierto, junto al pecho con el cañón hacia arriba.
+      // La mano izquierda va anclada a la empuñadura, junto a la derecha.
       this.model.updateMatrixWorld(true);
-      this.palm(this.gun.position);
-      _v.set(prone > 0.5 ? 0.15 : 0.1, prone > 0.5 ? -0.8 : 0.75, prone > 0.5 ? 0.45 : 0.5).applyQuaternion(this.model.quaternion);
-      this.gun.lookAt(_v.add(this.gun.position));
+      this.holdTwoHanded(this.gun, this.hand.getWorldPosition(new THREE.Vector3()), 1, () => {
+        this.palm(this.gun.position);
+        _v.set(prone > 0.5 ? 0.15 : 0.1, prone > 0.5 ? -0.8 : 0.75, prone > 0.5 ? 0.45 : 0.5).applyQuaternion(this.model.quaternion);
+        this.gun.lookAt(_v.add(this.gun.position));
+      }, GUN_LEFT, Math.max(ready, THREE.MathUtils.smoothstep(prone, 0.5, 1)), true, true);
       return;
     }
 
@@ -1766,19 +1868,19 @@ export class Player {
       this.reachArm(-1, want.normalize().multiplyScalar(AIM_REACH).add(S), aimW, this.coverReady > 0.5);
     }
 
-    // A cubierto sujeta el arma con las dos manos: el brazo izquierdo va hacia la pistola.
+    const aimGun = () => {
+      this.palm(this.gun.position);
+      this.gun.lookAt(_knee.copy(this.aimPoint).setY(
+        this.aimPoint.y + kick * 1.6 * this.gun.position.distanceTo(this.aimPoint),
+      ));
+    };
+    // Apuntando sujeta el arma con las dos manos: el brazo izquierdo va hacia la pistola.
     const grip = this.coverGrip * aimW;
     if (grip > 0.02) {
-      // La izquierda envuelve la empuñadura por debajo de la derecha.
-      const left = new THREE.Vector3(1, 0, 0).applyQuaternion(this.model.quaternion);
-      this.reachArm(1, this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(left, 0.05).setY(this.hand.getWorldPosition(_v).y - 0.02),
-        grip, this.coverReady > 0.5);
-    }
-
-    this.palm(this.gun.position);
-    this.gun.lookAt(_knee.copy(this.aimPoint).setY(
-      this.aimPoint.y + kick * 1.6 * this.gun.position.distanceTo(this.aimPoint),
-    ));
+      // La izquierda envuelve la empuñadura por debajo de la derecha, anclada al arma: si no
+      // llega, la pistola se acerca (el brazo derecho ya está colocado y se recoloca con ella).
+      this.holdTwoHanded(this.gun, this.hand.getWorldPosition(new THREE.Vector3()), 1, aimGun, GUN_LEFT, grip, this.coverReady > 0.5, true);
+    } else aimGun();
     this.gun.updateMatrixWorld(true);
     this.muzzle.copy(GUN_MUZZLE).applyMatrix4(this.gun.matrixWorld);
 
