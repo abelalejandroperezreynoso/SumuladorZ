@@ -185,9 +185,10 @@ export class SkeletonView {
   /**
    * Desmembramiento: separa del esqueleto las piezas de los huesos dados (un Set; sin él, todas
    * las que queden) y las devuelve en un grupo aparte, en el mundo, que ya no sigue al modelo.
-   * Devuelve { group, size } (centro y tamaño de la caja que las contiene) o null si no hay nada.
+   * Devuelve { group, size } (el grupo nace en `origin` o, sin él, en el centro de la caja que
+   * las contiene; size es el tamaño de esa caja) o null si no hay nada.
    */
-  detach(bones) {
+  detach(bones, origin = null) {
     const has = (b) => !bones || bones.has(b);
     const box = new THREE.Box3();
     const meshes = [];
@@ -197,9 +198,9 @@ export class SkeletonView {
       box.expandByPoint(j.mesh.position);
       return false;
     });
-    // Un hueso dibujado se va si empieza en la pieza y no sale de ella (el muñón se queda).
+    // Un hueso dibujado se va con la pieza en la que empieza (el muñón, que empieza fuera, se queda).
     this.links = this.links.filter((l) => {
-      if (!has(l.from) || (l.to && !has(l.to))) return true;
+      if (!has(l.from)) return true;
       if (l.mesh.visible) {
         meshes.push(l.mesh);
         box.expandByPoint(l.mesh.position);
@@ -215,7 +216,7 @@ export class SkeletonView {
     }
     if (!meshes.length) return null;
     const group = new THREE.Group();
-    box.getCenter(group.position);
+    if (origin) group.position.copy(origin); else box.getCenter(group.position);
     this.scene.add(group);
     group.updateMatrixWorld(true);
     for (const m of meshes) group.attach(m);

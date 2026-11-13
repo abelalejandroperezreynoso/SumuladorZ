@@ -142,6 +142,16 @@ function raySegment(p, dir, max, a, b) {
   return Math.hypot(_to.x + _e.x * u - dir.x * t, _to.y + _e.y * u - dir.y * t, _to.z + _e.z * u - dir.z * t);
 }
 
+// Cápsula de un segmento suelto del cuerpo: nace en la articulación (origen de su cuerpo
+// físico) y se extiende `len` metros en la dirección `dir`.
+function segmentShape(dir, len, radius, mass) {
+  _q.setFromUnitVectors(UP, dir);
+  return RAPIER.ColliderDesc.capsule(Math.max(len / 2 - radius, 0.01), radius)
+    .setTranslation(dir.x * len / 2, dir.y * len / 2, dir.z * len / 2)
+    .setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
+    .setMass(mass).setFriction(1).setRestitution(0).setCollisionGroups(GROUPS.debris);
+}
+
 // Todos los huesos que cuelgan de uno (con él).
 function subtree(bone, set = new Set()) {
   if (bone) bone.traverse((o) => set.add(o));
@@ -672,14 +682,7 @@ Zombie.prototype.startRagdoll = function startRagdoll() {
         .setLinvel(vx + (push ? push.x * k : 0), push ? push.y * k : 0, vz + (push ? push.z * k : 0))
         .setLinearDamping(0.2).setAngularDamping(2.5),
     );
-    _q.setFromUnitVectors(UP, dir);
-    world.createCollider(
-      RAPIER.ColliderDesc.capsule(Math.max(len / 2 - radius, 0.01), radius)
-        .setTranslation(dir.x * len / 2, dir.y * len / 2, dir.z * len / 2)
-        .setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
-        .setMass(mass).setFriction(1).setRestitution(0).setCollisionGroups(GROUPS.debris),
-      body,
-    );
+    world.createCollider(segmentShape(dir, len, radius, mass), body);
     const up = segs[parent];
     if (up) {
       world.createImpulseJoint(
@@ -838,17 +841,52 @@ export class Horde {
    * caer como un cuerpo suelto, empujado por la bala.
    */
   detach(zombie, part, bones, dir) {
-    const piece = zombie.skel.detach(bones);
+    const world = this.physics.world, B = zombie.bones;
+    const r = () => Math.random() - 0.5;
+    const heavy = part === 'legs' || part.startsWith('leg') || part.startsWith('shin');
+    const kick = part === 'head' ? 3.5 : heavy ? 0.8 : 2.2;
+    const vel = { x: dir.x * kick + r(), y: (heavy ? 0.3 : 2) + Math.random(), z: dir.z * kick + r() };
+    // Lo desprendido ya no tiene nada que lo sostenga: cada segmento (muslo, espinilla, brazo,
+    // antebrazo...) es un cuerpo aparte unido al siguiente por una rótula, como en el muñeco
+    // de trapo, y se desploma por su peso.
+    const left = new Set(bones);
+    const made = {};
+    zombie.model.updateMatrixWorld(true);
+    for (const [name, from, to, radius, mass, parent, extra] of RAGDOLL) {
+      if (!bones.has(B[from])) continue;
+      const own = subtree(B[from]);
+      for (const seg of RAGDOLL) if (seg[5] === name) for (const b of subtree(B[seg[1]])) own.delete(b);
+      if (name.startsWith('shin')) subtree(B[to], own); // el pie no cuelga de la pierna en este modelo
+      for (const b of own) left.delete(b);
+      const a = B[from].getWorldPosition(new THREE.Vector3());
+      const piece = zombie.skel.detach(own, a);
+      if (!piece) continue;
+      const axis = B[to].getWorldPosition(new THREE.Vector3()).sub(a);
+      const len = axis.length() + extra;
+      const body = world.createRigidBody(
+        RAPIER.RigidBodyDesc.dynamic().setTranslation(a.x, a.y, a.z)
+          .setLinvel(vel.x, vel.y, vel.z).setAngvel({ x: r() * 3, y: r() * 3, z: r() * 3 })
+          .setLinearDamping(0.2).setAngularDamping(2.5),
+      );
+      world.createCollider(segmentShape(axis.normalize(), len, radius, mass), body);
+      const up = made[parent];
+      if (up) {
+        world.createImpulseJoint(
+          RAPIER.JointData.spherical({ x: a.x - up.at.x, y: a.y - up.at.y, z: a.z - up.at.z }, { x: 0, y: 0, z: 0 }),
+          up.body, body, true,
+        );
+      }
+      made[name] = { body, at: a };
+      this.debris.push({ group: piece.group, body, life: 0 });
+    }
+    // Lo que no es un segmento entero (cabeza, mano, pie) cae como una sola pieza rígida.
+    const piece = left.size ? zombie.skel.detach(left) : null;
     if (!piece) return;
     const { group, size } = piece;
-    const world = this.physics.world;
-    const r = () => Math.random() - 0.5;
-    const heavy = part === 'legs' || part.startsWith('leg');
-    const kick = part === 'head' ? 3.5 : heavy ? 0.8 : 2.2;
     const body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(group.position.x, group.position.y, group.position.z)
-        .setLinvel(dir.x * kick + r(), (heavy ? 0.3 : 2) + Math.random(), dir.z * kick + r())
+        .setLinvel(vel.x, vel.y, vel.z)
         .setAngvel({ x: r() * 8 + dir.z * 3, y: r() * 6, z: r() * 8 - dir.x * 3 })
         .setAngularDamping(1.5),
     );
