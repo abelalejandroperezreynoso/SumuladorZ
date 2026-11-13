@@ -56,7 +56,7 @@ export const SCENES = [
       [3.4, press('KeyQ'), 'Carrera rápida'], [5.2, all(key('KeyW', false), key('ShiftLeft', false)), 'Suelta y frena']] },
   { id: 'parado', group: 'movimiento', title: 'De pie, en reposo',
     how: 'Sin tocar nada',
-    desc: 'Quieto, de pie y relajado: pies bajo la cadera con las rodillas casi rectas, brazos colgando junto a los muslos, tronco y cabeza erguidos y una respiración suave. La postura se arma por código sobre el clip de reposo del modelo (una guardia con los brazos abiertos) y se deshace en cuanto se mueve, apunta o se cubre.',
+    desc: 'Quieto, de pie y relajado: pies bajo la cadera con las rodillas casi rectas, brazos colgando junto a los muslos, tronco y cabeza erguidos y una respiración suave. La postura se arma por código sobre el clip de reposo del modelo (una guardia con los brazos abiertos) y se deshace en cuanto se mueve, apunta o se cubre. Los pies se quedan donde pisaron: al detenerse o al girar sobre el sitio dan pasos cortos hasta su lugar, de uno en uno, en vez de deslizarse.',
     place: [20, 30, Math.PI], seconds: 4, view: Math.PI * 0.85, dist: 3,
     steps: [[0.1, null, 'De pie, en reposo'], [2.5, key('KeyW'), 'Echa a andar'], [3.2, key('KeyW', false)]],
     poses: [['parado', 'De pie', 1.8]] },
