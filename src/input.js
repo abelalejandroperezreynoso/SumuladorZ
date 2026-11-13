@@ -82,6 +82,7 @@ export class Input {
   /**
    * Lee el mando (Xbox, PlayStation…) con la API Gamepad. Llamar al inicio de cada frame.
    * Distribución estándar: A saltar, X golpe, B cubrirse, Y correr rápido, LT apuntar, RT disparar,
+   * cruceta ← → cambiar de arma,
    * LB/RB horda, Menú empezar, Vista reiniciar, stick izquierdo moverse (a fondo o pulsado
    * = correr), stick derecho cámara.
    */
@@ -117,6 +118,8 @@ export class Input {
     this.mouseDY += Math.sign(ly) * ly * ly * LOOK * 0.7;
 
     if (edge(9)) { this.onPadMenu?.(); return; }
+    if (edge(14)) this.pressed.add('PrevWeapon');
+    if (edge(15)) this.pressed.add('NextWeapon');
     const map = { 0: 'Space', 2: 'KeyF', 1: 'KeyC', 3: 'KeyQ', 8: 'KeyR', 4: 'KeyH', 5: 'KeyH', 12: 'KeyP' };
     for (const i in map) if (edge(+i)) this.pressed.add(map[i]);
 

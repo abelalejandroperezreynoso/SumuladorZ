@@ -194,6 +194,7 @@ class Zombie {
     this.play('Death', 0.1);
     this.removeBody = true; // se retira en update(), fuera de los eventos de colisión
     this.horde.kills++;
+    this.horde.onKill?.(this.position);
   }
 
   dispose() {

@@ -43,7 +43,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   `SKELETON=0` las tiras muestran los modelos; en el juego, tecla `K` o menú → Ajustes.
 - **Equilibrio del juego** — `node tools/gameplay.cjs <bot|stand|punch> [segundos]`
   Juega una partida larga y resume cada oleada. Comparar los tres estilos: si quedarse quieto
-  disparando (`stand`) llega lejos, el juego es demasiado fácil.
+  disparando (`stand`) llega lejos, el juego es demasiado fácil. Juega con la pistola y munición
+  infinita (`player.infiniteAmmo`), como el piloto automático, para comparar con análisis
+  anteriores; en una partida real se empieza sin armas y las balas se recogen (`src/pickups.js`).
 - **Piloto automático** — tecla `P` en el juego (`src/autopilot.js`). Su registro está en
   `window.__game.autopilot.log` y `.stats`. Busca cobertura de forma activa y va rotando
   entre alta, baja y muy baja (`stats.coverTypes`). La escena `piloto` de `tools/watch.cjs`
@@ -57,3 +59,5 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
 10–16; el piloto completo, a la 26–27 en 7 minutos. La cobertura no tiene función porque los
 zombis solo atacan cuerpo a cuerpo. Mejoras propuestas, por impacto: enemigos a distancia,
 cargador y recarga, resistencia para la carrera rápida, variedad de zombis, puntuación.
+Desde entonces: se empieza sin armas y la munición es limitada (pistola, bate y cajas de balas
+que se recogen); `gameplay.cjs` aún no mide cómo cambia eso la dificultad.
