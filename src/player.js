@@ -61,12 +61,12 @@ const PRONE_SPEED = 0.8; // velocidad arrastrándose (m/s)
 // en vivo desde el catálogo (ficha → «Editar postura») y copiar como texto para fijarlos aquí.
 // Cada entrada de POSE_SPEC: [clave, rótulo, mínimo, máximo, unidad ('rad', 'm' o '')].
 export const POSES = {
-  // Tras una cobertura muy baja: recostado de lado, de espaldas al objeto, con las rodillas
-  // recogidas y el arma al pecho.
+  // Tras una cobertura muy baja: acostado boca arriba, con el cuerpo perpendicular al objeto,
+  // la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho.
   recostado: {
-    giro: 1.85, altura: 0.2, arrimo: 0.22, centrado: 0.88, tronco: 0.38, cabeza: 0.4,
-    caderaArriba: 1.45, rodillaArriba: 1.55, caderaAbajo: 1.0, rodillaAbajo: 1.25, piernasAbiertas: 0.08,
-    brazoAdelante: 0.69, brazoAbierto: 0.2, codoCerrado: 0.67, antebrazoArriba: 0.57,
+    giro: 3.14, altura: 0.1, arrimo: 0, centrado: 1.3, tronco: 0.25, cabeza: 0.6,
+    caderaArriba: 0.9, rodillaArriba: 1.9, caderaAbajo: 0.06, rodillaAbajo: 0.12, piernasAbiertas: 0.1,
+    brazoAdelante: -0.2, brazoAbierto: 0.35, codoCerrado: 1.05, antebrazoArriba: 0.6,
     ajustes: {},
   },
   // Incorporado para apuntar por encima de una cobertura muy baja.
@@ -91,14 +91,14 @@ export const POSE_SPEC = {
   recostado: [
     ['giro', 'Giro del cuerpo (90° de lado, 180° boca arriba)', 1.0, 2.6, 'rad'],
     ['altura', 'Altura sobre el suelo', 0.05, 0.45, 'm'],
-    ['arrimo', 'Arrimado al objeto', 0, 0.45, 'm'],
-    ['centrado', 'Desplazado hacia los pies', 0.3, 1.3, 'm'],
+    ['arrimo', 'Más cerca o lejos del objeto', -0.3, 0.45, 'm'],
+    ['centrado', 'Distancia de los pies al objeto', 0.3, 1.7, 'm'],
     ['tronco', 'Tronco encorvado', -0.3, 1.0, 'rad'],
     ['cabeza', 'Cabeza levantada', -0.4, 1.0, 'rad'],
-    ['caderaArriba', 'Pierna de arriba: cadera', 0, 2.1, 'rad'],
-    ['rodillaArriba', 'Pierna de arriba: rodilla', 0, 2.5, 'rad'],
-    ['caderaAbajo', 'Pierna de abajo: cadera', 0, 2.1, 'rad'],
-    ['rodillaAbajo', 'Pierna de abajo: rodilla', 0, 2.5, 'rad'],
+    ['caderaArriba', 'Pierna levantada: cadera', 0, 2.1, 'rad'],
+    ['rodillaArriba', 'Pierna levantada: rodilla', 0, 2.5, 'rad'],
+    ['caderaAbajo', 'Pierna estirada: cadera', 0, 2.1, 'rad'],
+    ['rodillaAbajo', 'Pierna estirada: rodilla', 0, 2.5, 'rad'],
     ['piernasAbiertas', 'Piernas separadas', -0.3, 0.6, 'rad'],
     ['brazoAdelante', 'Brazos hacia delante', -0.5, 2.4, 'rad'],
     ['brazoAbierto', 'Brazos abiertos', -0.3, 1.3, 'rad'],
@@ -744,8 +744,8 @@ export class Player {
       // De espaldas al muro; durante el deslizamiento de entrada, de cara a él.
       const s = cover.attached ? 1 : -1;
       if (cover.attached && cover.veryLow) {
-        // Recostado: el cuerpo queda paralelo a la cobertura.
-        this.turnToward(Math.atan2(cover.nz * cover.proneDir, -cover.nx * cover.proneDir), 10, dt);
+        // Acostado: perpendicular a la cobertura, con la cabeza hacia ella.
+        this.turnToward(Math.atan2(-cover.nx, -cover.nz), 10, dt);
       } else
       this.turnToward(Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
     } else if (moving && !punching) {
@@ -1010,21 +1010,19 @@ export class Player {
   }
 
   /**
-   * Pose recostada tras una cobertura muy baja, con peso `w`: rodillas recogidas (más la
-   * pierna de arriba), tronco encorvado, manos juntas delante del pecho y cabeza levantada.
-   * Se define sobre el modelo de pie; `postPhysics` ya lo ha girado hasta dejarlo de lado.
+   * Pose acostada tras una cobertura muy baja, con peso `w`: una rodilla levantada con el pie
+   * apoyado, la otra pierna estirada, manos sobre el pecho y cabeza recostada en el objeto.
+   * Se define sobre el modelo de pie; `postPhysics` ya lo ha tumbado boca arriba.
    */
   applyRecline(w) {
     if (!this.bodyBone || !this.legs.length) return;
     this.savePose();
     this.model.updateMatrixWorld(true);
     const R = POSES.recostado;
-    // ¿Qué lado del cuerpo queda arriba? (+1 el izquierdo)
-    const upSide = _v.set(1, 0, 0).applyQuaternion(this.model.quaternion).y >= 0 ? 1 : -1;
     const swing = Math.sin(this.scoot) * SCOOT_SWING * THREE.MathUtils.clamp(this.speed / PRONE_SPEED, 0, 1);
 
     for (const leg of this.legs) {
-      const i = leg.side * upSide > 0 ? 0 : 1;
+      const i = leg.side < 0 ? 0 : 1; // la pierna derecha es la que levanta la rodilla
       const hip = (i ? R.caderaAbajo : R.caderaArriba) + (i ? -swing : swing);
       const knee = (i ? R.rodillaAbajo : R.rodillaArriba) + (i ? swing : -swing) * 0.6;
       // El pie no cuelga de la pierna en este modelo: se recoloca para que siga a la tibia.
@@ -1199,8 +1197,8 @@ export class Player {
     const t = this.body.translation();
     this.position.set(t.x, t.y - FOOT - 0.02, t.z);
     this.model.position.copy(this.position);
-    // Recostado: el modelo se tumba hacia delante, gira sobre su eje hasta quedar de lado con
-    // la espalda hacia el objeto, se arrima a él y se centra sobre la cápsula.
+    // Acostado: el modelo se tumba hacia el objeto y gira sobre su eje hasta quedar boca
+    // arriba, con la cabeza junto a él y los pies hacia fuera.
     const prone = this.prone > 0.005 ? this.prone : 0;
     this.model.rotation.set(0, this.facing, 0);
     if (prone) {
@@ -1239,11 +1237,10 @@ export class Player {
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
     if (!this.gun.visible) return;
     if (!armed) {
-      // Recostado lleva el arma en las manos, junto al pecho y apuntando hacia arriba.
+      // Acostado lleva el arma en las manos, sobre el pecho, apuntando hacia los pies y arriba.
       this.model.updateMatrixWorld(true);
       this.hand.getWorldPosition(this.gun.position);
-      _v.set(0, 0.8, 0.45).applyQuaternion(this.model.quaternion);
-      _v.y = Math.abs(_v.y) + 0.5;
+      _v.set(0.15, -0.8, 0.45).applyQuaternion(this.model.quaternion);
       this.gun.lookAt(_v.add(this.gun.position));
       return;
     }
