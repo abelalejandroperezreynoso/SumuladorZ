@@ -155,6 +155,17 @@ const HIP_SPREAD = 0.035; // desvío máximo de la bala sin apuntar (rad)
 const BLIND_SPREAD = 0.09; // ...y a ciegas desde la cobertura
 const BLIND_HOLD = 0.35; // segundos que mantiene el arma fuera tras disparar a ciegas
 const BLIND_REACH = 0.5; // distancia del hombro a la mano con el brazo fuera (m)
+// Giro del tronco (rad, ver applyTorso) al disparar: el cuerpo acompaña a los brazos.
+const TORSO_AIM = { giro: 0.3, lado: 0, frente: 0.08, cuello: -0.22, cabeza: 0 };
+const TORSO_BLIND = {
+  // Agachado tras una cobertura baja: el hombro derecho sube y va atrás, por encima del muro;
+  // la cabeza se queda abajo, mirando al frente.
+  baja: { giro: -0.4, lado: 0.3, frente: -0.12, cuello: 0.3, cabeza: 0.25 },
+  // Tras un muro alto (hacia un borde a la izquierda; se refleja para la derecha).
+  alta: { giro: 0.35, lado: 0.18, frente: 0, cuello: -0.25, cabeza: 0.1 },
+  // Acostado (objetivo a la izquierda; se refleja).
+  muyBaja: { giro: 0.25, lado: 0.2, frente: 0.4, cuello: 0, cabeza: 0.15 },
+};
 const BLIND_EDGE = 0.55; // tras un muro alto, distancia máxima al borde para sacar el arma por él (m)
 
 const _v = new THREE.Vector3();
@@ -309,6 +320,7 @@ export class Player {
     this.hand = bone('WristR') ?? bone('LowerArmR');
     this.handL = bone('WristL') ?? bone('LowerArmL');
     this.neck = bone('Neck');
+    this.spine = ['Abdomen', 'Torso', 'Chest'].map(bone).filter(Boolean); // de la cadera al pecho
     this.neckRest = new THREE.Quaternion();
     this.neckPosed = false;
 
@@ -1213,6 +1225,47 @@ export class Player {
   }
 
   /**
+   * Gira el tronco (repartido entre cintura, tronco y pecho) y la cabeza, con peso `w`. Los
+   * ángulos van en el marco del modelo: `giro` sobre la columna (+ lleva el hombro derecho
+   * adelante), `lado` inclinación lateral (+ hacia la izquierda, sube el hombro derecho),
+   * `frente` hacia el pecho (+ se encorva), y `cuello`/`cabeza` el giro y la inclinación de la
+   * cabeza (para compensar y mirar hacia otro lado).
+   */
+  applyTorso(w, t) {
+    if (!this.spine.length) return;
+    this.savePose();
+    this.model.updateMatrixWorld(true);
+    const q = this.model.quaternion;
+    const axes = [[_axis.set(0, 1, 0).applyQuaternion(q).clone(), t.giro], [_axis.set(0, 0, 1).applyQuaternion(q).clone(), -t.lado],
+      [_axis.set(1, 0, 0).applyQuaternion(q).clone(), t.frente]];
+    const k = w / this.spine.length;
+    for (const bone of this.spine) for (const [axis, a] of axes) if (a) this.turnBone(bone, axis, a * k);
+    if (this.neck) {
+      if (t.cuello) this.turnBone(this.neck, axes[0][0], t.cuello * w);
+      if (t.cabeza) this.turnBone(this.neck, axes[2][0], t.cabeza * w);
+    }
+  }
+
+  /** Giro del tronco al disparar a ciegas, según la cobertura (ver applyTorso). */
+  blindTorso(c) {
+    if (c.veryLow) {
+      // Acostado: se encorva levantando hombros y pecho, girado hacia el lado del objetivo.
+      _v.copy(this.aimPoint).sub(this.position);
+      _axis.set(1, 0, 0).applyQuaternion(this.model.quaternion);
+      const side = Math.sign(_v.dot(_axis)) || 1; // + objetivo a la izquierda del cuerpo
+      return { ...TORSO_BLIND.muyBaja, giro: TORSO_BLIND.muyBaja.giro * -side };
+    }
+    if (c.high) {
+      // Muro alto: se inclina y gira hacia el borde por el que saca el arma.
+      _axis.set(1, 0, 0).applyQuaternion(this.model.quaternion);
+      const side = Math.sign((c.nz * _axis.x - c.nx * _axis.z) * (c.blindSide || 1)) || 1; // + borde a la izquierda
+      const T = TORSO_BLIND.alta;
+      return { giro: -T.giro * side, lado: T.lado * side, frente: T.frente, cuello: T.cuello * side, cabeza: T.cabeza };
+    }
+    return TORSO_BLIND.baja;
+  }
+
+  /**
    * Disparo a ciegas desde la cobertura, con peso `w`: el brazo derecho sale por encima del
    * objeto (por el lado si el muro es alto) mientras el cuerpo sigue cubierto, y la mano
    * izquierda lo acompaña. El arma se orienta después hacia la mira.
@@ -1415,6 +1468,7 @@ export class Player {
     if (kneelW > 0.01) this.applyAdjust('rodillas', kneelW);
 
     this.placeBat();
+    const cover = this.cover?.attached ? this.cover : null;
     const gun = this.weapon === 'pistola';
     this.gun.visible = gun && (armed || prone > 0.5);
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
@@ -1432,6 +1486,12 @@ export class Player {
     this.model.updateMatrixWorld(true);
     // A ciegas: los brazos salen de la cobertura (su propia pose; la de apuntar no se usa).
     const blind = this.blindW;
+    // El tronco acompaña a los brazos: gira y se inclina antes de colocarlos.
+    if (!cover && this.aimWeight > 0.01) {
+      // Al descubierto, perfil de tirador: hombro derecho adelante y algo inclinado al frente.
+      this.applyTorso(this.aimWeight * (1 - blind), TORSO_AIM);
+    }
+    if (blind > 0.01 && cover) this.applyTorso(blind, this.blindTorso(cover));
     if (blind > 0.01) {
       // A ciegas no hay mira: tira hacia donde mira la cámara (el punto de la mira caería en
       // el propio muro que lo cubre).
