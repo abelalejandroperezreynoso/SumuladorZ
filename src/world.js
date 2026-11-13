@@ -56,7 +56,7 @@ export function buildWorld(scene, physics) {
   // encima. Alto (2,4 m): queda de pie y se asoma por el borde.
   const concrete = 0x8a9099;
   physics.add({ size: [2.6, 1.1, 0.45], pos: [-2.8, 0.55, -5], color: concrete }); // medio
-  physics.add({ size: [1.8, 2.4, 0.45], pos: [2.8, 1.2, -5], color: concrete }); // alto
+  physics.add({ size: [3, 2.4, 0.45], pos: [3.2, 1.2, -5], color: concrete }); // alto
   // Pieza mixta: tramo alto y tramo medio seguidos.
   physics.add({ size: [1.4, 2.4, 0.45], pos: [-0.9, 1.2, -7.5], color: concrete });
   physics.add({ size: [1.8, 1.1, 0.45], pos: [0.7, 0.55, -7.5], color: concrete });

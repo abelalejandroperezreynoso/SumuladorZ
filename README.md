@@ -191,12 +191,13 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 
 - **Coberturas** (delante del inicio): bloques con las tres alturas estándar, muy bajo
   (0,45 m), medio (1,1 m) y alto (2,4 m), una por cada tipo de cobertura. Con `C` el personaje se desliza
-  hasta la cobertura más cercana y se pega de espaldas, con la pistola en las dos manos delante
+  hasta la cobertura más cercana y apoya la espalda en ella, con la pistola en las dos manos delante
   del pecho (sin ella, agachado apoya las manos en las rodillas); `A`/`D` lo mueven a lo largo. Sirve
   cualquier bloque o muro.
-  Disparando sin apuntar no sale de la cobertura: saca los brazos y dispara a ciegas (por
-  encima de la baja y la muy baja; por el borde de la alta si lo tiene al alcance de la
-  mano), con más desvío. Apuntando se asoma: por encima de una cobertura baja, o inclinándose
+  Disparando sin apuntar no sale de la cobertura: saca los brazos y dispara a ciegas, con más desvío.
+  El personaje sabe si está en el límite izquierdo o derecho del muro (a menos de 0,55 m de su
+  final): en un límite se gira hacia ese borde y saca el arma por él; lejos de los límites
+  dispara por encima de la cobertura baja y, tras una alta, levanta el brazo y dispara hacia arriba. Apuntando se asoma: por encima de una cobertura baja, o inclinándose
   por el borde si hay uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
   Tras una cobertura muy baja (menos de unos 60 cm) se acuesta boca arriba, perpendicular al
   bloque, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho; la

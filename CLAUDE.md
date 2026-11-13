@@ -79,6 +79,12 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   ciegas la izquierda no alcanza el arma y va a una mano. El batazo va entero por código
   (`SWING_KEYS`, `swingPhase`, `placeBat`): impulso atrás, golpe y acompañamiento, sin clip;
   durante el giro los límites de los brazos se miden en el marco del pecho (`armFrame`).
+- **Cobertura** — `coverMove` mide cada fotograma la distancia a cada final del muro
+  (`cover.edgeR`, `cover.edgeL`) y en qué límite está (`cover.limit`: -1 derecho, +1 izquierdo,
+  0 ninguno; `LIMIT_RANGE`). El disparo a ciegas se decide con eso (`cover.blindMode`: `side`
+  por el borde, girado hacia él; `over` por encima del muro bajo; `up` brazo en alto y tiro
+  hacia arriba tras un muro alto; `prone` acostado). El modelo se arrima al muro (`COVER_HUG`)
+  aunque la cápsula quede más lejos.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 
