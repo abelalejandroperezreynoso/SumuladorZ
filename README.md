@@ -189,10 +189,10 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 
 ## Zonas del mundo de pruebas
 
-- **Campo de tiro** (al frente): dianas a 10, 18 y 27 m y latas sobre una mesa.
-- **Coberturas** (antes de las dianas): muros bajos y altos. Con `C` el personaje se desliza
+- **Coberturas** (delante del inicio): bloques con las tres alturas estándar, muy bajo
+  (0,45 m), medio (1,1 m) y alto (2,4 m), una por cada tipo de cobertura. Con `C` el personaje se desliza
   hasta la cobertura más cercana y se pega de espaldas; `A`/`D` lo mueven a lo largo. Sirve
-  casi cualquier objeto: muros, postes, bloques, el parapeto y también cajas y barriles.
+  cualquier bloque o muro.
   Al disparar se asoma: por encima de una cobertura baja, o inclinándose por el borde si hay
   uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
   Tras una cobertura muy baja (menos de unos 60 cm) se recuesta de lado, de espaldas al
@@ -202,10 +202,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   cerrado sobre el hombro, con menos campo de visión y la mira más lenta. Disparar también la
   cierra. A cubierto, al soltar vuelve a esconderse en 0,3 s.
   Tirar hacia atrás, saltar, golpear o `C` de nuevo lo sacan de la cobertura.
-- **Cajas, muro de bloques y barriles** (izquierda): para empujar, golpear y derribar.
-- **Sacos de boxeo** (derecha): tres sacos de distinto peso colgados con articulaciones.
-- **Circuito de movimiento** (detrás): escaleras, plataforma, rampa, rampa no escalable,
-  bloques de salto y pelotas.
+- **Escalera y rampa** (detrás): suben a una plataforma de 2 m.
 
 ## Estructura
 
