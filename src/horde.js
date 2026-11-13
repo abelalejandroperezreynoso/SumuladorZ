@@ -36,19 +36,25 @@ const SEPARATION = 0.8; // distancia mínima entre zombis (m)
 const SEPARATION_SPEED = 1.5; // velocidad máxima del empuje que los separa (m/s)
 
 // --- Zonas del cuerpo y desmembramiento ---
-// Una bala que pasa a menos de estos radios (m) del centro de una zona la arranca: la cabeza
-// (el zombi muere), un brazo por el hombro o el tronco por el estómago (se separa de las piernas).
-const HEAD_ZONE = 0.15;
-const SHOULDER_ZONE = 0.11;
-const STOMACH_ZONE = 0.13;
-const CRAWL_SPEED = 0.9; // sin piernas se arrastra, si le quedan cabeza, tronco y un brazo (m/s)
-const CRAWL_WANDER = 0.4;
+// Las balas no chocan con la cápsula del zombi: se comprueba su trayectoria contra el
+// esqueleto. Si pasa a menos de JOINT_ZONE de una articulación, el cuerpo se parte por ahí y
+// lo que cuelga de ella se desprende; si solo roza un hueso (BONE_HIT, TORSO_HIT), lo aturde.
+// Solo muere al perder la cabeza: sin piernas se arrastra y sin brazos repta, pero sigue atacando.
+const JOINT_ZONE = 0.075; // radio de una articulación (m)
+const HEAD_ZONE = 0.13; // radio del cráneo
+const STOMACH_ZONE = 0.12; // radio del estómago: por ahí el tronco se separa de las piernas
+const BONE_HIT = 0.06; // grosor de brazos y piernas para un impacto sin corte
+const TORSO_HIT = 0.13; // ...y del tronco
+const CRAWL_SPEEDS = [0.3, 0.6, 0.9]; // velocidad a rastras con 0, 1 o 2 brazos enteros (m/s)
+const CRAWL_SPEED = CRAWL_SPEEDS[2];
+const CRAWL_WANDER = 0.45; // fracción de esa velocidad mientras deambula
+const LIMP = 0.6; // sin un pie camina a esta fracción de su velocidad
 const CRAWL_RADIUS = 0.4; // esfera que hace de cuerpo al arrastrarse (m)
 const CRAWL_PITCH = 1.4; // inclinación del tronco, boca abajo (rad)
 const CRAWL_HIPS = 0.14; // altura de la cadera sobre el suelo (m)
 const CRAWL_FALL = 0.7; // lo que tarda en caer y empezar a arrastrarse (s)
 const CRAWL_STROKE = 0.55; // avance por brazada (m)
-const AIM_STAND = 1.3, AIM_CRAWL = 0.3; // altura del pecho, adonde apunta el piloto (m)
+const AIM_STAND = 1.3, AIM_CRAWL = 0.3; // altura del pecho de pie y a rastras (m)
 const DEBRIS_TIME = 6; // lo que dura en el suelo un trozo desprendido (s)
 const DEBRIS_MAX = 40;
 
@@ -61,7 +67,7 @@ export const ZOMBIE_CLIPS = {
 export const ZOMBIE_TUNING = {
   VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
   BITE_DAMAGE, HEALTH, STAGGER, CORPSE_TIME, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
-  HEAD_ZONE, SHOULDER_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_FALL, DEBRIS_TIME,
+  JOINT_ZONE, HEAD_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_SPEEDS, LIMP, CRAWL_FALL, DEBRIS_TIME,
 };
 
 const _to = new THREE.Vector3();
@@ -73,6 +79,41 @@ const _c = new THREE.Vector3();
 const _d = new THREE.Vector3();
 const _e = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
+const _head = new THREE.Vector3();
+
+// Cortes posibles: nombre -> huesos de los que cuelga lo que se desprende (los pies no cuelgan
+// de la pierna en este modelo, así que se nombran aparte) y hueso cuya posición es la articulación.
+const CUTS = { head: { roots: ['Head'], at: 'Head' }, legs: { roots: ['UpperLegL', 'UpperLegR', 'FootL', 'FootR'] } };
+for (const s of ['L', 'R']) {
+  CUTS['arm' + s] = { roots: ['UpperArm' + s], at: 'UpperArm' + s }; // hombro
+  CUTS['forearm' + s] = { roots: ['LowerArm' + s], at: 'LowerArm' + s }; // codo
+  CUTS['hand' + s] = { roots: ['Wrist' + s], at: 'Wrist' + s }; // muñeca
+  CUTS['leg' + s] = { roots: ['UpperLeg' + s, 'Foot' + s], at: 'UpperLeg' + s }; // cadera
+  CUTS['shin' + s] = { roots: ['LowerLeg' + s, 'Foot' + s], at: 'LowerLeg' + s }; // rodilla
+  CUTS['foot' + s] = { roots: ['Foot' + s], at: 'Foot' + s }; // tobillo
+}
+export const ZOMBIE_CUTS = Object.keys(CUTS);
+// Huesos que puede rozar una bala sin cortar nada: [de, a, grosor].
+const BODY_SEGMENTS = [['Body', 'Chest', TORSO_HIT], ['Chest', 'Head', BONE_HIT]];
+for (const s of ['L', 'R']) {
+  BODY_SEGMENTS.push(['UpperArm' + s, 'LowerArm' + s, BONE_HIT], ['LowerArm' + s, 'Wrist' + s, BONE_HIT],
+    ['UpperLeg' + s, 'LowerLeg' + s, BONE_HIT], ['LowerLeg' + s, 'Foot' + s, BONE_HIT]);
+}
+
+// Distancia mínima entre el rayo p + t·dir (0 ≤ t ≤ max) y el segmento a-b; deja t en _ray.t.
+const _ray = { t: 0 };
+function raySegment(p, dir, max, a, b) {
+  _e.subVectors(b, a);
+  const ee = _e.lengthSq(), de = dir.dot(_e);
+  _to.subVectors(a, p);
+  const td = _to.dot(dir), te = _to.dot(_e);
+  const den = ee - de * de;
+  let u = den > 1e-8 ? THREE.MathUtils.clamp((de * td - te) / den, 0, 1) : 0;
+  const t = THREE.MathUtils.clamp(td + u * de, 0, max);
+  u = ee > 1e-8 ? THREE.MathUtils.clamp((t * de - te) / ee, 0, 1) : 0;
+  _ray.t = t;
+  return Math.hypot(_to.x + _e.x * u - dir.x * t, _to.y + _e.y * u - dir.y * t, _to.z + _e.z * u - dir.z * t);
+}
 
 // Todos los huesos que cuelgan de uno (con él).
 function subtree(bone, set = new Set()) {
@@ -123,8 +164,11 @@ class Zombie {
     this.pushZ = 0;
     this.bit = false;
     this.arms = 0; // 0 = brazos caídos, 1 = extendidos hacia la presa
-    this.parts = { head: true, armL: true, armR: true, legs: true }; // lo que le queda
-    this.crawler = false; // perdió las piernas y se arrastra
+    this.lost = new Set(); // huesos desprendidos
+    this.torsoCut = false; // el tronco ya está separado de las piernas
+    this.limbs = 2; // brazos enteros (hombro y codo): con ellos se arrastra
+    this.limp = 1; // factor de velocidad de pie (cojea sin un pie)
+    this.crawler = false; // no puede andar y se arrastra
     this.crawl = 0; // 0 = de pie, 1 = tendido boca abajo
     this.crawlT = 0; // fase de la brazada
     this.cuts = []; // piezas por desprender (se hace en update(), fuera de los eventos de colisión)
@@ -150,13 +194,6 @@ class Zombie {
     const bones = {};
     this.model.traverse((o) => { if (o.isBone) bones[o.name] = o; });
     this.bones = bones;
-    // Huesos de cada pieza que se puede desprender.
-    this.partBones = {
-      head: subtree(bones.Head),
-      armL: subtree(bones.UpperArmL),
-      armR: subtree(bones.UpperArmR),
-      legs: subtree(bones.FootR, subtree(bones.FootL, subtree(bones.UpperLegR, subtree(bones.UpperLegL)))),
-    };
     const legs = ['L', 'R']
       .map((s) => ({ upper: bones['UpperLeg' + s], lower: bones['LowerLeg' + s], foot: bones['Foot' + s], side: s === 'L' ? 1 : -1 }))
       .filter((l) => l.upper && l.lower && l.foot);
@@ -174,77 +211,94 @@ class Zombie {
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, FOOT + 0.05, z),
     );
     this.collider = world.createCollider(
-      RAPIER.ColliderDesc.capsule(HALF, RADIUS).setCollisionGroups(GROUPS.enemyBody), this.body,
+      RAPIER.ColliderDesc.capsule(HALF, RADIUS).setCollisionGroups(GROUPS.enemy), this.body,
     );
     horde.physics.meta.set(this.collider.handle, { body: this.body, zombie: this });
   }
 
   get alive() { return this.state !== 'dead'; }
 
-  /** Altura sobre su posición a la que hay que apuntarle al pecho. */
+  /** Altura del pecho sobre su posición (línea de tiro). */
   get aimY() { return this.crawler ? AIM_CRAWL : AIM_STAND; }
 
+  /** Centro de la cabeza en el mundo: adonde hay que dispararle para matarlo. */
+  get headPoint() {
+    const H = this.bones.Head;
+    return H.getWorldPosition(_head).addScaledVector(_d.setFromMatrixColumn(H.matrixWorld, 1).normalize(), 0.12);
+  }
+
+  has(bone) { return !this.lost.has(this.bones[bone]); }
+
   /**
-   * Zona del cuerpo que alcanza una bala que viene de `point` en la dirección `dir`: la
-   * primera que atraviesa de 'head', 'armL', 'armR' y 'stomach', o null (pecho, piernas...).
+   * Qué alcanza una bala que viene de `point` en la dirección `dir` y recorre `max` metros:
+   * el nombre del corte (ver CUTS) de la primera articulación que atraviesa, 'body' si solo
+   * roza un hueso o null si no lo toca. La distancia al impacto queda en `this.hitAt`.
    */
-  zoneAt(point, dir) {
+  trace(point, dir, max = Infinity) {
+    // Descarte rápido: lejos de la trayectoria.
+    _to.set(this.position.x - point.x, this.position.y + 0.9 - point.y, this.position.z - point.z);
+    const mid = THREE.MathUtils.clamp(_to.dot(dir), 0, max);
+    if (_to.lengthSq() - 2 * mid * _to.dot(dir) + mid * mid > 2.6) return null;
     const B = this.bones;
     let zone = null, best = Infinity;
     const test = (name, center, radius) => {
       _to.subVectors(center, point);
       const along = _to.dot(dir);
-      if (_to.lengthSq() - along * along < radius * radius && along < best) { best = along; zone = name; }
+      if (along < 0 || along > max + radius || along >= best) return; // algo más allá: la articulación puede estar pegada al suelo o a un muro
+      if (_to.lengthSq() - along * along < radius * radius) { best = along; zone = name; }
     };
-    if (this.parts.head) {
-      B.Head.getWorldPosition(_c).addScaledVector(_d.setFromMatrixColumn(B.Head.matrixWorld, 1).normalize(), 0.12);
-      test('head', _c, HEAD_ZONE);
+    for (const name in CUTS) {
+      const at = CUTS[name].at;
+      if (!at || !this.has(at)) continue;
+      B[at].getWorldPosition(_c);
+      if (at.startsWith('Foot')) _c.y += 0.06; // el hueso del pie está en el talón: el tobillo queda encima
+      test(name, _c, JOINT_ZONE);
     }
-    if (this.parts.armL) test('armL', B.UpperArmL.getWorldPosition(_c), SHOULDER_ZONE);
-    if (this.parts.armR) test('armR', B.UpperArmR.getWorldPosition(_c), SHOULDER_ZONE);
-    if (this.parts.legs) test('stomach', B.Abdomen.getWorldPosition(_c).lerp(B.Torso.getWorldPosition(_d), 0.35), STOMACH_ZONE);
+    if (this.has('Head')) test('head', _c.copy(this.headPoint), HEAD_ZONE);
+    if (!this.torsoCut) test('legs', B.Abdomen.getWorldPosition(_c).lerp(B.Torso.getWorldPosition(_d), 0.35), STOMACH_ZONE);
+    if (!zone) {
+      for (const [a, b, radius] of BODY_SEGMENTS) {
+        if (!this.has(a)) continue;
+        if (raySegment(point, dir, max, B[a].getWorldPosition(_c), B[b].getWorldPosition(_d)) < radius && _ray.t < best) {
+          best = _ray.t; zone = 'body';
+        }
+      }
+    }
+    this.hitAt = Math.min(best, max);
     return zone;
   }
 
-  /** Impacto de bala: arranca la zona alcanzada y quita 1 de vida. */
-  hit(point, dir, player) {
-    if (!this.alive) return;
-    this.shoot(this.zoneAt(point, dir), dir, player);
-  }
-
   /**
-   * Balazo en una zona ('head', 'armL', 'armR', 'stomach' o null): la cabeza y los brazos se
-   * desprenden; por el estómago el tronco se separa de las piernas. Sigue, arrastrándose, si
-   * le quedan cabeza, tronco y al menos un brazo; si no, muere.
+   * Balazo en una zona (un corte de ZOMBIE_CUTS, 'stomach' o 'body'): el cuerpo se parte por
+   * esa articulación. Solo muere al perder la cabeza; mientras tanto sigue atacando como pueda:
+   * sin una pierna o sin tronco se arrastra, y sin brazos repta más despacio.
    */
   shoot(zone, dir, player) {
     if (!this.alive) return;
-    const P = this.parts;
+    if (zone === 'stomach') zone = 'legs';
     // Sin dirección (catálogo, pruebas), la bala le llega de frente.
     dir = dir ? new THREE.Vector3().copy(dir) : new THREE.Vector3(-Math.sin(this.facing), 0, -Math.cos(this.facing));
-    const cut = (part) => { P[part] = false; this.cuts.push({ part, dir }); };
-    if (zone === 'head' && P.head) {
-      cut('head');
-      return this.die();
-    }
-    if ((zone === 'armL' || zone === 'armR') && P[zone]) {
-      cut(zone);
-      if (this.crawler && !P.armL && !P.armR) return this.die();
-    } else if (zone === 'stomach' && P.legs) {
-      cut('legs');
-      if (!P.armL && !P.armR) {
-        this.cuts.push({ part: 'rest', dir }); // sin brazos no puede arrastrarse
-        this.wrecked = true;
-        return this.die();
+    const spec = CUTS[zone];
+    if (spec) {
+      const bones = new Set();
+      for (const root of spec.roots) subtree(this.bones[root], bones);
+      for (const b of bones) this.lost.add(b);
+      this.cuts.push({ part: zone, bones, dir });
+      if (zone === 'legs') this.torsoCut = true;
+      if (zone === 'head') return this.die();
+      const whole = (a, b) => this.has(a) && this.has(b);
+      this.limbs = (whole('UpperArmL', 'LowerArmL') ? 1 : 0) + (whole('UpperArmR', 'LowerArmR') ? 1 : 0);
+      this.limp = this.has('FootL') && this.has('FootR') ? 1 : LIMP;
+      const walks = !this.torsoCut && whole('UpperLegL', 'LowerLegL') && whole('UpperLegR', 'LowerLegR');
+      if (!walks && !this.crawler) {
+        this.crawler = true;
+        this.swap = true;
+        this.fallT = CRAWL_FALL;
+        this.play('Idle', 0.15);
       }
-      this.crawler = true;
-      this.swap = true;
-      this.fallT = CRAWL_FALL;
-      this.play('Idle', 0.15);
     }
-    this.damage(1, player);
+    this.damage(0, player);
   }
-
   play(name, fade = 0.2) {
     const next = this.actions[name];
     if (next === this.current) return;
@@ -315,7 +369,7 @@ class Zombie {
     this.state = 'dead';
     this.timer = CORPSE_TIME;
     // Tendido en el suelo (o hecho pedazos) se queda como está; de pie, se desploma.
-    if (this.crawler || this.wrecked) this.frozen = true;
+    if (this.crawler) this.frozen = true;
     else this.play('Death', 0.1);
     this.removeBody = true; // se retira en update(), fuera de los eventos de colisión
     this.horde.kills++;
@@ -349,7 +403,7 @@ class Zombie {
   update(dt, player) {
     this.mixerDt = dt;
     // Piezas arrancadas por los impactos del fotograma anterior.
-    for (const c of this.cuts) this.horde.detach(this, c.part, c.dir);
+    for (const c of this.cuts) this.horde.detach(this, c.part, c.bones, c.dir);
     this.cuts.length = 0;
     if (this.swap && this.body && !this.removeBody) {
       // Sin piernas: el cuerpo físico pasa a ser una esfera a ras de suelo.
@@ -357,7 +411,7 @@ class Zombie {
       this.horde.physics.meta.delete(this.collider.handle);
       world.removeCollider(this.collider, false);
       this.collider = world.createCollider(
-        RAPIER.ColliderDesc.ball(CRAWL_RADIUS).setCollisionGroups(GROUPS.enemyBody), this.body,
+        RAPIER.ColliderDesc.ball(CRAWL_RADIUS).setCollisionGroups(GROUPS.enemy), this.body,
       );
       this.horde.physics.meta.set(this.collider.handle, { body: this.body, zombie: this });
       const t = this.body.translation();
@@ -423,7 +477,7 @@ class Zombie {
         this.state = 'wander'; // llegó al último lugar donde te vio y ya no estás
         this.wanderT = 0;
       } else {
-        speed = this.crawler ? CRAWL_SPEED : CHASE_SPEED;
+        speed = this.crawler ? CRAWL_SPEEDS[this.limbs] : CHASE_SPEED * this.limp;
         wantFacing = Math.atan2(tx, tz) + this.sidestep;
       }
     } else {
@@ -433,7 +487,7 @@ class Zombie {
         if (this.wanderT > 0) this.wanderT = Math.min(this.wanderT, 1.5); // se queda un momento quieto
         else this.pickWanderTarget(player);
       } else {
-        speed = this.crawler ? CRAWL_WANDER : WANDER_SPEED;
+        speed = this.crawler ? CRAWL_SPEEDS[this.limbs] * CRAWL_WANDER : WANDER_SPEED * this.limp;
         wantFacing = Math.atan2(tx, tz) + this.sidestep;
       }
     }
@@ -548,7 +602,7 @@ class Zombie {
       this.model.updateMatrixWorld(true);
       _axis.set(Math.cos(this.facing), 0, -Math.sin(this.facing));
       for (const a of this.armBones) {
-        if (!this.parts[a.bone.name === 'UpperArmL' ? 'armL' : 'armR']) continue;
+        if (this.lost.has(a.bone)) continue;
         a.quat.copy(a.bone.quaternion);
         _q.setFromAxisAngle(_axis, -1.25 * this.arms);
         a.bone.getWorldQuaternion(_q2);
@@ -567,7 +621,9 @@ Zombie.prototype.poseCrawl = function poseCrawl() {
   // frente mientras el otro tira del cuerpo hacia atrás; la cabeza se levanta hacia la presa.
   const B = this.bones, e = this.crawl;
   const turn = (bone) => this.saved.push(bone, bone.quaternion.clone());
-  this.model.rotation.set(CRAWL_PITCH * e, this.facing, 0, 'YXZ');
+  // Sin brazos repta: el cuerpo culebrea de lado a lado.
+  const wiggle = this.limbs ? 0 : 0.3 * Math.sin(this.crawlT) * e;
+  this.model.rotation.set(CRAWL_PITCH * e, this.facing + wiggle, 0, 'YXZ');
   this.model.updateMatrixWorld(true);
   B.Body.getWorldPosition(_c);
   B.Neck.getWorldPosition(_d);
@@ -579,7 +635,7 @@ Zombie.prototype.poseCrawl = function poseCrawl() {
   _axis.set(Math.cos(this.facing), 0, -Math.sin(this.facing)); // hacia su izquierda
   const biting = this.state === 'attack';
   for (const [s, side] of [['L', 1], ['R', -1]]) {
-    if (!this.parts['arm' + s]) continue;
+    if (!this.has('UpperArm' + s)) continue;
     const phase = this.crawlT + (side > 0 ? 0 : Math.PI);
     const reach = biting ? 1 : 0.5 + 0.5 * Math.sin(phase); // 1 = estirado al frente
     const lift = biting ? 0.25 : Math.max(0, Math.cos(phase)); // se levanta mientras avanza
@@ -591,10 +647,10 @@ Zombie.prototype.poseCrawl = function poseCrawl() {
     aimBone(upper, lower, _to.normalize(), e);
     _to.copy(_fwd).addScaledVector(_axis, side * -0.35 * (1 - reach));
     _to.y = -0.45 + 0.4 * lift;
-    aimBone(lower, wrist, _to.normalize(), e);
+    if (this.has('LowerArm' + s)) aimBone(lower, wrist, _to.normalize(), e);
   }
   for (const bone of [B.Neck, B.Head]) {
-    if (!bone) continue;
+    if (!bone || this.lost.has(bone)) continue;
     turn(bone);
     _q.setFromAxisAngle(_axis, -0.55 * e);
     bone.getWorldQuaternion(_q2);
@@ -659,20 +715,21 @@ export class Horde {
   }
 
   /**
-   * Desprende una pieza de un zombi ('head', 'armL', 'armR', 'legs' o 'rest', todo lo que le
-   * quede) y la deja caer como un cuerpo suelto, empujada por la bala.
+   * Desprende de un zombi lo que quede de los huesos dados (un corte de ZOMBIE_CUTS) y lo deja
+   * caer como un cuerpo suelto, empujado por la bala.
    */
-  detach(zombie, part, dir) {
-    const piece = zombie.skel.detach(part === 'rest' ? null : zombie.partBones[part]);
+  detach(zombie, part, bones, dir) {
+    const piece = zombie.skel.detach(bones);
     if (!piece) return;
     const { group, size } = piece;
     const world = this.physics.world;
     const r = () => Math.random() - 0.5;
-    const kick = part === 'head' ? 3.5 : part === 'legs' ? 0.8 : 2.2;
+    const heavy = part === 'legs' || part.startsWith('leg');
+    const kick = part === 'head' ? 3.5 : heavy ? 0.8 : 2.2;
     const body = world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(group.position.x, group.position.y, group.position.z)
-        .setLinvel(dir.x * kick + r(), (part === 'legs' ? 0.3 : 2) + Math.random(), dir.z * kick + r())
+        .setLinvel(dir.x * kick + r(), (heavy ? 0.3 : 2) + Math.random(), dir.z * kick + r())
         .setAngvel({ x: r() * 8 + dir.z * 3, y: r() * 6, z: r() * 8 - dir.x * 3 })
         .setAngularDamping(1.5),
     );

@@ -77,6 +77,7 @@ async function start() {
   const combat = new Combat(scene, physics);
   combat.player = player;
   const horde = new Horde(scene, physics, player.assets);
+  combat.horde = horde;
   horde.onWave = (n) => showToast(`Oleada ${n}`);
   let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '', aimShown = false;
   const weaponBtn = document.getElementById('weapon-btn');

@@ -142,7 +142,7 @@ export const SCENES = [
 
   { id: 'zombi', group: 'enemigos', title: 'Zombi: persecución, mordida y muerte',
     how: 'H inicia la horda',
-    desc: `Persigue a ${n(Z.CHASE_SPEED)} m/s con los brazos extendidos, usando el clip de correr a ritmo lento. A ${n(Z.ATTACK_RANGE)} m muerde: cada mordida dura ${n(Z.ATTACK_TIME)} s y quita ${n(Z.BITE_DAMAGE)} de vida. Un impacto lo aturde ${n(Z.STAGGER)} s; tiene ${n(Z.HEALTH)} de vida (una bala quita 1) y el cadáver queda ${n(Z.CORPSE_TIME)} s.`,
+    desc: `Persigue a ${n(Z.CHASE_SPEED)} m/s con los brazos extendidos, usando el clip de correr a ritmo lento. A ${n(Z.ATTACK_RANGE)} m muerde: cada mordida dura ${n(Z.ATTACK_TIME)} s y quita ${n(Z.BITE_DAMAGE)} de vida. Un impacto lo aturde ${n(Z.STAGGER)} s; las balas no le quitan vida (solo muere al perder la cabeza; ver la ficha siguiente), pero ${n(Z.HEALTH)} de daño a golpes lo matan, y el cadáver queda ${n(Z.CORPSE_TIME)} s.`,
     place: [20, 20, 0], seconds: 7.5, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
     before: (g) => {
       g.horde.start();
@@ -158,15 +158,14 @@ export const SCENES = [
       [6.0, (g) => g.horde.zombies[0]?.damage(5, g.player), 'Muere']],
     keepAlive: true },
 
-  { id: 'desmembrar', group: 'enemigos', title: 'Zombi: disparos por zonas y arrastre',
-    how: 'Apuntar a la cabeza, a un hombro o al estómago',
-    desc: `La bala arranca la zona que atraviesa: la cabeza (a menos de ${n(Z.HEAD_ZONE * 100, 0)} cm de su centro; el zombi muere), un brazo por el hombro (${n(Z.SHOULDER_ZONE * 100, 0)} cm) o el tronco por el estómago (${n(Z.STOMACH_ZONE * 100, 0)} cm), que se separa de las piernas. Sin piernas cae en ${n(Z.CRAWL_FALL)} s y se arrastra a ${n(Z.CRAWL_SPEED)} m/s mientras le queden cabeza, tronco y un brazo; si pierde el último brazo, muere. Cada bala quita además 1 de vida y los trozos quedan ${n(Z.DEBRIS_TIME)} s en el suelo.`,
-    place: [20, 20, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2 - 0.5, dist: 3.8,
+  { id: 'desmembrar', group: 'enemigos', title: 'Zombi: disparos a las articulaciones y arrastre',
+    how: 'Apuntar a una articulación, al estómago o a la cabeza',
+    desc: `La bala se comprueba contra el esqueleto, no contra un bulto: si pasa a menos de ${n(Z.JOINT_ZONE * 100, 1)} cm de una articulación (cuello, hombro, codo, muñeca, cadera, rodilla o tobillo), el cuerpo se parte por ahí y lo que cuelga de ella cae al suelo ${n(Z.DEBRIS_TIME)} s. Por el estómago (${n(Z.STOMACH_ZONE * 100, 0)} cm) el tronco se separa de las piernas. Solo muere al perder la cabeza (${n(Z.HEAD_ZONE * 100, 0)} cm): sin un pie cojea, sin una pierna o sin tronco cae en ${n(Z.CRAWL_FALL)} s y se arrastra a ${n(Z.CRAWL_SPEEDS[2])} m/s (${n(Z.CRAWL_SPEEDS[1])} con un brazo; sin brazos repta a ${n(Z.CRAWL_SPEEDS[0])}) y sigue mordiendo. Un impacto que solo roza un hueso lo aturde ${n(Z.STAGGER)} s.`,
+    place: [20, 20, 0], seconds: 13, view: (s) => s.facing + Math.PI / 2 - 0.5, dist: 3.8,
     before: (g) => {
       g.horde.start();
       for (let i = 0; i < 40; i++) g.tick(1 / 60);
       const z = g.horde.zombies[0];
-      z.hp = 9; // para que la escena llegue al final: aquí solo lo matan las zonas
       z.body.setTranslation({ x: 20, y: 0.9, z: 31 }, true);
       z.body.setNextKinematicTranslation({ x: 20, y: 0.9, z: 31 });
       z.facing = Math.PI;
@@ -174,9 +173,13 @@ export const SCENES = [
     },
     subject: (g) => g.horde.zombies[0],
     steps: [[0, null, 'Persecución'],
-      [1.2, (g) => g.horde.zombies[0]?.shoot('armL', null, g.player), 'Hombro: pierde un brazo'],
-      [2.4, (g) => g.horde.zombies[0]?.shoot('stomach', null, g.player), 'Estómago: el tronco se separa y se arrastra'],
-      [7.8, (g) => g.horde.zombies[0]?.shoot('head', null, g.player), 'Cabeza: muere']],
+      [1.0, (g) => g.horde.zombies[0]?.shoot('handL', null, g.player), 'Muñeca: pierde la mano'],
+      [1.8, (g) => g.horde.zombies[0]?.shoot('forearmR', null, g.player), 'Codo: pierde el antebrazo'],
+      [2.6, (g) => g.horde.zombies[0]?.shoot('footL', null, g.player), 'Tobillo: pierde el pie y cojea'],
+      [4.0, (g) => g.horde.zombies[0]?.shoot('shinR', null, g.player), 'Rodilla: cae y se arrastra'],
+      [7.0, (g) => g.horde.zombies[0]?.shoot('stomach', null, g.player), 'Estómago: el tronco se separa'],
+      [9.0, (g) => g.horde.zombies[0]?.shoot('armL', null, g.player), 'Hombro: sin brazos, repta'],
+      [12.0, (g) => g.horde.zombies[0]?.shoot('head', null, g.player), 'Cabeza: muere']],
     keepAlive: true },
 
   // El piloto automático jugando: se le ve buscar cobertura, asomarse y disparar.

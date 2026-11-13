@@ -28,8 +28,8 @@ const MODE=process.argv[2]||'bot', SECS=+process.argv[3]||360;
         let tgt=null,best=1e9;for(const z of H.zombies){if(!z.alive)continue;const d=z.position.distanceTo(P.position);if(d<best){best=d;tgt=z}}
         g.input.buttons.delete(0);g.input.buttons.delete(2);g.input.auto={x:0,z:0,run:false};
         if(tgt){
-          if(MODE==='stand'){const e=A.aimAt(tgt.position.x,tgt.position.y+tgt.aimY,tgt.position.z,dt);if(e<0.06&&best<25&&A.clearShot(tgt)){g.input.buttons.add(0);g.input.buttons.add(2);}}
-          if(MODE==='punch'){A.aimAt(tgt.position.x,tgt.position.y+tgt.aimY,tgt.position.z,dt);const dx=tgt.position.x-P.position.x,dz=tgt.position.z-P.position.z;if(best>1.2)A.moveWorld(dx,dz,true);else{P.facing=Math.atan2(dx,dz);if(f%45===0)g.input.pressed.add('KeyF');}}
+          if(MODE==='stand'){const e=A.aimZombie(tgt,dt);if(best<25&&A.clearShot(tgt)){g.input.buttons.add(2);if(e<0.06&&A.onHead)g.input.buttons.add(0);}}
+          if(MODE==='punch'){A.aimZombie(tgt,dt);const dx=tgt.position.x-P.position.x,dz=tgt.position.z-P.position.z;if(best>1.2)A.moveWorld(dx,dz,true);else{P.facing=Math.atan2(dx,dz);if(f%45===0)g.input.pressed.add('KeyF');}}
         }
       }
       g.tick(dt);t+=dt;

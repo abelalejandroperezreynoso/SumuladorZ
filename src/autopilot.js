@@ -18,6 +18,7 @@ export const AUTOPILOT_TUNING = { SHOOT_RANGE, FLEE_START }; // lo muestra el ca
 const AIM_TOLERANCE = 0.05; // error de puntería admitido para apretar el gatillo (rad)
 
 const _dir = new THREE.Vector3();
+const _miss = new THREE.Vector3();
 
 function dampAngle(a, b, lambda, dt) {
   const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
@@ -44,6 +45,8 @@ export class Autopilot {
     this.repositionSide = 1;
     this.coverSpot = null; // { x, z } punto de cobertura al que se dirige
     this.hpSum = 0;
+    this.aimFix = new THREE.Vector3(); // corrección de puntería aprendida (se conserva al cambiar de objetivo)
+    this.onHead = false;
     this.last = { wave: 0, kills: 0, health: 100, cover: false };
   }
 
@@ -125,6 +128,25 @@ export class Autopilot {
     return Math.abs(Math.atan2(Math.sin(yaw - cam.yaw), Math.cos(yaw - cam.yaw))) + Math.abs(pitch - cam.pitch);
   }
 
+  /**
+   * Apunta a la cabeza de un zombi (lo único que lo mata). aimAt solo aproxima dónde está la
+   * cámara, así que corrige con el rayo real de la mira y deja en `onHead` si está ya sobre
+   * la cabeza.
+   */
+  aimZombie(z, dt) {
+    const h = z.headPoint, F = this.aimFix;
+    const err = this.aimAt(h.x + F.x, h.y + F.y, h.z + F.z, dt);
+    // Desvío de la mira (el rayo del centro de la pantalla) respecto a la cabeza.
+    const camera = this.cam.camera;
+    camera.getWorldDirection(_dir);
+    _miss.copy(camera.position).sub(h);
+    _miss.addScaledVector(_dir, -_miss.dot(_dir));
+    const miss = _miss.length();
+    this.onHead = miss < 0.09;
+    if (miss < 0.6) F.addScaledVector(_miss, -0.2).clampLength(0, 0.5);
+    return err;
+  }
+
   /** Mueve al personaje en una dirección del mundo (la entrada es relativa a la cámara). */
   moveWorld(wx, wz, run = false) {
     const len = Math.hypot(wx, wz);
@@ -166,7 +188,10 @@ export class Autopilot {
     this.track(dt);
     const { player: P, horde: H, input: I, cam } = this;
     I.auto = { x: 0, z: 0, run: false };
+    // Si al pasar recogió el bate, vuelve a la pistola (tecla 3, como un jugador).
+    if (P.weapon !== 'pistola' && P.has.pistola && this.ready('weapon', dt)) this.press('Digit3', 'weapon', 0.5);
     let fire = false;
+    let aim = false; // mantiene el botón de apuntar aunque aún no dispare
 
     if (!H.active) {
       this.action = 'esperando';
@@ -189,12 +214,12 @@ export class Autopilot {
       return; // si está a cubierto, espera ahí la siguiente oleada
     }
     const dx = target.position.x - P.position.x, dz = target.position.z - P.position.z;
-    const chestY = target.position.y + target.aimY; // al pecho; más bajo si se arrastra
     const los = this.clearShot(target);
 
     // Frustración: si lleva un rato disparando sin herir a nadie, se recoloca.
-    let hpSum = 0;
-    for (const z of H.zombies) if (z.alive) hpSum += z.hp;
+    // Daño hecho: bajas y piezas arrancadas (las balas no quitan vida; solo mata la cabeza).
+    let hpSum = H.kills * 100;
+    for (const z of H.zombies) if (z.alive) hpSum += z.lost.size;
     if (hpSum !== this.hpSum || !I.buttons.has(0)) this.noDamageT = 0;
     else this.noDamageT += dt;
     this.hpSum = hpSum;
@@ -218,7 +243,7 @@ export class Autopilot {
         this.press('KeyC', 'cover', 3);
       } else {
         this.action = 'disparando a cubierto';
-        const err = this.aimAt(target.position.x, chestY, target.position.z, dt);
+        const err = this.aimZombie(target, dt);
         fire = best < SHOOT_RANGE + 4 && err < 0.4;
         // Sin nadie a tiro, se desplaza a lo largo de la cobertura de un lado a otro.
         if (!fire) {
@@ -237,7 +262,7 @@ export class Autopilot {
       }
     } else if (best < PUNCH_RANGE && this.ready('punch', dt)) {
       this.action = 'golpeando';
-      this.aimAt(target.position.x, chestY, target.position.z, dt);
+      this.aimZombie(target, dt);
       P.facing = Math.atan2(dx, dz);
       if (P.sprinting) this.press('KeyQ', 'sprint', 0.4);
       this.press('KeyF', 'punch', 0.8);
@@ -277,7 +302,7 @@ export class Autopilot {
       // Rodea al objetivo para encontrar otro ángulo de tiro.
       this.action = 'recolocándose';
       this.fleeing = false;
-      this.aimAt(target.position.x, chestY, target.position.z, dt);
+      this.aimZombie(target, dt);
       const s = this.repositionSide;
       this.moveWorld(dz * s + dx * 0.3, -dx * s + dz * 0.3, true);
     } else {
@@ -302,15 +327,18 @@ export class Autopilot {
       } else if (los && best < SHOOT_RANGE) {
         this.action = 'disparando';
         if (P.sprinting && this.ready('sprint', dt)) this.press('KeyQ', 'sprint', 0.4);
-        const err = this.aimAt(target.position.x, chestY, target.position.z, dt);
-        fire = err < AIM_TOLERANCE;
+        const err = this.aimZombie(target, dt);
+        // Apunta ya: al pulsar el botón la cámara pasa al hombro y la mira se mueve, así que
+        // afina la puntería a la cabeza con la cámara de apuntar y solo entonces dispara.
+        aim = true;
+        fire = err < AIM_TOLERANCE && this.onHead;
       } else if (best < 9) {
         // Cerca pero sin tiro: espera a que asome en vez de ir a su encuentro.
         this.action = 'esperando tiro';
-        this.aimAt(target.position.x, chestY, target.position.z, dt);
+        this.aimZombie(target, dt);
       } else {
         this.action = 'buscando';
-        this.aimAt(target.position.x, chestY, target.position.z, dt);
+        this.aimZombie(target, dt);
         this.moveWorld(dx, dz, true);
         this.stuckT = P.speed < 1 ? this.stuckT + dt : 0;
         if (this.stuckT > 0.6) { this.stuckT = 0; this.stats.stuck++; this.input.pressed.add('Space'); }
@@ -318,6 +346,7 @@ export class Autopilot {
     }
 
     // Apunta siempre al disparar (levantarse o asomarse a cubierto, sin desvío).
-    if (fire) { I.buttons.add(0); I.buttons.add(2); } else { I.buttons.delete(0); I.buttons.delete(2); }
+    if (fire) I.buttons.add(0); else I.buttons.delete(0);
+    if (fire || aim) I.buttons.add(2); else I.buttons.delete(2);
   }
 }
