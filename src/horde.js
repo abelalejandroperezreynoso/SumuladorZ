@@ -1,7 +1,7 @@
 import { Gait, CLIP_SPEED } from './gait.js';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { SkeletonView } from './skeleton.js';
+import { SkeletonView, bakeStatic } from './skeleton.js';
 import { RAPIER, GROUPS } from './physics.js';
 
 const RADIUS = 0.35;
@@ -27,7 +27,6 @@ const BITE_REACH = 1.5;
 const BITE_DAMAGE = 15;
 const HEALTH = 3; // una bala quita 1; un puñetazo, 1,5
 const STAGGER = 0.35;
-const CORPSE_TIME = 4;
 const SPAWN_MIN = 14, SPAWN_MAX = 22; // distancia al jugador al aparecer (m)
 const WAVE_DELAY = 2; // pausa entre oleadas (s)
 const DETOUR_ANGLE = 1.45; // al rodear avanza casi paralelo al obstáculo (rad)
@@ -55,18 +54,41 @@ const CRAWL_HIPS = 0.14; // altura de la cadera sobre el suelo (m)
 const CRAWL_FALL = 0.7; // lo que tarda en caer y empezar a arrastrarse (s)
 const CRAWL_STROKE = 0.55; // avance por brazada (m)
 const AIM_STAND = 1.3, AIM_CRAWL = 0.3; // altura del pecho de pie y a rastras (m)
-const DEBRIS_TIME = 6; // lo que dura en el suelo un trozo desprendido (s)
-const DEBRIS_MAX = 40;
+
+// --- Muerte: cuerpo articulado ---
+// Al morir, el zombi pasa a ser un muñeco de trapo: un cuerpo físico por segmento (cadera,
+// pecho, cabeza, brazos, antebrazos, muslos y espinillas), unidos por rótulas, que cae y choca
+// con el suelo y los muros. Cuando se queda quieto se retira la física y el cadáver queda en
+// el escenario como malla fija. Los trozos desprendidos hacen lo mismo.
+const RAGDOLL_MIN = 1.2; // tiempo mínimo antes de darlo por quieto (s)
+const RAGDOLL_MAX = 7; // ...y máximo: pasado este tiempo se fija donde esté
+const DEBRIS_TIME = 5; // lo mismo para un trozo suelto
+const REMAINS_MAX = 240; // cadáveres y trozos fijos que se conservan; al pasar, se van los más viejos
+// Segmentos: nombre, hueso que mueve (su origen es la articulación), hueso del extremo, radio
+// (m), masa (kg), segmento del que cuelga, prolongación más allá del extremo (m).
+const RAGDOLL = [
+  ['hips', 'Body', 'Torso', 0.1, 12, null, 0],
+  ['chest', 'Torso', 'Neck', 0.11, 14, 'hips', 0],
+  ['head', 'Neck', 'Head', 0.09, 5, 'chest', 0.17],
+];
+for (const s of ['L', 'R']) {
+  RAGDOLL.push(
+    ['arm' + s, 'UpperArm' + s, 'LowerArm' + s, 0.04, 2.5, 'chest', 0],
+    ['fore' + s, 'LowerArm' + s, 'Wrist' + s, 0.035, 2, 'arm' + s, 0.1],
+    ['thigh' + s, 'UpperLeg' + s, 'LowerLeg' + s, 0.06, 7, 'hips', 0],
+    ['shin' + s, 'LowerLeg' + s, 'Foot' + s, 0.045, 4, 'thigh' + s, 0],
+  );
+}
 
 // Colores del modelo para convertirlo en zombi: piel verdosa y ropa sucia.
 
 // Estado del zombi -> clip del modelo, y los valores que muestra el catálogo.
 export const ZOMBIE_CLIPS = {
-  Idle: 'Idle', Walk: 'Walk', Run: 'Run', Attack: 'Punch_Left', Hit: 'HitRecieve', Death: 'Death',
+  Idle: 'Idle', Walk: 'Walk', Run: 'Run', Attack: 'Punch_Left', Hit: 'HitRecieve',
 };
 export const ZOMBIE_TUNING = {
   VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
-  BITE_DAMAGE, HEALTH, STAGGER, CORPSE_TIME, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
+  BITE_DAMAGE, HEALTH, STAGGER, RAGDOLL_MAX, REMAINS_MAX, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
   JOINT_ZONE, HEAD_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_SPEEDS, LIMP, CRAWL_FALL, DEBRIS_TIME,
 };
 
@@ -80,6 +102,11 @@ const _d = new THREE.Vector3();
 const _e = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _head = new THREE.Vector3();
+const _m = new THREE.Matrix4();
+const _m2 = new THREE.Matrix4();
+const _s = new THREE.Vector3();
+const ONE = new THREE.Vector3(1, 1, 1);
+const UP = new THREE.Vector3(0, 1, 0);
 
 // Cortes posibles: nombre -> huesos de los que cuelga lo que se desprende (los pies no cuelgan
 // de la pierna en este modelo, así que se nombran aparte) y hueso cuya posición es la articulación.
@@ -183,7 +210,7 @@ class Zombie {
     this.mixer = new THREE.AnimationMixer(this.model);
     const action = (name) => this.mixer.clipAction(horde.clips[name]);
     this.actions = Object.fromEntries(Object.entries(ZOMBIE_CLIPS).map(([state, name]) => [state, action(name)]));
-    for (const name of ['Attack', 'Hit', 'Death']) {
+    for (const name of ['Attack', 'Hit']) {
       this.actions[name].setLoop(THREE.LoopOnce);
       this.actions[name].clampWhenFinished = true;
     }
@@ -285,7 +312,7 @@ class Zombie {
       for (const b of bones) this.lost.add(b);
       this.cuts.push({ part: zone, bones, dir });
       if (zone === 'legs') this.torsoCut = true;
-      if (zone === 'head') return this.die();
+      if (zone === 'head') return this.die(dir.clone().multiplyScalar(3));
       const whole = (a, b) => this.has(a) && this.has(b);
       this.limbs = (whole('UpperArmL', 'LowerArmL') ? 1 : 0) + (whole('UpperArmR', 'LowerArmR') ? 1 : 0);
       this.limp = this.has('FootL') && this.has('FootR') ? 1 : LIMP;
@@ -358,19 +385,22 @@ class Zombie {
     if (!this.alive) return;
     this.hp -= amount;
     this.alert(player.position);
-    if (this.hp <= 0) return this.die();
+    if (this.hp <= 0) {
+      // A golpes: sale despedido lejos de quien le pega.
+      _to.subVectors(this.position, player.position).setY(0).normalize().multiplyScalar(2.2).setY(0.8);
+      return this.die(_to.clone());
+    }
     this.state = 'stagger';
     this.timer = Math.max(STAGGER, this.fallT ?? 0);
     this.fallT = 0;
     if (!this.crawler) this.play('Hit', 0.05);
   }
 
-  die() {
+  /** Muere: en el próximo fotograma se desploma como un cuerpo articulado. `push`: empujón (m/s). */
+  die(push = null) {
     this.state = 'dead';
-    this.timer = CORPSE_TIME;
-    // Tendido en el suelo (o hecho pedazos) se queda como está; de pie, se desploma.
-    if (this.crawler) this.frozen = true;
-    else this.play('Death', 0.1);
+    this.ragT = 0;
+    this.push = push;
     this.removeBody = true; // se retira en update(), fuera de los eventos de colisión
     this.horde.kills++;
     this.horde.onKill?.(this.position);
@@ -380,6 +410,8 @@ class Zombie {
     this.horde.scene.remove(this.model);
     this.skel.dispose();
     this.mixer.stopAllAction();
+    for (const seg of this.ragdoll ?? []) this.horde.physics.world.removeRigidBody(seg.body);
+    this.ragdoll = null;
     if (this.body) {
       this.horde.physics.meta.delete(this.collider.handle);
       this.horde.physics.world.removeRigidBody(this.body);
@@ -427,8 +459,8 @@ class Zombie {
       this.body = null;
     }
     if (this.state === 'dead') {
-      this.timer -= dt;
-      if (this.timer < 1) this.model.position.y -= dt * (this.crawler ? 0.3 : 0.6); // el cadáver se hunde
+      if (!this.ragdoll) this.startRagdoll();
+      this.ragT += dt;
       return;
     }
 
@@ -574,7 +606,7 @@ class Zombie {
 
   /** Después del paso de física: coloca el modelo y aplica la pose. */
   postPhysics() {
-    if (this.frozen) return; // cadáver que queda tal como cayó
+    if (this.ragdoll) return this.poseRagdoll(); // muerto: los huesos siguen a la física
     for (let i = 0; i < this.saved.length; i += 2) this.saved[i].quaternion.copy(this.saved[i + 1]);
     this.saved.length = 0;
     if (this.posed) {
@@ -614,6 +646,79 @@ class Zombie {
     }
   }
 }
+
+/** Crea los cuerpos físicos del muñeco de trapo sobre la pose que tiene ahora mismo. */
+Zombie.prototype.startRagdoll = function startRagdoll() {
+  const world = this.horde.physics.world, B = this.bones;
+  this.saved.length = 0; // la pose armada por código se queda: de ella parte la caída
+  this.posed = false;
+  this.gait.posed = false;
+  this.model.updateMatrixWorld(true);
+  const speed = this.moveSpeed ?? 0;
+  const vx = Math.sin(this.facing) * speed, vz = Math.cos(this.facing) * speed;
+  const push = this.push;
+  const segs = {};
+  this.ragdoll = [];
+  for (const [name, from, to, radius, mass, parent, extra] of RAGDOLL) {
+    if (!this.has(from)) continue;
+    const a = B[from].getWorldPosition(new THREE.Vector3());
+    const dir = B[to].getWorldPosition(new THREE.Vector3()).sub(a);
+    const len = dir.length() + extra;
+    dir.normalize();
+    // El empujón entra por arriba (cabeza y pecho): el cuerpo cae hacia donde lo lleva.
+    const k = !push ? 0 : name === 'head' || name === 'chest' ? 1 : name === 'hips' ? 0.5 : 0.25;
+    const body = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic().setTranslation(a.x, a.y, a.z)
+        .setLinvel(vx + (push ? push.x * k : 0), push ? push.y * k : 0, vz + (push ? push.z * k : 0))
+        .setLinearDamping(0.2).setAngularDamping(2.5),
+    );
+    _q.setFromUnitVectors(UP, dir);
+    world.createCollider(
+      RAPIER.ColliderDesc.capsule(Math.max(len / 2 - radius, 0.01), radius)
+        .setTranslation(dir.x * len / 2, dir.y * len / 2, dir.z * len / 2)
+        .setRotation({ x: _q.x, y: _q.y, z: _q.z, w: _q.w })
+        .setMass(mass).setFriction(1).setRestitution(0).setCollisionGroups(GROUPS.debris),
+      body,
+    );
+    const up = segs[parent];
+    if (up) {
+      world.createImpulseJoint(
+        RAPIER.JointData.spherical({ x: a.x - up.at.x, y: a.y - up.at.y, z: a.z - up.at.z }, { x: 0, y: 0, z: 0 }),
+        up.body, body, true,
+      );
+    }
+    // Huesos que mueve: su transformación respecto al cuerpo (que nace sin giro).
+    const names = name.startsWith('shin') && this.has(to) ? [from, to] : [from];
+    const driven = names.map((n) => ({
+      bone: B[n], rel: new THREE.Matrix4().makeTranslation(-a.x, -a.y, -a.z).multiply(B[n].matrixWorld),
+    }));
+    const seg = { body, at: a, driven };
+    segs[name] = seg;
+    this.ragdoll.push(seg);
+  }
+};
+
+/** Lleva los huesos adonde están sus cuerpos físicos (de la cadera hacia fuera). */
+Zombie.prototype.poseRagdoll = function poseRagdoll() {
+  for (const seg of this.ragdoll) {
+    if (!seg.body) return;
+    const t = seg.body.translation(), r = seg.body.rotation();
+    _m.compose(_c.set(t.x, t.y, t.z), _q.set(r.x, r.y, r.z, r.w), ONE);
+    for (const d of seg.driven) {
+      _m2.copy(d.bone.parent.matrixWorld).invert().multiply(_m).multiply(d.rel);
+      _m2.decompose(d.bone.position, d.bone.quaternion, _s);
+      d.bone.updateMatrixWorld(true);
+    }
+  }
+};
+
+/** ¿Ha terminado de caer? Todos sus cuerpos dormidos, o demasiado tiempo (o cayó al vacío). */
+Zombie.prototype.settled = function settled() {
+  if (!this.ragdoll) return false;
+  if (this.ragT > RAGDOLL_MAX) return true;
+  if (this.ragT < RAGDOLL_MIN) return false;
+  return this.ragdoll.every((seg) => seg.body.isSleeping());
+};
 
 Zombie.prototype.poseCrawl = function poseCrawl() {
   // Tendido boca abajo: el tronco cae hacia delante y queda centrado sobre su cuerpo físico,
@@ -667,7 +772,8 @@ export class Horde {
     this.scene = scene;
     this.physics = physics;
     this.zombies = [];
-    this.debris = []; // trozos desprendidos: { group, body, life }
+    this.debris = []; // trozos desprendidos que aún caen: { group, body, life }
+    this.remains = []; // cadáveres y trozos ya quietos: mallas fijas que se quedan en el escenario
     this.active = false;
     this.wave = 0;
     this.kills = 0;
@@ -712,6 +818,19 @@ export class Horde {
     for (const z of this.zombies) z.dispose();
     this.zombies.length = 0;
     while (this.debris.length) this.removeDebris(0);
+    for (const g of this.remains) this.dropRemains(g);
+    this.remains.length = 0;
+  }
+
+  /** Deja en el escenario, como mallas fijas, lo que haya bajo `root` tal como está. */
+  keep(root) {
+    this.remains.push(bakeStatic(root, this.scene));
+    if (this.remains.length > REMAINS_MAX) this.dropRemains(this.remains.shift());
+  }
+
+  dropRemains(group) {
+    this.scene.remove(group);
+    for (const m of group.children) m.geometry.dispose();
   }
 
   /**
@@ -738,8 +857,7 @@ export class Horde {
         .setMass(4).setFriction(0.9).setRestitution(0.1).setCollisionGroups(GROUPS.debris),
       body,
     );
-    this.debris.push({ group, body, life: DEBRIS_TIME });
-    if (this.debris.length > DEBRIS_MAX) this.removeDebris(0);
+    this.debris.push({ group, body, life: 0 });
   }
 
   removeDebris(i) {
@@ -804,14 +922,22 @@ export class Horde {
     }
     for (let i = this.debris.length - 1; i >= 0; i--) {
       const d = this.debris[i];
-      d.life -= dt;
-      if (d.life <= 0) this.removeDebris(i);
-      else if (d.life < 0.6) d.group.scale.setScalar(d.life / 0.6); // se consume
+      d.life += dt;
+      const t = d.body.translation();
+      if (t.y < -15) this.removeDebris(i); // cayó al vacío
+      else if (d.life > DEBRIS_TIME || (d.life > RAGDOLL_MIN && d.body.isSleeping())) {
+        // Ya está quieto: se queda donde cayó, sin física.
+        this.keep(d.group);
+        this.removeDebris(i);
+      }
     }
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const z = this.zombies[i];
       z.update(dt, player);
-      if (z.state === 'dead' && z.timer <= 0) {
+      if (z.state === 'dead' && z.settled()) {
+        // El cadáver se queda donde cayó (salvo que haya caído al vacío).
+        z.skel.update();
+        if (z.ragdoll[0]?.body.translation().y > -15) this.keep(z.skel.group);
         z.dispose();
         this.zombies.splice(i, 1);
       }

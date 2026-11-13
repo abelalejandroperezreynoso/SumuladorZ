@@ -134,12 +134,16 @@ llegan dos, luego tres, y así sucesivamente.
 - **Disparos a las articulaciones**: la bala se comprueba contra el esqueleto del zombi, hueso
   por hueso, y la mira marca justo lo que tiene delante. Si atraviesa una articulación (cuello,
   hombro, codo, muñeca, cadera, rodilla o tobillo), el cuerpo se parte por ahí y lo que cuelga
-  de ella cae al suelo (desaparece a los 6 s). Por el estómago, el tronco se separa de las
+  de ella cae al suelo y ahí se queda. Por el estómago, el tronco se separa de las
   piernas. Una bala que solo roza un hueso lo aturde un instante; la que pasa entre los huesos,
   sigue de largo.
 - **Lo que le queda**: sin un pie cojea; sin una pierna o sin tronco cae y se arrastra con los
   brazos (0,9 m/s con dos, 0,6 con uno); sin brazos repta (0,3 m/s). En todos los casos sigue
   mordiendo al llegar. Los puñetazos y el bate no desmiembran.
+- **Al morir**: el zombi se desploma como un cuerpo articulado (cadera, pecho, cabeza, brazos y
+  piernas con física propia, unidos por rótulas) que choca con el suelo y los muros, desde la
+  postura y el impulso que llevaba. Los cadáveres y los trozos se quedan en el escenario hasta
+  que termina la horda (se conservan los 240 más recientes).
 
 El zombi usa el mismo esqueleto del personaje, en verde.
 

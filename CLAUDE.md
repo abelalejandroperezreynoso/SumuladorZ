@@ -107,6 +107,14 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   `poseCrawl`, cuerpo físico en esfera) a `CRAWL_SPEEDS[limbs]` según los brazos enteros.
   El piloto y `gameplay.cjs` apuntan a la cabeza con `autopilot.aimZombie` (corrige `aimAt`,
   que se desvía ~13 cm, con el rayo real de la mira; `onHead`). Escena `desmembrar`.
+- **Muerte de los zombis** — no hay clip de muerte: `Zombie.startRagdoll` (`src/horde.js`) crea
+  un cuerpo físico por segmento (`RAGDOLL`, cápsulas en `GROUPS.debris`, unidos por rótulas)
+  sobre la pose del momento y `poseRagdoll` lleva los huesos a esos cuerpos. Cuando todos
+  duermen (`settled`; entre `RAGDOLL_MIN` y `RAGDOLL_MAX`) se retira la física y el cadáver se
+  funde en mallas fijas (`bakeStatic` en `src/skeleton.js`, `Horde.keep`, `horde.remains`). El
+  usuario pidió **dejar los cuerpos, no eliminarlos**: solo se van al terminar la horda o al
+  pasar de `REMAINS_MAX`. Los trozos desprendidos siguen el mismo camino. Los restos no tienen
+  colisión: jugador y zombis pasan por encima.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 

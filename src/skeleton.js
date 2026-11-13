@@ -226,3 +226,50 @@ export class SkeletonView {
     this.scene.remove(this.group);
   }
 }
+
+const _n = new THREE.Vector3();
+const _nm = new THREE.Matrix3();
+
+/**
+ * Funde en mallas fijas todo lo que se ve bajo `root` (huesos, articulaciones y aristas), tal
+ * como está colocado ahora, y las devuelve en un grupo añadido a la escena: una malla por
+ * material. Es como quedan los cadáveres y los trozos en reposo: unas pocas mallas en vez de
+ * decenas de piezas que recolocar cada fotograma.
+ */
+export function bakeStatic(root, scene) {
+  root.updateMatrixWorld(true);
+  const buckets = new Map(); // material -> { lines, pos, nor }
+  root.traverse((o) => {
+    if (!(o.isMesh || o.isLineSegments) || !o.visible || !o.parent.visible) return;
+    let b = buckets.get(o.material);
+    if (!b) buckets.set(o.material, b = { lines: !!o.isLineSegments, pos: [], nor: [] });
+    const g = o.geometry, P = g.attributes.position, N = g.attributes.normal, idx = g.index;
+    _nm.getNormalMatrix(o.matrixWorld);
+    const count = idx ? idx.count : P.count;
+    for (let i = 0; i < count; i++) {
+      const v = idx ? idx.getX(i) : i;
+      _a.fromBufferAttribute(P, v).applyMatrix4(o.matrixWorld);
+      b.pos.push(_a.x, _a.y, _a.z);
+      if (!b.lines && N) {
+        _n.fromBufferAttribute(N, v).applyMatrix3(_nm).normalize();
+        b.nor.push(_n.x, _n.y, _n.z);
+      }
+    }
+  });
+  const group = new THREE.Group();
+  for (const [material, b] of buckets) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+    if (b.lines) group.add(new THREE.LineSegments(geo, material));
+    else {
+      if (b.nor.length === b.pos.length) geo.setAttribute('normal', new THREE.Float32BufferAttribute(b.nor, 3));
+      else geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.castShadow = true;
+      group.add(mesh);
+    }
+  }
+  group.matrixAutoUpdate = false;
+  scene.add(group);
+  return group;
+}
