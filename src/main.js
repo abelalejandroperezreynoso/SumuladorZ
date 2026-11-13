@@ -37,18 +37,33 @@ async function start() {
   status('Iniciando gráficos…');
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   document.body.prepend(renderer.domElement);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 300);
-  addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
+  // El lienzo ocupa toda la pantalla por CSS (position: fixed) y el dibujo se ajusta a su
+  // tamaño real. No se usa innerHeight: en iOS, al girar el móvil o como app instalada,
+  // tarda en actualizarse o se queda corto y dejaba una franja negra abajo.
+  let viewW = 0, viewH = 0;
+  const fit = () => {
+    const r = renderer.domElement.getBoundingClientRect();
+    const w = Math.round(r.width), h = Math.round(r.height);
+    if (!w || !h || (w === viewW && h === viewH)) return;
+    viewW = w; viewH = h;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
+    dispatchEvent(new Event('viewfit')); // el catálogo recoloca su cámara
+  };
+  fit();
+  new ResizeObserver(fit).observe(renderer.domElement);
+  // iOS avisa del giro antes de recolocar la página: se vuelve a medir un poco después.
+  const refit = () => { fit(); setTimeout(fit, 120); setTimeout(fit, 500); };
+  for (const ev of ['resize', 'orientationchange', 'pageshow']) addEventListener(ev, refit);
+  window.visualViewport?.addEventListener('resize', refit);
+  document.addEventListener('fullscreenchange', refit);
 
   // El motor de físicas y el modelo son casi todo el peso: se bajan a la vez y con porcentaje.
   status('Descargando el juego…');
