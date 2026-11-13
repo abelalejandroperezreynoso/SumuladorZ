@@ -114,10 +114,11 @@ export const SCENES = [
     steps: [[0.1, press('KeyC'), 'Se desliza hasta el muro'], [1.4, fire(true), 'Se asoma por el borde y dispara'], [2.8, fire(false), 'Regresa']] },
   { id: 'cobertura_tumbado', group: 'cobertura', title: 'Cobertura muy baja (acostado)',
     how: 'C junto a un objeto de menos de unos 60 cm',
-    desc: `Se acuesta boca arriba, perpendicular al objeto, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho. Se desplaza de lado a ${n(T.PRONE_SPEED)} m/s. La cámara baja casi a ras del objeto. Al apuntar o disparar se incorpora de rodillas y la cámara se cierra sobre el hombro. La pose se arma por código: el modelo no trae un clip así.`,
-    place: [5.6, -5.5, 0], seconds: 5.6, view: 0.7, dist: 3.4,
-    steps: [[0.1, press('KeyC'), 'Se desliza y se acuesta'], [1.6, key('KeyD'), 'Se desplaza de lado'], [2.8, key('KeyD', false)],
-      [3.2, aim(true), 'Se arrodilla y apunta'], [3.7, fire(true), 'Dispara'], [4.4, all(fire(false), aim(false)), 'Vuelve a acostarse']],
+    desc: `Se acuesta boca arriba, perpendicular al objeto, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho. Se desplaza de lado a ${n(T.PRONE_SPEED)} m/s apoyándose en manos y pies: los planta en el suelo, levanta un poco el cuerpo y lo desliza ${n(T.CRAWL_STEP * 100)} cm entre ellos; luego los adelanta. La cámara baja casi a ras del objeto. Al apuntar o disparar se incorpora de rodillas y la cámara se cierra sobre el hombro. La pose se arma por código: el modelo no trae un clip así.`,
+    place: [5.6, -5.5, 0], seconds: 7, view: 0.7, dist: 3.4,
+    steps: [[0.1, press('KeyC'), 'Se desliza y se acuesta'], [1.6, key('KeyD'), 'Se desplaza de lado con manos y pies'], [2.8, key('KeyD', false)],
+      [3.1, key('KeyA'), 'Vuelve hacia el otro lado'], [4.1, key('KeyA', false)],
+      [4.6, aim(true), 'Se arrodilla y apunta'], [5.1, fire(true), 'Dispara'], [5.8, all(fire(false), aim(false)), 'Vuelve a acostarse']],
     // Posturas editables desde la ficha: [clave de POSES, título, segundo de la escena en que se ve].
     poses: [['recostado', 'Acostado', 1.5], ['rodillas', 'De rodillas, apuntando', 3.6]] },
 
