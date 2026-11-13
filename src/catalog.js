@@ -221,7 +221,7 @@ export class Catalog {
     stage.addEventListener('pointercancel', drop);
     stage.addEventListener('wheel', (e) => zoomBy(e.deltaY > 0 ? 1.1 : 0.9), { passive: true });
 
-    addEventListener('resize', () => { if (this.active) this.layout(); });
+    for (const ev of ['resize', 'viewfit']) addEventListener(ev, () => { if (this.active) this.layout(); });
     addEventListener('keydown', (e) => {
       if (!this.active || e.repeat) return;
       if (e.code === 'Escape') this.close();
@@ -424,7 +424,7 @@ export class Catalog {
 
   /** Selecciona la parte cuyo hueso pasa más cerca del punto tocado; si no hay ninguna, deselecciona. */
   pick(x, y) {
-    const W = innerWidth, H = innerHeight;
+    const { width: W, height: H } = this.game.renderer.domElement.getBoundingClientRect();
     this.game.player.model.updateMatrixWorld(true);
     const screen = (v) => { v.project(this.camera); v.x = (v.x * 0.5 + 0.5) * W; v.y = (0.5 - v.y * 0.5) * H; return v; };
     let best = null, bestD = PICK_RADIUS;
@@ -530,7 +530,7 @@ export class Catalog {
 
   /** La cámara encuadra la zona libre de la pantalla, no el centro que tapa el panel. */
   layout() {
-    const W = innerWidth, H = innerHeight;
+    const { width: W, height: H } = this.game.renderer.domElement.getBoundingClientRect();
     const r = this.el.panel.getBoundingClientRect();
     this.camera.aspect = W / H;
     this.fit = 1;
