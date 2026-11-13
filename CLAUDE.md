@@ -72,6 +72,13 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
 - **Brazos** — toda pose de brazo calculada por código pasa por `Player.reachArm`, que aplica
   `ARM_LIMITS` (el codo se dobla hacia fuera, abajo y atrás; la mano no va muy detrás de la
   espalda ni cruza el cuerpo salvo por delante). Usarlo en vez de girar huesos a mano.
+- **Armas a dos manos** — `Player.holdTwoHanded` ancla las manos al arma como `gait.js` los
+  pies al suelo: el arma va en la palma derecha, la izquierda en su agarre (`BAT_LEFT`,
+  `GUN_LEFT`, en el marco del arma) y, si no llega, el arma se acerca hasta `GRIP_SHIFT`.
+  `player.gripGap` es la separación que queda (m); debe dar unos milímetros. Disparando a
+  ciegas la izquierda no alcanza el arma y va a una mano. El batazo va entero por código
+  (`SWING_KEYS`, `swingPhase`, `placeBat`): impulso atrás, golpe y acompañamiento, sin clip;
+  durante el giro los límites de los brazos se miden en el marco del pecho (`armFrame`).
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 
