@@ -8,6 +8,7 @@ import { COMBAT_TUNING as C } from './combat.js';
 import { AUTOPILOT_TUNING as A } from './autopilot.js';
 import { PICKUP_TUNING as K2 } from './pickups.js';
 import { CAMERA_TUNING as K } from './camera.js';
+import { GAIT_TUNING as G } from './gait.js';
 
 const n = (x, digits = 2) => String(+x.toFixed(digits)).replace('.', ',');
 const jumpHeight = (v) => (v * v) / (2 * T.GRAVITY);
@@ -49,7 +50,7 @@ export const GROUPS = [
 export const SCENES = [
   { id: 'locomocion', group: 'movimiento', title: 'Caminar, correr y carrera rápida',
     how: 'W A S D caminar · Shift correr · Q carrera rápida',
-    desc: `Tres marchas: ${n(T.WALK_SPEED)}, ${n(T.RUN_SPEED)} y ${n(T.SPRINT_SPEED)} m/s. De caminar a correr se conserva la fase del paso, y ninguna marcha cambia antes de ${n(T.STATE_DWELL)} s para que no parpadee. La carrera rápida se activa con un toque, dura mientras avances y no deja disparar.`,
+    desc: `Tres marchas: ${n(T.WALK_SPEED)}, ${n(T.RUN_SPEED)} y ${n(T.SPRINT_SPEED)} m/s. De caminar a correr se conserva la fase del paso, y ninguna marcha cambia antes de ${n(T.STATE_DWELL)} s para que no parpadee. La carrera rápida se activa con un toque, dura mientras avances y no deja disparar. Los pies no resbalan: la zancada se alarga o acorta a la medida del avance (hasta ×${n(G.STRIDE_MAX)}) y el pie de apoyo queda clavado en el suelo mientras la pierna se recalcula para alcanzarlo.`,
     place: [-30, 30, -Math.PI / 2], seconds: 6.4, view: 0,
     steps: [[0.2, key('KeyW'), 'Empieza a caminar'], [1.8, key('ShiftLeft'), 'Pasa a correr'],
       [3.4, press('KeyQ'), 'Carrera rápida'], [5.2, all(key('KeyW', false), key('ShiftLeft', false)), 'Suelta y frena']] },

@@ -1,3 +1,4 @@
+import { Gait, CLIP_SPEED } from './gait.js';
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { SkeletonView } from './skeleton.js';
@@ -98,6 +99,12 @@ class Zombie {
     this.current = this.actions.Idle;
     this.current.play();
     this.armBones = [];
+    const bones = {};
+    this.model.traverse((o) => { if (o.isBone) bones[o.name] = o; });
+    const legs = ['L', 'R']
+      .map((s) => ({ upper: bones['UpperLeg' + s], lower: bones['LowerLeg' + s], foot: bones['Foot' + s], side: s === 'L' ? 1 : -1 }))
+      .filter((l) => l.upper && l.lower && l.foot);
+    this.gait = new Gait(legs); // zancada a medida y pies clavados al andar
     this.model.traverse((o) => {
       if (o.isBone && (o.name === 'UpperArmL' || o.name === 'UpperArmR')) {
         this.armBones.push({ bone: o, quat: new THREE.Quaternion() });
@@ -372,12 +379,18 @@ class Zombie {
       for (const a of this.armBones) a.bone.quaternion.copy(a.quat);
       this.posed = false;
     }
+    this.gait.restore();
     this.mixer.update(this.mixerDt ?? 0);
     if (!this.body) return;
     const t = this.body.translation();
     this.position.set(t.x, t.y - FOOT - 0.02, t.z);
     this.model.position.copy(this.position);
     this.model.rotation.y = this.facing;
+    // Pies que no resbalan mientras deambula o persigue.
+    const run = this.current === this.actions.Run;
+    const walking = this.alive && (run || this.current === this.actions.Walk) && (this.moveSpeed ?? 0) > 0.15;
+    this.gait.update(this.mixerDt ?? 0, this.model, this.position.y, this.facing, this.moveSpeed ?? 0,
+      (run ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), walking);
 
     // Brazos extendidos hacia la presa mientras la persigue.
     if (this.arms > 0.02) {

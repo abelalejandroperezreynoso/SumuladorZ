@@ -60,6 +60,12 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   (fracciones de la estatura, 1,75 m) escalando huesos y pistas de posición de los clips; se
   aplica al cargar, antes de clonar el modelo para los zombis. El modelo original trae brazos
   de 40 cm de hombro a muñeca; corregidos miden 56 cm. Piernas y tronco ya estaban bien.
+- **Pies que no resbalan** — `src/gait.js` (jugador y zombis): al caminar o correr de frente
+  escala la zancada a la medida del avance (`CLIP_SPEED` es lo que avanza cada clip a ritmo 1)
+  y clava el pie de apoyo en el mundo, recalculando la pierna. Si se cambia una velocidad de
+  marcha o el ritmo de un clip, comprobar que el pie apoyado sigue quieto (la medida
+  `footSlide` de `tools/watch.cjs` incluye el instante de apoyar y despegar; en apoyo pleno
+  debe dar ~0). De lado o hacia atrás (apuntando) no actúa.
 - **Brazos** — toda pose de brazo calculada por código pasa por `Player.reachArm`, que aplica
   `ARM_LIMITS` (el codo se dobla hacia fuera, abajo y atrás; la mano no va muy detrás de la
   espalda ni cruza el cuerpo salvo por delante). Usarlo en vez de girar huesos a mano.

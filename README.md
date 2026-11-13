@@ -202,6 +202,8 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   bloque, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho; la
   cámara baja casi a ras del bloque. Se desplaza de lado apoyándose en manos y pies, y se
   incorpora de rodillas para apuntar.
+- **Pies que no resbalan**: al caminar y correr la zancada se ajusta a lo que avanza el
+  personaje y el pie de apoyo queda clavado en el suelo (también en los zombis).
 - **De pie, en reposo**: quieto, el personaje se relaja (pies bajo la cadera, brazos colgando,
   tronco y cabeza erguidos y una respiración suave) en vez de la guardia del clip del modelo.
 - **Apuntar y disparar** son mandos separados. Con el clic derecho levanta el arma y la cámara
@@ -222,6 +224,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/physics.js` | Mundo de Rapier, creación de cuerpos y sincronización con las mallas |
 | `src/world.js` | Construcción del escenario de pruebas |
 | `src/player.js` | Personaje: movimiento, animaciones, golpe y pose de apuntado |
+| `src/gait.js` | Zancada a medida y pie de apoyo clavado al caminar y correr (jugador y zombis) |
 | `src/camera.js` | Cámara en tercera persona con colisión |
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
 | `src/pickups.js` | Armas y cajas de balas que se recogen, y sus modelos |
