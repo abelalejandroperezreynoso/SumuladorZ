@@ -84,10 +84,10 @@ export const SCENES = [
     steps: [[0.1, press('KeyF'), 'Arranca el golpe'], [0.1 + T.PUNCH_TIME * T.PUNCH_HIT, null, 'Conecta'], [0.1 + T.PUNCH_TIME, null, 'Recupera']] },
   { id: 'bate', group: 'combate', title: 'Bate de béisbol',
     how: 'Con el bate en la mano (2 · cruceta): clic izquierdo o F · mando RT o X · botón «Batazo»',
-    desc: `Un batazo dura ${n(T.SWING_TIME)} s, usa el clip Sword_Slash y alcanza ${n(T.MELEE.bate.reach + T.MELEE.bate.radius)} m por delante. Quita ${n(T.MELEE.bate.damage)} de vida (un zombi muere de un golpe) y empuja ${n(T.MELEE.bate.push)} veces más que un puñetazo.`,
-    place: [20, 30, 0], seconds: 1.6, view: Math.PI * 0.6,
+    desc: `Quieto o caminando lleva el bate en guardia, con las dos manos y levantado sobre el hombro derecho; la mano izquierda lo acompaña también durante el golpe. Un batazo dura ${n(T.SWING_TIME)} s, usa el clip Sword_Slash y alcanza ${n(T.MELEE.bate.reach + T.MELEE.bate.radius)} m por delante. Quita ${n(T.MELEE.bate.damage)} de vida (un zombi muere de un golpe) y empuja ${n(T.MELEE.bate.push)} veces más que un puñetazo.`,
+    place: [20, 30, 0], seconds: 2.6, view: Math.PI * 0.6,
     before: (g) => g.player.pickUp('bate'),
-    steps: [[0.2, press('KeyF'), 'Echa el bate atrás'], [0.2 + T.SWING_TIME * 0.45, null, 'Conecta'], [0.2 + T.SWING_TIME, null, 'Recupera']] },
+    steps: [[0.1, null, 'En guardia, a dos manos'], [1.0, press('KeyF'), 'Echa el bate atrás'], [1.0 + T.SWING_TIME * 0.45, null, 'Conecta'], [1.0 + T.SWING_TIME, null, 'Recupera']] },
   { id: 'recoger', group: 'combate', title: 'Recoger armas y balas',
     how: 'Pasar por encima del objeto',
     desc: `Se empieza sin armas. Basta acercarse a menos de ${n(K2.REACH)} m: la pistola trae ${K2.GUN_AMMO} balas y cada caja ${K2.BOX_AMMO} (máximo ${T.MAX_AMMO}). Las cajas del escenario reaparecen a los ${K2.AMMO_RESPAWN} s; un zombi suelta ${K2.DROP_AMMO} balas el ${n(K2.DROP_CHANCE * 100, 0)} % de las veces. Al morir, las armas vuelven a su sitio.`,
@@ -104,7 +104,7 @@ export const SCENES = [
 
   { id: 'apuntar', group: 'combate', title: 'Apuntar (cámara al hombro)',
     how: 'Clic derecho mantenido · mando LT · botón «Apuntar» en táctil (un toque entra, otro sale)',
-    desc: `Levanta el arma y la cámara del juego se cierra sobre el hombro derecho: pasa a ${n(K.AIM_DISTANCE)} m del personaje, a la altura de la cabeza, con ${n(K.AIM_FOV)}° de campo (60° normal), aparece la mira y se mueve un ${n((1 - K.AIM_SENS) * 100)} % más lenta. Apuntando, las balas van exactas. Es un mando aparte del disparo: disparar sin apuntar no cierra la cámara. Esta ficha lo muestra desde fuera; el movimiento de cámara se ve jugando.`,
+    desc: `Levanta el arma, la sujeta con las dos manos y la cámara del juego se cierra sobre el hombro derecho: pasa a ${n(K.AIM_DISTANCE)} m del personaje, a la altura de la cabeza, con ${n(K.AIM_FOV)}° de campo (60° normal), aparece la mira y se mueve un ${n((1 - K.AIM_SENS) * 100)} % más lenta. Apuntando, las balas van exactas. Es un mando aparte del disparo: disparar sin apuntar no cierra la cámara. Esta ficha lo muestra desde fuera; el movimiento de cámara se ve jugando.`,
     place: [20, 30, 0], seconds: 3.2, view: Math.PI * 0.7,
     steps: [[0.3, aim(true), 'Apunta sin disparar'], [1.2, fire(true), 'Dispara'], [2.0, fire(false)], [2.4, aim(false), 'Baja el arma']] },
 
