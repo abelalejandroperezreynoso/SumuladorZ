@@ -140,10 +140,10 @@ export const SCENES = [
     // Posturas editables desde la ficha: [clave de POSES, título, segundo de la escena en que se ve].
     poses: [['recostado', 'Acostado', 1.5], ['rodillas', 'De rodillas, apuntando', 6.2]] },
 
-  { id: 'zombi', group: 'enemigos', title: 'Zombi: persecución, mordida y muerte',
+  { id: 'zombi', group: 'enemigos', title: 'Zombi: persecución, mordida y caída al morir',
     how: 'H inicia la horda',
-    desc: `Persigue a ${n(Z.CHASE_SPEED)} m/s con los brazos extendidos, usando el clip de correr a ritmo lento. A ${n(Z.ATTACK_RANGE)} m muerde: cada mordida dura ${n(Z.ATTACK_TIME)} s y quita ${n(Z.BITE_DAMAGE)} de vida. Un impacto lo aturde ${n(Z.STAGGER)} s; las balas no le quitan vida (solo muere al perder la cabeza; ver la ficha siguiente), pero ${n(Z.HEALTH)} de daño a golpes lo matan, y el cadáver queda ${n(Z.CORPSE_TIME)} s.`,
-    place: [20, 20, 0], seconds: 7.5, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
+    desc: `Persigue a ${n(Z.CHASE_SPEED)} m/s con los brazos extendidos, usando el clip de correr a ritmo lento. A ${n(Z.ATTACK_RANGE)} m muerde: cada mordida dura ${n(Z.ATTACK_TIME)} s y quita ${n(Z.BITE_DAMAGE)} de vida. Un impacto lo aturde ${n(Z.STAGGER)} s; las balas no le quitan vida (solo muere al perder la cabeza; ver la ficha siguiente), pero ${n(Z.HEALTH)} de daño a golpes lo matan. Al morir se desploma como un cuerpo articulado: cadera, pecho, cabeza, brazos y piernas son cuerpos físicos unidos por rótulas que chocan con el suelo y los muros. Cuando se queda quieto (o a los ${n(Z.RAGDOLL_MAX)} s) el cadáver se queda en el escenario; se conservan hasta ${Z.REMAINS_MAX} cadáveres y trozos.`,
+    place: [20, 20, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2, dist: 3.8,
     before: (g) => {
       g.horde.start();
       for (let i = 0; i < 40; i++) g.tick(1 / 60);
@@ -160,7 +160,7 @@ export const SCENES = [
 
   { id: 'desmembrar', group: 'enemigos', title: 'Zombi: disparos a las articulaciones y arrastre',
     how: 'Apuntar a una articulación, al estómago o a la cabeza',
-    desc: `La bala se comprueba contra el esqueleto, no contra un bulto: si pasa a menos de ${n(Z.JOINT_ZONE * 100, 1)} cm de una articulación (cuello, hombro, codo, muñeca, cadera, rodilla o tobillo), el cuerpo se parte por ahí y lo que cuelga de ella cae al suelo ${n(Z.DEBRIS_TIME)} s. Por el estómago (${n(Z.STOMACH_ZONE * 100, 0)} cm) el tronco se separa de las piernas. Solo muere al perder la cabeza (${n(Z.HEAD_ZONE * 100, 0)} cm): sin un pie cojea, sin una pierna o sin tronco cae en ${n(Z.CRAWL_FALL)} s y se arrastra a ${n(Z.CRAWL_SPEEDS[2])} m/s (${n(Z.CRAWL_SPEEDS[1])} con un brazo; sin brazos repta a ${n(Z.CRAWL_SPEEDS[0])}) y sigue mordiendo. Un impacto que solo roza un hueso lo aturde ${n(Z.STAGGER)} s.`,
+    desc: `La bala se comprueba contra el esqueleto, no contra un bulto: si pasa a menos de ${n(Z.JOINT_ZONE * 100, 1)} cm de una articulación (cuello, hombro, codo, muñeca, cadera, rodilla o tobillo), el cuerpo se parte por ahí y lo que cuelga de ella cae al suelo y ahí se queda. Por el estómago (${n(Z.STOMACH_ZONE * 100, 0)} cm) el tronco se separa de las piernas. Solo muere al perder la cabeza (${n(Z.HEAD_ZONE * 100, 0)} cm): sin un pie cojea, sin una pierna o sin tronco cae en ${n(Z.CRAWL_FALL)} s y se arrastra a ${n(Z.CRAWL_SPEEDS[2])} m/s (${n(Z.CRAWL_SPEEDS[1])} con un brazo; sin brazos repta a ${n(Z.CRAWL_SPEEDS[0])}) y sigue mordiendo. Un impacto que solo roza un hueso lo aturde ${n(Z.STAGGER)} s.`,
     place: [20, 20, 0], seconds: 13, view: (s) => s.facing + Math.PI / 2 - 0.5, dist: 3.8,
     before: (g) => {
       g.horde.start();
@@ -195,7 +195,7 @@ export const SCENES = [
 const ROLES = {
   player: { Idle: 'reposo', Walking: 'caminar y arrastrarse', Running: 'correr', Punch: 'puñetazo',
     Jump: 'pose de salto (congelado)', CoverLeft: 'paso lateral a cubierto', CoverRight: 'paso lateral a cubierto' },
-  zombie: { Idle: 'quieto', Walk: 'deambular', Run: 'perseguir', Attack: 'morder', Hit: 'aturdido', Death: 'morir' },
+  zombie: { Idle: 'quieto', Walk: 'deambular', Run: 'perseguir', Attack: 'morder', Hit: 'aturdido' },
 };
 
 /** Todos los clips del modelo con quién los usa y para qué; se calcula del código en uso. */
