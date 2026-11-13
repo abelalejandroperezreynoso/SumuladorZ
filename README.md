@@ -129,12 +129,17 @@ llegan dos, luego tres, y así sucesivamente.
   lugar donde te vio y, si no te encuentra, vuelve a deambular.
 - **Ataque**: a corta distancia te muerde (15 de vida). La vida se recupera sola tras 5 s sin
   daño; si llega a cero, la horda termina y reapareces.
-- **Matarlos**: aguantan 3 balas o 2 puñetazos.
-- **Disparos por zonas**: la bala arranca la zona que atraviesa. En la cabeza, la cabeza se
-  desprende y el zombi muere. En un hombro, pierde ese brazo. En el estómago, el tronco se
-  separa de las piernas: cae y sigue persiguiéndote arrastrándose (más lento, 0,9 m/s) mientras
-  le queden cabeza, tronco y al menos un brazo; sin brazos no puede arrastrarse y muere. Los
-  trozos caen al suelo y desaparecen a los 6 s. Los puñetazos y el bate no desmiembran.
+- **Matarlos**: solo mueren al perder la cabeza (o a golpes: 2 puñetazos o un batazo). Hasta
+  entonces siguen intentando atacar como puedan.
+- **Disparos a las articulaciones**: la bala se comprueba contra el esqueleto del zombi, hueso
+  por hueso, y la mira marca justo lo que tiene delante. Si atraviesa una articulación (cuello,
+  hombro, codo, muñeca, cadera, rodilla o tobillo), el cuerpo se parte por ahí y lo que cuelga
+  de ella cae al suelo (desaparece a los 6 s). Por el estómago, el tronco se separa de las
+  piernas. Una bala que solo roza un hueso lo aturde un instante; la que pasa entre los huesos,
+  sigue de largo.
+- **Lo que le queda**: sin un pie cojea; sin una pierna o sin tronco cae y se arrastra con los
+  brazos (0,9 m/s con dos, 0,6 con uno); sin brazos repta (0,3 m/s). En todos los casos sigue
+  mordiendo al llegar. Los puñetazos y el bate no desmiembran.
 
 El zombi usa el mismo esqueleto del personaje, en verde.
 

@@ -95,15 +95,18 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   mantener la dirección hacia ese lado continúa el paso lateral sin pausa (`PEEK_LOOK`, a la
   velocidad de caminar), inclina el tronco y gira cabeza y tronco hacia detrás del muro
   (`PEEK_HEAD`, `cover.look`; empieza a girar al acercarse); disparando da el paso entero, como al apuntar.
-- **Zonas del cuerpo de los zombis** — `Zombie.hit` (`src/horde.js`) recibe la trayectoria de
-  la bala y `zoneAt` da la primera zona que atraviesa (`HEAD_ZONE`, `SHOULDER_ZONE`,
-  `STOMACH_ZONE`, radios alrededor de los huesos). `shoot(zona)` la arranca: cabeza = muere;
-  hombro = pierde el brazo; estómago = el tronco se separa de las piernas y se arrastra
-  (`crawler`, `poseCrawl`, cuerpo físico en esfera) si le quedan cabeza y un brazo; si no, muere.
-  Las piezas salen del esqueleto con `SkeletonView.detach` y caen como cuerpos sueltos
-  (`Horde.detach`, grupo `GROUPS.debris`). Para apuntarle usar `zombie.aimY` (pecho; más bajo
-  si se arrastra). Escena `desmembrar` del catálogo. `autopilot.aimAt` apunta ~13 cm a la
-  izquierda de la mira real: en pruebas de puntería corregir con `player.aimPoint`.
+- **Disparos a las articulaciones de los zombis** — las balas no chocan con la cápsula del
+  zombi (`GROUPS.enemy`): `Combat.update` comprueba el tramo que recorre cada bala contra el
+  esqueleto con `Zombie.trace` (`src/horde.js`), que devuelve el corte de `CUTS` de la primera
+  articulación que atraviesa (`JOINT_ZONE`; cabeza `HEAD_ZONE`; estómago `STOMACH_ZONE` = corte
+  `legs`), `'body'` si solo roza un hueso (`BODY_SEGMENTS`) o null. `Combat.aimPoint` usa lo
+  mismo, así que la mira marca la articulación. `shoot(corte)` desprende lo que cuelga de ella
+  (`SkeletonView.detach`, `Horde.detach`, cuerpos sueltos en `GROUPS.debris`). El usuario pidió
+  que el zombi **solo muera al perder la cabeza**: las balas no quitan vida (`hp` es solo para
+  golpes). Sin un pie cojea (`limp`); sin una pierna o sin tronco se arrastra (`crawler`,
+  `poseCrawl`, cuerpo físico en esfera) a `CRAWL_SPEEDS[limbs]` según los brazos enteros.
+  El piloto y `gameplay.cjs` apuntan a la cabeza con `autopilot.aimZombie` (corrige `aimAt`,
+  que se desvía ~13 cm, con el rayo real de la mira; `onHead`). Escena `desmembrar`.
 - **Pruebas a medida** — `window.__game` expone escena, física, jugador, horda, cámara y
   `tick(dt)`. Parar el bucle con `renderer.setAnimationLoop(null)` y avanzar con `tick(1/60)`.
 
@@ -113,5 +116,7 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
 10–16; el piloto completo, a la 26–27 en 7 minutos. La cobertura no tiene función porque los
 zombis solo atacan cuerpo a cuerpo. Mejoras propuestas, por impacto: enemigos a distancia,
 cargador y recarga, resistencia para la carrera rápida, variedad de zombis, puntuación.
+Con las balas contra el esqueleto y la muerte solo por la cabeza, los bots (puntería perfecta a
+la cabeza) llegan igual de lejos: `stand` a la oleada 15 en 2 min sin morir; falta medir a un jugador humano.
 Desde entonces: se empieza sin armas y la munición es limitada (pistola, bate y cajas de balas
 que se recogen); `gameplay.cjs` aún no mide cómo cambia eso la dificultad.

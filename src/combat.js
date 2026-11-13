@@ -11,6 +11,7 @@ export const COMBAT_TUNING = { BULLET_SPEED }; // lo muestra el catálogo
 const _dir = new THREE.Vector3();
 const _origin = new THREE.Vector3();
 const _point = new THREE.Vector3();
+const _seg = new THREE.Vector3();
 const Z = new THREE.Vector3(0, 0, 1);
 
 // Proyectiles físicos, chispas de impacto y contador de aciertos.
@@ -21,6 +22,7 @@ export class Combat {
     this.bullets = new Map(); // handle de collider -> bala
     this.sparks = [];
     this.player = null; // lo asigna main.js (a quién persigue un zombi herido)
+    this.horde = null; // lo asigna main.js: las balas se comprueban contra el esqueleto de cada zombi
     this.targetHits = 0;
     this.punchHits = 0;
 
@@ -36,10 +38,16 @@ export class Combat {
     // El rayo empieza a la altura del personaje para no dar a lo que hay entre él y la cámara.
     const skip = cam.current + 0.6;
     _origin.copy(camera.position).addScaledVector(_dir, skip);
+    // Primero el escenario; después, el esqueleto de cada zombi (no su cápsula): la mira
+    // marca exactamente la articulación o el hueso que tiene delante.
     const hit = this.physics.world.castRay(
-      new RAPIER.Ray(_origin, _dir), MAX_RANGE, true, undefined, GROUPS.query,
+      new RAPIER.Ray(_origin, _dir), MAX_RANGE, true, undefined, GROUPS.cover,
     );
-    return _point.copy(_origin).addScaledVector(_dir, hit ? hit.timeOfImpact : MAX_RANGE);
+    let dist = hit ? hit.timeOfImpact : MAX_RANGE;
+    for (const z of this.horde?.zombies ?? []) {
+      if (z.alive && z.trace(_origin, _dir, dist)) dist = z.hitAt;
+    }
+    return _point.copy(_origin).addScaledVector(_dir, dist);
   }
 
   fire(from, to) {
@@ -100,10 +108,7 @@ export class Combat {
       const meta = this.physics.meta.get(b1 ? h2 : h1);
       const p = bullet.body.translation();
       _point.set(p.x, p.y, p.z);
-      // El zombi decide qué zona del cuerpo alcanza la bala. Se le da la trayectoria con la que
-      // venía (posición y rumbo del fotograma anterior): tras el choque la bala ya se ha desviado.
-      if (meta?.zombie) meta.zombie.hit(bullet.from, bullet.dir, this.player);
-      else if (meta?.body.isDynamic()) this.physics.flash(meta);
+      if (meta?.body.isDynamic()) this.physics.flash(meta);
       this.registerHit(meta, 'bullet');
       this.spark(_point);
     });
@@ -113,6 +118,24 @@ export class Combat {
       if (b.dead || b.life <= 0) { this.removeBullet(handle, b); continue; }
       const p = b.body.translation();
       const v = b.body.linvel();
+      // Zombis: la bala no choca con su cápsula; se comprueba el tramo recorrido en este
+      // fotograma contra su esqueleto, articulación por articulación.
+      const len = _seg.set(p.x, p.y, p.z).sub(b.from).length();
+      if (len > 1e-4) {
+        _seg.divideScalar(len);
+        let struck = null, zone = null, at = len;
+        for (const z of this.horde?.zombies ?? []) {
+          if (!z.alive) continue;
+          const found = z.trace(b.from, _seg, at);
+          if (found) { struck = z; zone = found; at = z.hitAt; }
+        }
+        if (struck) {
+          struck.shoot(zone, _seg, this.player);
+          this.spark(_point.copy(b.from).addScaledVector(_seg, at));
+          this.removeBullet(handle, b);
+          continue;
+        }
+      }
       b.mesh.position.set(p.x, p.y, p.z);
       b.from.set(p.x, p.y, p.z);
       b.mesh.quaternion.setFromUnitVectors(Z, b.dir.set(v.x, v.y, v.z).normalize());
