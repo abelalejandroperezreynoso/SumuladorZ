@@ -197,6 +197,8 @@ const STOMP = { frente: 0.16, lado: 0.1, alto: 0.74, arriba: 0.28, suelta: 0.62 
 // empujón hacia arriba al zombi aplastado (`rebote`, m/s).
 const SLAM_BODY = {
   pisotón: { carga: 0.2, baja: 0.2, tronco: 0.45, brazos: 0.7, antes: 0.12, despues: 0.5, sacudida: 0.09, pausa: 0.09, rebote: 2.6 },
+  // Batazo normal (de lado): se hunde menos; `empuje` multiplica lo lejos que sale despedido el zombi.
+  batazo: { carga: 0, baja: 0.13, tronco: 0, brazos: 0, antes: 0.16, despues: 0.34, sacudida: 0.1, pausa: 0.1, rebote: 0, empuje: 2.2 },
   bate: { carga: 0, baja: 0.24, tronco: 0, brazos: 0, antes: 0.14, despues: 0.38, sacudida: 0.13, pausa: 0.11, rebote: 3.4 },
 };
 export const MAX_AMMO = 99;
@@ -231,10 +233,10 @@ const BAT_READY = { lado: 0.12, bajo: 0.16, frente: 0.24, inclinado: 0.25, atras
 // del pecho ya girado. El recorrido pasa por todos con una curva suave (ver swingPhase).
 const SWING_KEYS = [
   { mano: [-BAT_READY.lado, -BAT_READY.bajo, BAT_READY.frente], bate: [-BAT_READY.inclinado, 1, -BAT_READY.atras], giro: 0, frente: 0 }, // guardia
-  { mano: [-0.13, -0.04, 0.24], bate: [-0.3, 0.75, -0.95], giro: -0.8, frente: 0.06 }, // impulso: atrás, junto al hombro derecho
-  { mano: [-0.16, -0.13, 0.34], bate: [-1, 0.2, -0.1], giro: -0.25, frente: 0.12 }, // las manos tiran; el bate viene retrasado
-  { mano: [0.0, -0.2, 0.44], bate: [-0.12, -0.05, 1], giro: 0.3, frente: 0.18 }, // conecta, con los brazos estirados
-  { mano: [0.14, -0.12, 0.3], bate: [1, 0.4, -0.2], giro: 0.8, frente: 0.1 }, // acompaña hasta el otro lado
+  { mano: [-0.13, -0.04, 0.24], bate: [-0.3, 0.75, -0.95], giro: -1.05, frente: -0.06 }, // impulso: atrás, junto al hombro derecho
+  { mano: [-0.16, -0.13, 0.34], bate: [-1, 0.2, -0.1], giro: -0.3, frente: 0.14 }, // las manos tiran; el bate viene retrasado
+  { mano: [0.0, -0.2, 0.44], bate: [-0.12, -0.05, 1], giro: 0.4, frente: 0.3 }, // conecta, con los brazos estirados
+  { mano: [0.14, -0.12, 0.3], bate: [1, 0.4, -0.2], giro: 1.05, frente: 0.22 }, // acompaña hasta el otro lado
 ];
 SWING_KEYS.push(SWING_KEYS[0]);
 // Batazo al suelo (contra un zombi que se arrastra): los mismos momentos, pero el bate sube
@@ -1565,15 +1567,20 @@ export class Player {
    * Pisotón (golpe sin arma sobre un zombi que se arrastra): el pie derecho sube con la
    * rodilla doblada, baja de golpe sobre el zombi al conectar y vuelve a su sitio.
    */
+  /** Qué entrada de SLAM_BODY corresponde al golpe en curso. */
+  get slamKey() {
+    return this.meleeKind !== 'bate' ? 'pisotón' : this.meleeLow ? 'bate' : 'batazo';
+  }
+
   poseStomp() {
     const low = this.meleeLow;
     this.stomp = this.slamDrop = this.slamLoad = 0;
-    if (this.punchT < 0 || !low) return;
-    // Con el bate o con el pie, el cuerpo entero acompaña: carga atrás y cae sobre el golpe.
     const bat = this.meleeKind === 'bate';
+    if (this.punchT < 0 || (!low && !bat)) return;
+    // Con el bate o con el pie, el cuerpo entero acompaña: carga atrás y cae sobre el golpe.
     if (bat && !this.swinging) return;
     const u = this.punchT / (bat ? SWING_TIME : PUNCH_TIME), S = STOMP;
-    const hit = bat ? SWING_HIT : PUNCH_HIT, B = SLAM_BODY[bat ? 'bate' : 'pisotón'];
+    const hit = bat ? SWING_HIT : PUNCH_HIT, B = SLAM_BODY[this.slamKey];
     const fall = THREE.MathUtils.smoothstep(u, hit - B.antes, hit);
     this.slamDrop = fall ** 2 * (1 - THREE.MathUtils.smoothstep(u, hit + 0.06, hit + B.despues));
     this.slamLoad = THREE.MathUtils.smoothstep(u, 0, S.arriba) * (1 - fall);
@@ -1853,6 +1860,7 @@ export class Player {
       undefined, GROUPS.query,
     );
     const seen = new Set();
+    const heavy = !low && this.meleeKind === 'bate'; // batazo normal: golpe de lleno
     let hits = 0, crushed = 0;
     for (const collider of found) {
       const body = collider.parent();
@@ -1860,7 +1868,7 @@ export class Player {
       const zombie = this.physics.meta.get(collider.handle)?.zombie;
       if (zombie) {
         seen.add(body.handle);
-        zombie.damage(M.damage, this, low ? SLAM_BODY[this.meleeKind === 'bate' ? 'bate' : 'pisotón'].rebote : 0);
+        zombie.damage(M.damage, this, low ? SLAM_BODY[this.slamKey].rebote : 0, heavy ? SLAM_BODY.batazo.empuje : 1);
         combat.punchHits++;
         hits++;
         crushed++;
@@ -1877,8 +1885,13 @@ export class Player {
     }
     if (hits) combat.spark(_v.set(center.x, center.y, center.z), 0.5, 0xffffff);
     // Golpe bajo: el suelo retumba (más si aplasta a un zombi) y saltan trozos.
+    if (heavy && crushed) {
+      // Batazo de lleno a un zombi: sacudida, pausa y trozos a la altura del golpe (sin onda).
+      const B = SLAM_BODY.batazo;
+      combat.impact(_v.set(center.x, center.y + 0.2, center.z), B.sacudida, B.pausa, 12, this.position.y);
+    }
     if (low) {
-      const B = SLAM_BODY[this.meleeKind === 'bate' ? 'bate' : 'pisotón'], k = crushed ? 1 : 0.35;
+      const B = SLAM_BODY[this.slamKey], k = crushed ? 1 : 0.35;
       combat.impact(_v.set(center.x, this.position.y, center.z), B.sacudida * k, crushed ? B.pausa : 0, crushed ? 12 : 0);
     }
   }
@@ -1992,7 +2005,7 @@ export class Player {
     this.poseStomp();
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
-    const sd = this.slamDrop, SB = SLAM_BODY[this.meleeKind === 'bate' ? 'bate' : 'pisotón'];
+    const sd = this.slamDrop, SB = SLAM_BODY[this.slamKey];
     if (jc > 0.01 || cc > 0.01 || sd > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
       // Inclinación del tronco a cubierto: 0,3 rad agachado del todo; de rodillas, la de su postura.
       const K = POSES.rodillas;
