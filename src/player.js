@@ -155,6 +155,13 @@ const HIP_SPREAD = 0.035; // desvío máximo de la bala sin apuntar (rad)
 const BLIND_SPREAD = 0.09; // ...y a ciegas desde la cobertura
 const BLIND_HOLD = 0.35; // segundos que mantiene el arma fuera tras disparar a ciegas
 const BLIND_REACH = 0.5; // distancia del hombro a la mano con el brazo fuera (m)
+// Límites de los brazos (ver reachArm). Dirección hombro→mano: `atras`, cuánto puede ir por
+// detrás del cuerpo (componente hacia la espalda, 0-1), y `atrasArriba` lo que se suma con el
+// brazo en alto; `cruce`, cuánto puede pasar al otro lado, y `cruceDelante` lo que se suma
+// cuanto más por delante va. Distancia hombro→mano, en fracción del brazo: `cerrado` (codo
+// doblado del todo, ~145°) y `estirado`.
+const ARM_LIMITS = { atras: 0.3, atrasArriba: 0.45, cruce: 0.15, cruceDelante: 0.55, cerrado: 0.32, estirado: 0.97 };
+const AIM_REACH = 0.5; // del hombro a la muñeca al apuntar: brazo casi estirado (m)
 // Brazos a cubierto con la pistola (m, desde el pecho): manos delante, algo más abajo y
 // hacia el centro del cuerpo, y separación entre las dos manos.
 const COVER_ARMS = { frente: 0.26, bajo: 0.12, centro: 0.02, manos: 0.05 };
@@ -586,6 +593,7 @@ export class Player {
         this.upperArm.getWorldPosition(_a);
         const shoulder = (_a.x - t.x) * tx + (_a.z - t.z) * tz;
         const reach = (side) => {
+          if (shoulder * side < 0) return false; // por el otro lado el brazo cruzaría el cuerpo
           const max = Math.min(BLIND_EDGE, shoulder * side + BLIND_REACH - 0.1);
           for (let r = 0.1; r <= max; r += 0.05) if (ends(side, r)) return true;
           return false;
@@ -593,6 +601,7 @@ export class Player {
         const l = reach(-1), r = reach(1);
         const camSide = Math.sign(-Math.sin(cam.yaw) * tx - Math.cos(cam.yaw) * tz) || 1;
         c.blindSide = l && r ? camSide : r ? 1 : l ? -1 : 0;
+        if (c.blindSide) c.blindArm = c.blindSide; // el brazo lo recuerda mientras se recoge
       }
     } else c.blindSide = undefined;
     const peekTarget = aiming && c.mode === 'side' ? c.peekGoal : 0;
@@ -1134,6 +1143,66 @@ export class Player {
     }
   }
 
+  /**
+   * Brazo con límites de articulación: lleva la mano (`side` +1 izquierda, -1 derecha) hacia
+   * `target` con peso `w`. El hombro no deja llevar la mano muy por detrás de la espalda ni
+   * cruzarla por delante del pecho más de lo natural; el codo no se estira del todo ni se
+   * cierra más de ~145°, y se dobla siempre hacia fuera, abajo y atrás, nunca al revés.
+   * Con `straight`, el peso mueve la mano en línea recta desde donde está (si se mezclaran
+   * los giros de los huesos, la mano podría pasar por detrás del cuerpo entre dos posturas).
+   */
+  reachArm(side, target, w, straight = false) {
+    const upper = side > 0 ? this.upperArmL : this.upperArm;
+    const lower = side > 0 ? this.lowerArmL : this.lowerArm;
+    const hand = side > 0 ? this.handL : this.hand;
+    if (!upper || !lower || !hand || hand === lower || w < 0.002) return;
+    this.model.updateMatrixWorld(true);
+    const q = this.model.quaternion;
+    const S = upper.getWorldPosition(new THREE.Vector3());
+    const E = lower.getWorldPosition(new THREE.Vector3());
+    const H = hand.getWorldPosition(new THREE.Vector3());
+    const len = S.distanceTo(E) + E.distanceTo(H);
+    if (straight && w < 1) {
+      target = H.clone().lerp(target, w);
+      w = 1;
+    }
+    // Dirección hombro→mano en el marco del modelo (+X izquierda, +Y arriba, +Z pecho).
+    const qi = q.clone().invert();
+    const u = target.clone().sub(S);
+    const dist = THREE.MathUtils.clamp(u.length(), len * ARM_LIMITS.cerrado, len * ARM_LIMITS.estirado);
+    u.normalize().applyQuaternion(qi);
+    // Los recortes conservan la longitud: lo que se quita de un eje pasa a los otros, así la
+    // dirección cambia de forma continua (sin saltos de un fotograma a otro).
+    for (let i = 0; i < 3; i++) {
+      // Hacia atrás solo un poco (algo más con el brazo en alto).
+      const back = -ARM_LIMITS.atras - ARM_LIMITS.atrasArriba * Math.max(u.y, 0);
+      if (u.z < back) {
+        const r = Math.hypot(u.x, u.y), m = Math.sqrt(1 - back * back);
+        if (r > 1e-6) { u.x *= m / r; u.y *= m / r; } else u.y = m;
+        u.z = back;
+      }
+      // Cruzar al otro lado solo por delante del pecho: el sobrante lleva la mano al frente.
+      const cross = ARM_LIMITS.cruce + ARM_LIMITS.cruceDelante * Math.max(u.z, 0);
+      if (-u.x * side > cross) {
+        u.x = -cross * side;
+        const rest = 1 - u.x * u.x, lim = Math.sqrt(rest);
+        u.y = THREE.MathUtils.clamp(u.y, -lim, lim);
+        u.z = Math.sqrt(Math.max(rest - u.y * u.y, 0));
+      }
+    }
+    u.normalize();
+    const goal = u.applyQuaternion(q).multiplyScalar(dist).add(S);
+    // El codo apunta hacia fuera, abajo y atrás.
+    const pole = new THREE.Vector3(side * 0.7, -0.5, -0.4).applyQuaternion(q);
+    const qu = upper.quaternion.clone(), ql = lower.quaternion.clone();
+    this.reach(upper, lower, H, goal, pole);
+    if (w < 1) {
+      upper.quaternion.copy(qu.slerp(upper.quaternion, w));
+      lower.quaternion.copy(ql.slerp(lower.quaternion, w));
+      upper.updateMatrixWorld(true);
+    }
+  }
+
   applyRecline(w) {
     if (!this.bodyBone || !this.legs.length) return;
     this.savePose();
@@ -1270,11 +1339,10 @@ export class Player {
       left = chest.clone().addScaledVector(F, 0.2).addScaledVector(U, -0.34).addScaledVector(X, 0.1);
     }
     const nowR = this.hand.getWorldPosition(new THREE.Vector3());
-    this.reach(this.upperArm, this.lowerArm, nowR, right.lerp(nowR, 1 - w), X.clone().multiplyScalar(-0.8).addScaledVector(U, -0.6));
+    this.reachArm(-1, right, w);
     // Con la pistola la izquierda va a la mano derecha ya colocada.
     if (withGun) left = this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(X, A.manos).addScaledVector(U, -0.03);
-    const nowL = this.handL.getWorldPosition(new THREE.Vector3());
-    this.reach(this.upperArmL, this.lowerArmL, nowL, left.lerp(nowL, 1 - w), X.clone().multiplyScalar(0.8).addScaledVector(U, -0.6));
+    this.reachArm(1, left, w);
   }
 
   /**
@@ -1311,7 +1379,7 @@ export class Player {
     if (c.high) {
       // Muro alto: se inclina y gira hacia el borde por el que saca el arma.
       _axis.set(1, 0, 0).applyQuaternion(this.model.quaternion);
-      const side = Math.sign((c.nz * _axis.x - c.nx * _axis.z) * (c.blindSide || 1)) || 1; // + borde a la izquierda
+      const side = Math.sign((c.nz * _axis.x - c.nx * _axis.z) * (c.blindSide || c.blindArm || 1)) || 1; // + borde a la izquierda
       const T = TORSO_BLIND.alta;
       return { giro: -T.giro * side, lado: T.lado * side, frente: T.frente, cuello: T.cuello * side, cabeza: T.cabeza };
     }
@@ -1336,20 +1404,15 @@ export class Player {
     if (c.veryLow) dir.addScaledVector(toward, 0.45); // acostado: brazo en alto sobre el pecho
     else if (c.high) {
       // Muro alto: brazo estirado hacia el borde por el que saca el arma.
-      const side = c.blindSide || Math.sign(toward.x * c.nz - toward.z * c.nx) || 1;
+      const side = c.blindSide || c.blindArm || Math.sign(toward.x * c.nz - toward.z * c.nx) || 1;
       dir.set(c.nz * side, 0.2, -c.nx * side).addScaledVector(back, 0.2);
     } else dir.addScaledVector(back, 0.5).addScaledVector(toward, 0.15); // por encima y hacia atrás
     const target = shoulder.clone().addScaledVector(dir.normalize(), BLIND_REACH);
-    const now = this.hand.getWorldPosition(_h).clone();
-    target.lerp(now, 1 - w);
-    const out = (s) => new THREE.Vector3(s, 0, 0).applyQuaternion(this.model.quaternion); // +X = izquierda
-    this.reach(this.upperArm, this.lowerArm, now, target, out(-1));
+    const straight = this.coverReady > 0.5; // parte de la postura de espera, ya calculada
+    this.reachArm(-1, target, w, straight);
     // La mano izquierda va junto a la derecha.
-    if (this.upperArmL && this.lowerArmL && this.handL && this.handL !== this.lowerArmL) {
-      const right = this.hand.getWorldPosition(_h).clone();
-      const nowL = this.handL.getWorldPosition(_knee2).clone();
-      this.reach(this.upperArmL, this.lowerArmL, nowL, right.addScaledVector(out(1), 0.06).lerp(nowL, 1 - w), out(1));
-    }
+    const left = new THREE.Vector3(1, 0, 0).applyQuaternion(this.model.quaternion); // +X = izquierda
+    this.reachArm(1, this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(left, 0.06), w, straight);
   }
 
   /**
@@ -1559,37 +1622,23 @@ export class Player {
     }
     const aimW = this.aimWeight * (1 - blind);
 
-    // Gira el brazo derecho para que la línea hombro→mano apunte al objetivo.
-    this.upperArm.getWorldPosition(_a);
-    this.hand.getWorldPosition(_h);
-    const cur = _h.sub(_a).normalize();
-    const want = _v.copy(this.aimPoint).sub(_a).normalize();
+    // Brazo derecho casi estirado hacia el objetivo (con límites de articulación).
     // Retroceso: el brazo y el arma suben un instante con cada disparo.
     this.recoil = Math.max(0, this.recoil - dt * 9);
     const kick = RECOIL_KICK * this.recoil * this.recoil;
-    want.y += kick;
-    want.normalize();
-    _q.setFromUnitVectors(cur, want);
-    this.upperArm.getWorldQuaternion(_q2);
-    _q.multiply(_q2); // orientación mundial deseada
-    this.upperArm.parent.getWorldQuaternion(_pq);
-    _q.premultiply(_pq.invert());
-    this.upperArm.quaternion.slerp(_q, aimW);
-    this.upperArm.updateMatrixWorld(true);
+    if (aimW > 0.002) {
+      this.savePose();
+      const S = this.upperArm.getWorldPosition(new THREE.Vector3());
+      const want = this.aimPoint.clone().sub(S).normalize();
+      want.y += kick;
+      this.reachArm(-1, want.normalize().multiplyScalar(AIM_REACH).add(S), aimW, this.coverReady > 0.5);
+    }
 
     // A cubierto sujeta el arma con las dos manos: el brazo izquierdo va hacia la pistola.
     const grip = this.coverGrip * aimW;
-    if (grip > 0.02 && this.upperArmL && this.handL) {
-      this.hand.getWorldPosition(_knee);
-      this.upperArmL.getWorldPosition(_a);
-      this.handL.getWorldPosition(_h);
-      _q.setFromUnitVectors(_h.sub(_a).normalize(), _v.copy(_knee).sub(_a).normalize());
-      this.upperArmL.getWorldQuaternion(_q2);
-      _q.multiply(_q2);
-      this.upperArmL.parent.getWorldQuaternion(_pq);
-      _q.premultiply(_pq.invert());
-      this.upperArmL.quaternion.slerp(_q, grip);
-      this.upperArmL.updateMatrixWorld(true);
+    if (grip > 0.02) {
+      const left = new THREE.Vector3(1, 0, 0).applyQuaternion(this.model.quaternion);
+      this.reachArm(1, this.hand.getWorldPosition(new THREE.Vector3()).addScaledVector(left, 0.05), grip, this.coverReady > 0.5);
     }
 
     this.palm(this.gun.position);
