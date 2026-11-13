@@ -42,6 +42,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   los modelos 3D. Del GLB se usan los huesos y las animaciones; las mallas se eliminan al
   cargar (`Player.load`) y no hay forma de mostrarlas. No volver a ofrecer ni mencionar «el
   modelo con piel». La cabeza lleva ojos y nariz para ver hacia dónde mira.
+  Las animaciones de caminar y correr tuercen el pie izquierdo ~60° hacia dentro:
+  `SkeletonView.straightenFeet` (márgenes en `FOOT_YAW`) endereza los pies de jugador y zombis.
 - **Equilibrio del juego** — `node tools/gameplay.cjs <bot|stand|punch> [segundos]`
   Juega una partida larga y resume cada oleada. Comparar los tres estilos: si quedarse quieto
   disparando (`stand`) llega lejos, el juego es demasiado fácil. Juega con la pistola y munición
