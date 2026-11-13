@@ -12,6 +12,8 @@ import { Catalog } from './catalog.js';
 import { setupTouch } from './touch.js';
 import { setupPWA, setupUpdateButton, cacheLoadedFiles } from './pwa.js';
 import { Menu } from './menu.js';
+import { Pickups } from './pickups.js';
+import { WEAPON_NAMES } from './player.js';
 
 setupPWA();
 
@@ -61,10 +63,20 @@ async function start() {
   combat.player = player;
   const horde = new Horde(scene, physics, player.assets);
   horde.onWave = (n) => showToast(`Oleada ${n}`);
-  let shotsHeard = 0, hudKey = '', sprintShown = false;
+  let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '';
+  const weaponBtn = document.getElementById('weapon-btn');
+  // Tocar (o pulsar) el arma de la esquina cambia a la siguiente.
+  weaponBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    input.pressed.add('NextWeapon');
+  }, { passive: false });
+  weaponBtn.addEventListener('click', () => { input.pressed.add('NextWeapon'); weaponBtn.blur(); });
   const input = new Input(renderer.domElement);
   const cam = new ThirdPersonCamera(camera);
   const autopilot = new Autopilot({ player, horde, cam, input, physics });
+  const pickups = new Pickups(scene, player, (text) => showToast(text));
+  horde.onKill = (position) => pickups.zombieDied(position);
   let catalog = null; // catálogo de mecánicas (se crea al final, cuando existe tick)
 
   // Jugador y zombis cambian juntos entre esqueleto y modelo.
@@ -78,11 +90,15 @@ async function start() {
   };
   const toggleAuto = (quiet) => {
     autopilot.toggle();
+    // El piloto juega con la pistola y munición infinita (para comparar partidas entre sí).
+    player.infiniteAmmo = autopilot.active;
+    if (autopilot.active) player.pickUp('pistola', 0);
     if (!quiet) showToast(autopilot.active ? 'Piloto automático' : 'Control manual'); // desde el menú ya lo dice el interruptor
   };
   const resetWorld = () => {
     physics.reset();
     player.respawn();
+    pickups.reset();
     combat.targetHits = combat.punchHits = 0;
     if (horde.active) horde.stop();
   };
@@ -128,6 +144,7 @@ async function start() {
   });
 
   setupTouch(input);
+  const fireBtn = document.getElementById('t-fire');
   setupUpdateButton(document.getElementById('m-update'), showToast);
   document.getElementById('m-version').textContent = `${__BUILD__.id} · ${__BUILD__.date.slice(0, 10)}`;
 
@@ -145,9 +162,11 @@ async function start() {
       showToast(horde.active ? `Te comieron en la oleada ${horde.wave}` : 'Te comieron');
       horde.stop();
       player.respawn();
+      pickups.reset(); // se pierden las armas: vuelven a su sitio
     }
 
     player.update(dt, input, cam, combat);
+    pickups.update(dt);
     horde.update(dt, player);
     physics.step(dt);
     physics.sync(dt);
@@ -199,11 +218,22 @@ async function start() {
       camera.fov = fov;
       camera.updateProjectionMatrix();
     }
+    // Arma en la mano y balas (arriba a la derecha); avisa si se aprieta el gatillo sin balas.
+    const wKey = `${player.weapon}|${player.ammo}|${player.infiniteAmmo}|${player.dryFire > 0}`;
+    if (wKey !== weaponKey) {
+      weaponKey = wKey;
+      const gun = player.weapon === 'pistola';
+      weaponBtn.textContent = gun ? (player.dryFire > 0 ? 'Sin balas' : `Pistola · ${player.infiniteAmmo ? '∞' : player.ammo}`) : WEAPON_NAMES[player.weapon];
+      weaponBtn.classList.toggle('empty', gun && (player.dryFire > 0 || !player.loaded));
+      document.body.classList.toggle('no-gun', !gun);
+      if (fireBtn) fireBtn.textContent = gun ? 'Disparo' : player.weapon === 'bate' ? 'Batazo' : 'Puño';
+      if (!gun) input.aimToggle = false;
+    }
     healthFill.style.transform = `scaleX(${player.healthFraction})`;
     hurt.style.opacity = Math.max(0, 0.75 - player.hurtT * 0.9) * (player.healthFraction < 1 ? 1 : 0);
   }
   // Para depuración desde la consola (y para el catálogo y las herramientas de tools/).
-  const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick };
+  const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick, pickups };
   catalog = new Catalog(game, { toggleSkeleton });
   game.catalog = catalog;
   // El catálogo se abre desde el menú, con G o con #catalogo en la dirección.

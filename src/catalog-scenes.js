@@ -6,6 +6,7 @@ import { TUNING as T, PLAYER_CLIPS } from './player.js';
 import { ZOMBIE_TUNING as Z, ZOMBIE_CLIPS } from './horde.js';
 import { COMBAT_TUNING as C } from './combat.js';
 import { AUTOPILOT_TUNING as A } from './autopilot.js';
+import { PICKUP_TUNING as K2 } from './pickups.js';
 import { CAMERA_TUNING as K } from './camera.js';
 
 const n = (x, digits = 2) => String(+x.toFixed(digits)).replace('.', ',');
@@ -24,6 +25,9 @@ export function place(g, x, z, yaw = 0) {
   if (g.autopilot.active) g.autopilot.toggle();
   g.player.preview(null);
   g.horde.stop(); g.physics.reset(); g.player.respawn();
+  // Las escenas empiezan con la pistola cargada y sin objetos por el suelo.
+  g.pickups?.clear();
+  g.player.pickUp('pistola', 99);
   g.player.body.setTranslation({ x, y: 0.9, z }, true);
   g.player.body.setNextKinematicTranslation({ x, y: 0.9, z });
   g.input.keys.clear(); g.input.buttons.clear(); g.input.pressed.clear();
@@ -71,6 +75,18 @@ export const SCENES = [
     desc: `Dura ${n(T.PUNCH_TIME)} s y conecta al ${n(T.PUNCH_HIT * 100)} % de la animación. Empuja lo que haya delante del personaje y quita 1,5 de vida a un zombi (tienen ${n(Z.HEALTH)}). Mientras golpea se mueve a un cuarto de velocidad.`,
     place: [20, 30, 0], seconds: 1.2, view: Math.PI * 0.7,
     steps: [[0.1, press('KeyF'), 'Arranca el golpe'], [0.1 + T.PUNCH_TIME * T.PUNCH_HIT, null, 'Conecta'], [0.1 + T.PUNCH_TIME, null, 'Recupera']] },
+  { id: 'bate', group: 'combate', title: 'Bate de béisbol',
+    how: 'Con el bate en la mano (2 · cruceta): clic izquierdo o F · mando RT o X · botón «Batazo»',
+    desc: `Un batazo dura ${n(T.SWING_TIME)} s, usa el clip Sword_Slash y alcanza ${n(T.MELEE.bate.reach + T.MELEE.bate.radius)} m por delante. Quita ${n(T.MELEE.bate.damage)} de vida (un zombi muere de un golpe) y empuja ${n(T.MELEE.bate.push)} veces más que un puñetazo.`,
+    place: [20, 30, 0], seconds: 1.6, view: Math.PI * 0.6,
+    before: (g) => g.player.pickUp('bate'),
+    steps: [[0.2, press('KeyF'), 'Echa el bate atrás'], [0.2 + T.SWING_TIME * 0.45, null, 'Conecta'], [0.2 + T.SWING_TIME, null, 'Recupera']] },
+  { id: 'recoger', group: 'combate', title: 'Recoger armas y balas',
+    how: 'Pasar por encima del objeto',
+    desc: `Se empieza sin armas. Basta acercarse a menos de ${n(K2.REACH)} m: la pistola trae ${K2.GUN_AMMO} balas y cada caja ${K2.BOX_AMMO} (máximo ${T.MAX_AMMO}). Las cajas del escenario reaparecen a los ${K2.AMMO_RESPAWN} s; un zombi suelta ${K2.DROP_AMMO} balas el ${n(K2.DROP_CHANCE * 100, 0)} % de las veces. Al morir, las armas vuelven a su sitio.`,
+    place: [20, 30, 0], seconds: 2.4, view: Math.PI * 0.55, dist: 4.2,
+    before: (g) => { g.player.resetInventory(); g.pickups.drop('bate', 20, 28.7); g.pickups.drop('pistola', 20, 27.2); g.pickups.drop('balas', 20, 25.8); },
+    steps: [[0.2, key('KeyW'), 'Coge el bate'], [0.75, null, 'La pistola'], [1.25, null, 'Las balas'], [1.8, key('KeyW', false)]] },
   // Disparo de pie: apuntar y ráfaga parado, y después caminando sin dejar de disparar.
   { id: 'disparo', group: 'combate', title: 'Apuntar y disparar',
     how: 'Clic izquierdo (mantener para ráfaga) · mando RT',

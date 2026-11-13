@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
 import { SkeletonView, SKELETON_DEFAULT } from './skeleton.js';
+import { makeGun, makeBat } from './pickups.js';
 import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
 // se confunde con uno antiguo guardado en la caché del navegador.
@@ -125,6 +126,17 @@ const RADIUS = 0.35;
 const HALF = 0.5; // semialtura del tramo recto de la cápsula
 const FOOT = HALF + RADIUS; // del centro del cuerpo a los pies
 const PUNCH_TIME = 0.55; // duración del golpe (s)
+// Armas. Se empieza sin nada: la pistola, el bate y las balas se recogen del suelo (pickups.js).
+const SWING_TIME = 0.7; // duración del batazo (s)
+const SWING_HIT = 0.45; // fracción del batazo en la que conecta
+const MELEE = {
+  // [alcance del centro del golpe (m), radio (m), daño a un zombi, empuje]
+  puño: { reach: 0.75, radius: 0.6, damage: 1.5, push: 1 },
+  bate: { reach: 1.0, radius: 0.85, damage: 3, push: 1.8 },
+};
+export const MAX_AMMO = 99;
+export const WEAPON_NAMES = { manos: 'Sin arma', bate: 'Bate', pistola: 'Pistola' };
+const WEAPON_ORDER = ['manos', 'bate', 'pistola'];
 const PUNCH_HIT = 0.4; // fracción de la animación en la que conecta
 const FIRE_INTERVAL = 0.14;
 const JUMP_POSE_TIME = 0.2; // instante del clip de carrera usado como pose de salto
@@ -153,6 +165,8 @@ const _knee = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _pole = new THREE.Vector3();
 const _right = new THREE.Vector3();
+// Orientación del bate respecto a la muñeca (ajustada mirando las capturas).
+const BAT_GRIP = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.PI / 2, 0)); // el bate sobre el -X de la muñeca
 const _knee2 = new THREE.Vector3();
 const _foot = new THREE.Vector3();
 const _axis = new THREE.Vector3();
@@ -161,14 +175,14 @@ const _fq = new THREE.Quaternion();
 
 // Estado del juego -> clip del modelo. El catálogo lo lee para saber qué clips se usan.
 export const PLAYER_CLIPS = {
-  Idle: 'Idle', Walking: 'Walk', Running: 'Run', Punch: 'Punch_Right',
+  Idle: 'Idle', Walking: 'Walk', Running: 'Run', Punch: 'Punch_Right', Swing: 'Sword_Slash',
   Jump: 'Run', // el modelo no trae salto: zancada de carrera congelada como pose en el aire
   CoverLeft: 'Run_Left', CoverRight: 'Run_Right', // pasos laterales pegado a una cobertura
 };
 // Valores que el catálogo muestra en sus fichas (así nunca quedan desfasados).
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
-  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
+  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN,
   PRONE_SPEED, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
 };
@@ -232,6 +246,14 @@ export class Player {
     this.aimWeight = 0;
     this.aimPoint = new THREE.Vector3();
     this.shots = 0;
+    // Inventario: lo que lleva y el arma en la mano.
+    this.has = { bate: false, pistola: false };
+    this.ammo = 0;
+    this.weapon = 'manos';
+    this.infiniteAmmo = false; // piloto automático y pruebas
+    this.meleeKind = 'puño';
+    this.fireWas = false;
+    this.dryFire = 0; // >0 un instante tras apretar el gatillo sin balas (la interfaz lo avisa)
 
     // --- Modelo ---
     const model = gltf.scene;
@@ -297,21 +319,24 @@ export class Player {
     this.actions.Punch.setLoop(THREE.LoopOnce);
     this.actions.Punch.clampWhenFinished = true;
     this.actions.Punch.timeScale = this.actions.Punch.getClip().duration / PUNCH_TIME;
+    this.actions.Swing.setLoop(THREE.LoopOnce);
+    this.actions.Swing.clampWhenFinished = true;
+    this.actions.Swing.timeScale = this.actions.Swing.getClip().duration / SWING_TIME;
     this.current = this.actions.Idle;
     this.current.play();
 
     // --- Arma (se coloca cada frame en la mano) ---
     const gunMat = new THREE.MeshStandardMaterial({ color: 0x22262b, metalness: 0.7, roughness: 0.35 });
-    this.gun = new THREE.Group();
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.38), gunMat);
-    barrel.position.z = 0.16;
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.08), gunMat);
-    grip.position.set(0, -0.11, 0.02);
-    this.gun.add(barrel, grip);
+    this.gun = makeGun(gunMat);
     this.flash = new THREE.PointLight(0xffc066, 0, 6);
     this.flash.position.z = 0.4;
     this.gun.add(this.flash);
     this.gun.visible = false;
+    // Bate de béisbol (pickups.js): va en la mano cuando es el arma elegida.
+    this.bat = makeBat();
+    this.bat.visible = false;
+    scene.add(this.bat);
+    this.batTip = new THREE.Vector3();
     this.recoil = 0; // 1 justo al disparar; decae enseguida
 
     // Vista de esqueleto (src/skeleton.js); por ahora es la vista por defecto.
@@ -393,6 +418,7 @@ export class Player {
   respawn() {
     this.body.setTranslation({ x: 0, y: FOOT + 0.05, z: 0 }, true);
     this.body.setNextKinematicTranslation({ x: 0, y: FOOT + 0.05, z: 0 });
+    this.position.set(0, 0, 0); // ya, para no recoger lo que haya donde murió
     this.velocity.set(0, 0, 0);
     this.jumpT = -1;
     this.jumpBuffer = this.landT = this.crouch = 0;
@@ -400,6 +426,52 @@ export class Player {
     this.sprinting = false;
     this.health = MAX_HEALTH;
     this.dead = false;
+    this.punchT = -1;
+    this.resetInventory();
+  }
+
+  /** Vuelve a empezar sin armas ni balas. */
+  resetInventory() {
+    this.has.bate = this.has.pistola = false;
+    this.ammo = 0;
+    this.weapon = 'manos';
+    // Con munición infinita (piloto automático, pruebas) se empieza con la pistola.
+    if (this.infiniteAmmo) this.has.pistola = true, this.weapon = 'pistola';
+  }
+
+  /** Recoge un objeto: 'pistola', 'bate' o 'balas' (con `amount` balas). Devuelve el aviso. */
+  pickUp(type, amount = 0) {
+    this.dryFire = 0;
+    if (type === 'balas') {
+      const before = this.ammo;
+      this.ammo = Math.min(MAX_AMMO, this.ammo + amount);
+      if (this.weapon === 'manos' && this.has.pistola) this.weapon = 'pistola';
+      return `+${this.ammo - before} balas`;
+    }
+    const first = !this.has[type];
+    this.has[type] = true;
+    if (type === 'pistola') this.ammo = Math.min(MAX_AMMO, this.ammo + amount);
+    // Un arma nueva va a la mano; la pistola, solo si tiene balas.
+    if (first && (type === 'bate' || this.loaded)) this.weapon = type;
+    return type === 'pistola' ? `Pistola · +${amount} balas` : 'Bate de béisbol';
+  }
+
+  /** Cambia al arma `name`, o a la siguiente que tenga si es 1 / -1. */
+  equip(name) {
+    if (this.punchT >= 0) return;
+    if (typeof name === 'number') {
+      const owned = WEAPON_ORDER.filter((w) => w === 'manos' || this.has[w]);
+      const i = owned.indexOf(this.weapon);
+      name = owned[(i + name + owned.length) % owned.length];
+    }
+    if (name !== 'manos' && !this.has[name]) return;
+    this.weapon = name;
+    if (name !== 'pistola') this.aimT = 0;
+  }
+
+  /** ¿La pistola puede disparar? */
+  get loaded() {
+    return this.infiniteAmmo || this.ammo > 0;
   }
 
   /** Altura de la cabeza sobre los pies: baja al agacharse o tumbarse a cubierto. */
@@ -594,8 +666,19 @@ export class Player {
     let speed = moving ? (this.sprinting ? SPRINT_SPEED : running ? RUN_SPEED : WALK_SPEED) : 0;
     if (punching) speed *= 0.25;
     this.jumpBuffer = input.justPressed('Space') ? JUMP_BUFFER : this.jumpBuffer - dt;
-    const wantsPunch = input.justPressed('KeyF');
-    const aimHeld = !!input.aiming?.() && !punching && !this.sprinting;
+    // Armas: 1, 2, 3 eligen; la cruceta del mando y el botón táctil las recorren.
+    if (input.justPressed('Digit1')) this.equip('manos');
+    if (input.justPressed('Digit2')) this.equip('bate');
+    if (input.justPressed('Digit3')) this.equip('pistola');
+    if (input.justPressed('NextWeapon')) this.equip(1);
+    if (input.justPressed('PrevWeapon')) this.equip(-1);
+    const gun = this.weapon === 'pistola';
+    // El gatillo con el bate o sin arma es un golpe (uno por pulsación).
+    const fireDown = input.mouseDown(0);
+    const fireEdge = fireDown && !this.fireWas;
+    this.fireWas = fireDown;
+    const wantsPunch = input.justPressed('KeyF') || (fireEdge && !gun && !this.sprinting);
+    const aimHeld = gun && !!input.aiming?.() && !punching && !this.sprinting;
 
     // --- Cobertura ---
     // Se busca muro hacia donde se empuja, hacia donde mira la cámara o de frente.
@@ -610,7 +693,7 @@ export class Player {
     } else if (this.cover && (!this.grounded || this.jumpBuffer > 0 || wantsPunch)) {
       this.leaveCover(); // saltar, golpear o quedarse sin suelo saca de la cobertura
     }
-    const coverAim = this.aimT > 0 || aimHeld || (input.mouseDown(0) && !this.sprinting);
+    const coverAim = this.aimT > 0 || aimHeld || (gun && fireDown && !this.sprinting);
     if (this.cover) this.coverMove(dt, _v, moving, coverAim, cam);
 
     if (!this.cover) {
@@ -696,23 +779,29 @@ export class Player {
     else this.crouch = THREE.MathUtils.damp(this.crouch, crouchTarget, 18, dt);
 
     // --- Golpe ---
+    // Con el bate en la mano, F o el gatillo dan un batazo; si no, un puñetazo.
     if (!punching && !charging && this.grounded && wantsPunch) {
       this.punchT = 0;
       this.punchDone = false;
       this.aimT = 0;
+      this.meleeKind = this.weapon === 'bate' ? 'bate' : 'puño';
     }
     if (this.punchT >= 0) {
+      const bat = this.meleeKind === 'bate';
+      const time = bat ? SWING_TIME : PUNCH_TIME;
       this.punchT += dt;
-      if (!this.punchDone && this.punchT >= PUNCH_TIME * PUNCH_HIT) {
+      if (!this.punchDone && this.punchT >= time * (bat ? SWING_HIT : PUNCH_HIT)) {
         this.punchDone = true;
         this.hitPunch(combat);
       }
-      if (this.punchT >= PUNCH_TIME) this.punchT = -1;
+      if (this.punchT >= time) this.punchT = -1;
     }
 
     // --- Disparo ---
     this.fireCooldown -= dt;
-    this.wantsFire = input.mouseDown(0) && this.punchT < 0 && !this.sprinting;
+    this.dryFire = Math.max(0, this.dryFire - dt);
+    if (gun && fireEdge && !this.loaded) this.dryFire = 1; // gatillo sin balas
+    this.wantsFire = gun && fireDown && this.loaded && this.punchT < 0 && !this.sprinting;
     if (this.wantsFire) this.aimT = cover ? AIM_HOLD_COVER : AIM_HOLD;
     this.aimT -= dt;
     const aiming = this.aimT > 0 || (aimHeld && this.punchT < 0);
@@ -801,7 +890,7 @@ export class Player {
     if (this.previewAction) return this.finishAnimation(dt);
     const s = this.speed;
     let next;
-    if (punching) next = 'Punch';
+    if (punching) next = this.meleeKind === 'bate' ? 'Swing' : 'Punch';
     else if (this.airTime > 0.18) next = 'Jump';
     else if (this.cover?.attached) {
       // Paso lateral según hacia qué lado del personaje se desplaza.
@@ -848,7 +937,7 @@ export class Player {
         action.setEffectiveWeight(1);
         if (next === 'Jump') action.time = JUMP_POSE_TIME;
         else if (phase) action.time = phase * action.getClip().duration;
-        const fade = next === 'Punch' ? 0.08 : gait(next) && gait(this.state) ? 0.25 : 0.18;
+        const fade = next === 'Punch' || next === 'Swing' ? 0.08 : gait(next) && gait(this.state) ? 0.25 : 0.18;
         action.crossFadeFrom(this.current, fade, false).play();
       }
       this.current = action;
@@ -1127,14 +1216,15 @@ export class Player {
     }
   }
 
-  // Empuja todo lo que esté delante del personaje.
+  // Golpe (puño o bate): empuja todo lo que esté delante del personaje y hiere a los zombis.
   hitPunch(combat) {
+    const M = MELEE[this.meleeKind];
     const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    const center = { x: this.position.x + fx * 0.75, y: this.position.y + 1.05, z: this.position.z + fz * 0.75 };
+    const center = { x: this.position.x + fx * M.reach, y: this.position.y + 1.05, z: this.position.z + fz * M.reach };
     // Primero se recogen los colliders; los impulsos se aplican fuera de la consulta.
     const found = [];
     this.physics.world.intersectionsWithShape(
-      center, { x: 0, y: 0, z: 0, w: 1 }, new RAPIER.Ball(0.6),
+      center, { x: 0, y: 0, z: 0, w: 1 }, new RAPIER.Ball(M.radius),
       (collider) => { found.push(collider); return true; },
       undefined, GROUPS.query,
     );
@@ -1146,14 +1236,14 @@ export class Player {
       const zombie = this.physics.meta.get(collider.handle)?.zombie;
       if (zombie) {
         seen.add(body.handle);
-        zombie.damage(1.5, this);
+        zombie.damage(M.damage, this);
         combat.punchHits++;
         hits++;
         continue;
       }
       if (!body.isDynamic()) continue;
       seen.add(body.handle);
-      const strength = Math.min(body.mass(), 25) * 4.5 + 5;
+      const strength = (Math.min(body.mass(), 25) * 4.5 + 5) * M.push;
       body.applyImpulse({ x: fx * strength, y: strength * 0.3, z: fz * strength }, true);
       const meta = this.physics.meta.get(collider.handle);
       this.physics.flash(meta);
@@ -1161,6 +1251,18 @@ export class Player {
       hits++;
     }
     if (hits) combat.spark(_v.set(center.x, center.y, center.z), 0.5, 0xffffff);
+  }
+
+  /** El bate va en la mano derecha si es el arma elegida, inclinado hacia atrás sobre el hombro. */
+  placeBat() {
+    this.bat.visible = this.weapon === 'bate';
+    if (!this.bat.visible || !this.hand) return;
+    this.model.updateMatrixWorld(true);
+    this.hand.getWorldPosition(this.bat.position);
+    this.hand.getWorldQuaternion(this.bat.quaternion);
+    this.bat.quaternion.multiply(BAT_GRIP);
+    this.bat.updateMatrixWorld(true);
+    this.batTip.set(0, 0, 0.72).applyMatrix4(this.bat.matrixWorld);
   }
 
   /** Después del paso de física: coloca el modelo, apunta el brazo y dispara. */
@@ -1202,7 +1304,9 @@ export class Player {
     const kneelW = this.kneel * THREE.MathUtils.clamp(cc / Math.max(POSES.rodillas.agachado, 0.05), 0, 1) * (1 - prone);
     if (kneelW > 0.01) this.applyAdjust('rodillas', kneelW);
 
-    this.gun.visible = armed || prone > 0.5;
+    this.placeBat();
+    const gun = this.weapon === 'pistola';
+    this.gun.visible = gun && (armed || prone > 0.5);
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
     if (!this.gun.visible) return;
     if (!armed) {
@@ -1261,6 +1365,7 @@ export class Player {
     if (this.wantsFire && this.canFire && this.fireCooldown <= 0 && this.aimWeight > 0.6) {
       this.fireCooldown = FIRE_INTERVAL;
       this.shots++;
+      if (!this.infiniteAmmo) this.ammo--;
       this.flash.intensity = 30;
       this.recoil = 1;
       combat.fire(this.muzzle, this.aimPoint);

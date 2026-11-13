@@ -19,8 +19,8 @@ const MODE=process.argv[2]||'bot', SECS=+process.argv[3]||360;
   const r=await p.evaluate(({MODE,SECS})=>{const g=window.__game; g.renderer.setAnimationLoop(null);g.renderer.render=()=>{};g.input.touchMode=true;g.input.started=true;
     const dt=1/60,P=g.player,H=g.horde,A=g.autopilot;
     const waves=[];let cur=null,lastHealth=100,lastShots=0,lastKills=0,deaths=[],t=0,minHealth=100,firstContact=null;
-    if(MODE==='bot'){g.input.pressed.add('KeyP');}
-    else H.start();
+    // Munición infinita y pistola desde el principio, como en los análisis anteriores.
+    if(MODE==='bot'){g.input.pressed.add('KeyP');} else {P.infiniteAmmo=true;P.pickUp('pistola',0);H.start();}
     let wasActive=false;
     for(let f=0;f<SECS*60;f++){
       if(MODE!=='bot'){ // jugador simple

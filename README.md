@@ -65,7 +65,8 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 |---|---|
 | Moverse / correr | Stick izquierdo (a fondo o pulsado = correr) |
 | Cámara | Stick derecho |
-| Disparar | RT |
+| Disparar (con el bate o sin arma, golpear) | RT |
+| Cambiar de arma | Cruceta ← → |
 | Apuntar | LT |
 | Saltar | A |
 | Golpe | X |
@@ -84,7 +85,8 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Correr | `Shift` |
 | Correr rápido | `Q` (un toque; dura mientras sigas avanzando; no permite disparar) |
 | Saltar | `Espacio` (flexiona las piernas para tomar impulso y despega) |
-| Disparar | Clic izquierdo (mantener para ráfaga) |
+| Disparar (con el bate o sin arma, golpear) | Clic izquierdo (mantener para ráfaga) |
+| Elegir arma | `1` sin arma · `2` bate · `3` pistola |
 | Apuntar | Clic derecho mantenido (la cámara se cierra sobre el hombro) |
 | Golpear | `F` |
 | Cubrirse / salir de la cobertura | `C` (cerca de un muro u objeto) |
@@ -95,6 +97,23 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Piloto automático | `P` |
 | Alternar esqueletos y modelos | `K` |
 | Catálogo de mecánicas y animaciones | `G` |
+
+## Armas y balas
+
+Se empieza sin armas. Para recoger algo basta pasar por encima: los objetos flotan y giran sobre
+un aro de color delante del punto de inicio y por el escenario.
+
+- **Pistola** (aro amarillo): trae 12 balas. Cada disparo gasta una; sin balas no dispara y el
+  indicador de arriba a la derecha avisa en rojo.
+- **Bate de béisbol** (aro naranja): el batazo (clic izquierdo o `F`) alcanza más lejos que el
+  puño, mata a un zombi de un golpe y empuja con fuerza los objetos.
+- **Cajas de balas** (aro verde): 10 balas cada una, hasta un máximo de 99. Las del escenario
+  reaparecen a los 25 s; además, los zombis sueltan a veces una caja de 5 balas que desaparece a
+  los 30 s si no se recoge.
+
+El indicador de arriba a la derecha muestra el arma en la mano y las balas; tocarlo (o `1` `2` `3`,
+o la cruceta del mando) cambia de arma. Si mueres, pierdes las armas y vuelven a su sitio.
+El piloto automático juega con la pistola y munición infinita.
 
 ## Horda de zombis
 
@@ -197,6 +216,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/player.js` | Personaje: movimiento, animaciones, golpe y pose de apuntado |
 | `src/camera.js` | Cámara en tercera persona con colisión |
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
+| `src/pickups.js` | Armas y cajas de balas que se recogen, y sus modelos |
 | `src/input.js` | Teclado, ratón y mando |
 | `src/touch.js` | Controles táctiles |
 | `src/catalog.js`, `src/catalog-scenes.js` | Catálogo de mecánicas dentro del juego y sus escenas |

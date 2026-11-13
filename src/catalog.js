@@ -567,6 +567,8 @@ export class Catalog {
     if (this.editing) this.editPose(null);
     this.skipRender = true;
     place(this.g, 0, 0, 0); // deja el mundo como al empezar
+    this.game.player.resetInventory();
+    this.game.pickups.reset();
     this.skipRender = false;
     this.active = false;
     this.game.input.keys.clear();
