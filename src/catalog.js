@@ -32,7 +32,7 @@ const PLAYER_LAYERS = [
   ['Apuntado', (p) => p.aimWeight],
   ['Retroceso', (p) => p.recoil],
   ['Dos manos', (p) => p.coverGrip * p.aimWeight],
-  ['A ciegas', (p) => p.blindW],
+  ['A ciegas (con giro del tronco)', (p) => p.blindW],
   ['Inclinación', (p) => Math.abs(p.coverLean) / TUNING.PEEK_LEAN],
   ['Recostado', (p) => p.prone],
 ];
