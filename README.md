@@ -195,9 +195,10 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   cualquier bloque o muro.
   Al disparar se asoma: por encima de una cobertura baja, o inclinándose por el borde si hay
   uno cerca (siempre en las altas; en las bajas, cuando apuntas hacia ese lado).
-  Tras una cobertura muy baja (menos de unos 60 cm) se recuesta de lado, de espaldas al
-  objeto, con las rodillas recogidas y el arma al pecho; la cámara baja casi a ras del objeto.
-  Se arrastra a lo largo de ella y se incorpora de rodillas para apuntar o disparar.
+  Tras una cobertura muy baja (menos de unos 60 cm) se acuesta boca arriba, perpendicular al
+  bloque, con la cabeza recostada en él, una rodilla levantada y el arma sobre el pecho; la
+  cámara baja casi a ras del bloque. Se desplaza de lado y se incorpora de rodillas para
+  apuntar o disparar.
 - **Apuntar**: con el clic derecho levanta el arma sin disparar y la cámara pasa a un plano
   cerrado sobre el hombro, con menos campo de visión y la mira más lenta. Disparar también la
   cierra. A cubierto, al soltar vuelve a esconderse en 0,3 s.
