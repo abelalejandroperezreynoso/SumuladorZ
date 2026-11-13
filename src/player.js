@@ -219,9 +219,12 @@ const BAT_LEFT = new THREE.Vector3(0, 0, -0.075);
 const GUN_LEFT = new THREE.Vector3(0.045, -0.025, 0);
 const GRIP_SHIFT = 0.25; // cuánto puede acercarse el arma a la mano izquierda si esta no llega (m)
 const GRIP_SLACK = 0.004; // separación admitida entre la mano y su agarre (m)
-// Brazo derecho a cubierto con la pistola (m, desde el pecho): la mano delante, algo más
-// abajo y hacia su lado. La izquierda queda libre: sin apuntar el arma va en una mano.
-const COVER_ARMS = { frente: 0.26, bajo: 0.12, lado: 0.1 };
+// Brazo derecho a cubierto con la pistola (m, desde el pecho): el codo recogido junto al
+// costado y la mano delante del hombro derecho, con el antebrazo hacia arriba, en la línea
+// del cañón. La izquierda queda libre: sin apuntar el arma va en una mano.
+const COVER_ARMS = { frente: 0.2, bajo: 0.05, lado: 0.17 };
+// Sin apuntar, el cañón sigue al antebrazo: la muñeca no se dobla más de esto (rad).
+const WRIST_MAX = 0.45;
 // Giro del tronco (rad, ver applyTorso) al disparar: el cuerpo acompaña a los brazos.
 const TORSO_AIM = { giro: 0.3, lado: 0, frente: 0.08, cuello: -0.22, cabeza: 0 };
 const TORSO_BLIND = {
@@ -1887,7 +1890,11 @@ export class Player {
       // Sin apuntar, el arma va en una sola mano.
       this.model.updateMatrixWorld(true);
       this.palm(this.gun.position);
-      _v.set(prone > 0.5 ? 0.15 : 0.1, prone > 0.5 ? -0.8 : 0.75, prone > 0.5 ? 0.45 : 0.5).applyQuaternion(this.model.quaternion);
+      _v.set(prone > 0.5 ? 0.15 : 0.1, prone > 0.5 ? -0.8 : 0.75, prone > 0.5 ? 0.45 : 0.5).applyQuaternion(this.model.quaternion).normalize();
+      // El cañón se acerca a la línea del antebrazo hasta dejar la muñeca en un ángulo natural.
+      this.hand.getWorldPosition(_h).sub(this.lowerArm.getWorldPosition(_a)).normalize();
+      const bend = _h.angleTo(_v);
+      if (bend > WRIST_MAX) _v.lerp(_h, 1 - WRIST_MAX / bend).normalize();
       this.gun.lookAt(_v.add(this.gun.position));
       return;
     }

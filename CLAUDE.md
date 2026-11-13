@@ -77,7 +77,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   `GUN_LEFT`, en el marco del arma) y, si no llega, el arma se acerca hasta `GRIP_SHIFT`.
   `player.gripGap` es la separación que queda (m); debe dar unos milímetros. La pistola solo
   se sujeta con las dos manos al apuntar: a cubierto, acostado, a ciegas o disparando sin
-  apuntar va en la derecha (acostado se arrastra con la mano izquierda y los pies). El batazo va entero por código
+  apuntar va en la derecha (acostado se arrastra con la mano izquierda y los pies).
+  A cubierto la lleva con el codo recogido y la mano delante del hombro (`COVER_ARMS`); sin
+  apuntar el cañón sigue al antebrazo y la muñeca no se dobla más de `WRIST_MAX`. El batazo va entero por código
   (`SWING_KEYS`, `swingPhase`, `placeBat`): impulso atrás, golpe y acompañamiento, sin clip;
   durante el giro los límites de los brazos se miden en el marco del pecho (`armFrame`).
 - **Cobertura** — `coverMove` mide cada fotograma la distancia a cada final del muro
