@@ -23,8 +23,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   código. Las escenas se definen una sola vez en `src/catalog-scenes.js` (las usa también
   `tools/watch.cjs`): al añadir o cambiar una mecánica, añadir o ajustar ahí su escena y tomar
   las cifras del texto de `TUNING` para que el catálogo no quede desfasado.
-- **Editor de posturas** — en el catálogo, las fichas con `poses` (por ahora «Cobertura muy
-  baja») tienen botones «Editar postura». La escena se detiene en esa postura y aparecen
+- **Editor de posturas** — en el catálogo, las fichas con `poses` («Cobertura muy baja» y
+  «De pie, en reposo») tienen botones «Editar postura». La escena se detiene en esa postura y aparecen
   deslizadores que cambian `POSES` (`src/player.js`) en vivo. Además se puede tocar una parte
   del cuerpo para seleccionarla y arrastrar para girarla libremente; esos giros se guardan por
   hueso en `POSES.<clave>.ajustes`. «Copiar valores» da un texto como
