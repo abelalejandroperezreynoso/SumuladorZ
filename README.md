@@ -43,7 +43,10 @@ La pantalla de inicio y la pausa son el mismo menú: **Jugar** (o **Continuar**)
 la horda** (en pausa, iniciarla o detenerla) y **Reiniciar el mundo**, más cuatro apartados:
 
 - **Ajustes**: sensibilidad de la cámara, invertir el eje vertical, piloto automático y ver solo
-  el esqueleto. La sensibilidad y el eje se recuerdan en el navegador.
+  los esqueletos. La sensibilidad y el eje se recuerdan en el navegador.
+
+Por ahora el personaje y los zombis se ven solo como esqueletos (el jugador gris, los zombis
+verdes). El ajuste «Ver solo los esqueletos» (o `K`) devuelve los modelos.
 - **Controles**: teclado y ratón, mando y táctil.
 - **Catálogo**: mecánicas y animaciones en vivo (ver más abajo).
 - **Información**: de qué va el juego, la versión instalada y **Buscar actualización**, que
@@ -90,7 +93,7 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Reiniciar el mundo | `R` |
 | Iniciar / detener la horda | `H` |
 | Piloto automático | `P` |
-| Ver solo el esqueleto del personaje | `K` |
+| Alternar esqueletos y modelos | `K` |
 | Catálogo de mecánicas y animaciones | `G` |
 
 ## Horda de zombis
@@ -152,7 +155,7 @@ cámara, y velocidad de giro.
 npx vite --port 5199 &
 node tools/watch.cjs salida            # todas las escenas
 node tools/watch.cjs salida zombi giro # solo algunas
-SKELETON=1 node tools/watch.cjs salida # tiras con solo el esqueleto
+SKELETON=0 node tools/watch.cjs salida # tiras con los modelos (por defecto, esqueletos)
 ```
 
 `tools/gameplay.cjs` hace jugar una partida larga con un estilo (`bot`, `stand` o `punch`) y

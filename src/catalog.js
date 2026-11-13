@@ -667,6 +667,7 @@ export class Catalog {
     const dist = (it?.dist ?? 3.6) * this.zoom * this.fit;
     const p = sub.position;
     player.model.visible = true;
+    player.skeleton.visible = player.skeletonOnly;
     for (const m of this.marks) m.visible = false;
     if (this.editing) {
       // Editando, la cámara mira al cuerpo (o a la parte seleccionada) para poder acercarse.

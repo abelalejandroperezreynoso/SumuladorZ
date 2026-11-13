@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { RAPIER, GROUPS } from './physics.js';
+import { SkeletonView, SKELETON_DEFAULT } from './skeleton.js';
 import { probeWall, COVER_BASE_Y, COVER_LOW_Y, COVER_HIGH_Y } from './cover.js';
 // Importado como recurso: el nombre publicado lleva un hash, así un modelo nuevo nunca
 // se confunde con uno antiguo guardado en la caché del navegador.
@@ -313,46 +314,11 @@ export class Player {
     this.gun.visible = false;
     this.recoil = 0; // 1 justo al disparar; decae enseguida
 
-    // Vista de esqueleto al estilo de Blender: cada hueso es un octaedro alargado, ancho
-    // junto a su origen y afilado hacia la punta, con una esfera en cada articulación.
-    this.skeleton = new THREE.Group();
-    this.skeleton.visible = false;
-    scene.add(this.skeleton);
-    const boneMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.7, flatShading: true });
-    const jointMat = new THREE.MeshStandardMaterial({ color: 0xc4c4c4, roughness: 0.5 });
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0x111111 });
-    // Octaedro de longitud 1 sobre +Y: origen, anillo cuadrado al 10 % y punta.
-    const W = 0.1;
-    const boneGeo = new THREE.BufferGeometry();
-    boneGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-      0, 0, 0, W, W, W, W, W, -W, -W, W, -W, -W, W, W, 0, 1, 0,
-    ], 3));
-    boneGeo.setIndex([0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 1, 4, 5, 1, 2, 5, 2, 3, 5, 3, 4, 5, 4, 1]);
-    boneGeo.computeVertexNormals();
-    const edgeGeo = new THREE.EdgesGeometry(boneGeo);
-    const jointGeo = new THREE.SphereGeometry(0.03, 14, 10);
-    const SKIP = /Index|Middle|Ring|Pinky|Thumb|^PT|^Root$/; // dedos y huesos auxiliares
-    this.stick = { links: [], joints: [] };
-    const addLink = (from, to) => {
-      const mesh = new THREE.Mesh(boneGeo, boneMat);
-      mesh.add(new THREE.LineSegments(edgeGeo, edgeMat));
-      this.skeleton.add(mesh);
-      this.stick.links.push({ from, to, mesh });
-    };
-    model.traverse((o) => {
-      if (!o.isBone || SKIP.test(o.name)) return;
-      const joint = new THREE.Mesh(jointGeo, jointMat);
-      if (o.name === 'Head') joint.scale.setScalar(3.5); // la cabeza, más grande
-      this.skeleton.add(joint);
-      this.stick.joints.push({ bone: o, mesh: joint });
-      if (o.parent?.isBone && !SKIP.test(o.parent.name)) addLink(o.parent, o);
-    });
-    // Los pies no cuelgan de la pierna en este modelo: se unen a mano.
-    for (const side of ['L', 'R']) {
-      const shin = bone('LowerLeg' + side), foot = bone('Foot' + side);
-      if (shin && foot) addLink(shin, foot);
-    }
+    // Vista de esqueleto (src/skeleton.js); por ahora es la vista por defecto.
+    this.skel = new SkeletonView(model, scene, 'player');
+    this.skeleton = this.skel.group;
     this.skeletonOnly = false;
+    this.setSkeleton(SKELETON_DEFAULT);
     scene.add(this.gun);
     this.muzzle = new THREE.Vector3();
 
@@ -586,29 +552,21 @@ export class Player {
     this.facing += THREE.MathUtils.clamp(step, -max * dt, max * dt);
   }
 
+  /** Muestra solo el esqueleto (true) o el modelo normal (false). */
+  setSkeleton(only) {
+    this.skeletonOnly = only;
+    this.skel.set(only);
+    return only;
+  }
+
   /** Alterna entre el personaje normal y solo su esqueleto. */
   toggleSkeleton() {
-    this.skeletonOnly = !this.skeletonOnly;
-    this.skeleton.visible = this.skeletonOnly;
-    this.model.traverse((o) => { if (o.isMesh) o.visible = !this.skeletonOnly; });
-    return this.skeletonOnly;
+    return this.setSkeleton(!this.skeletonOnly);
   }
 
   /** Coloca los huesos y articulaciones dibujados sobre la pose final de este fotograma. */
   updateSkeleton() {
-    if (!this.skeletonOnly) return;
-    this.model.updateMatrixWorld(true);
-    for (const j of this.stick.joints) j.bone.getWorldPosition(j.mesh.position);
-    for (const l of this.stick.links) {
-      l.from.getWorldPosition(_a);
-      l.to.getWorldPosition(_h);
-      const len = _a.distanceTo(_h);
-      l.mesh.visible = len > 1e-4;
-      if (!l.mesh.visible) continue;
-      l.mesh.position.copy(_a);
-      l.mesh.quaternion.setFromUnitVectors(_v.set(0, 1, 0), _h.sub(_a).divideScalar(len));
-      l.mesh.scale.setScalar(len); // el grosor es proporcional a la longitud, como en Blender
-    }
+    this.skel.update();
   }
 
   get speed() {
