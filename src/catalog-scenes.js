@@ -9,6 +9,7 @@ import { AUTOPILOT_TUNING as A } from './autopilot.js';
 import { PICKUP_TUNING as K2 } from './pickups.js';
 import { CAMERA_TUNING as K } from './camera.js';
 import { GAIT_TUNING as G } from './gait.js';
+import { HOUSE_TUNING as HT } from './house.js';
 
 // Pone un zombi sin piernas delante del jugador, arrastrándose hacia él.
 function crawlerAhead(g) {
@@ -105,6 +106,16 @@ export const SCENES = [
     desc: `Entre ${n(T.VAULT.apoyo)} y ${n(T.VAULT.escala)} m: salta, se cuelga del borde con las dos manos, se sube a pulso, pone los pies arriba y se deja caer al otro lado. Tarda ${n(T.VAULT.tiempo)} s más ${n(T.VAULT.porMetro)} s por metro por encima de ${n(T.VAULT.apoyo)} m. Más alto que eso no se puede. Si arriba hay sitio (una plataforma), se queda de pie encima.`,
     place: [3.2, -1.5, 0], seconds: 3.6, view: Math.PI * 0.5, dist: 5.2, high: 1.9,
     steps: [[0.1, all(key('KeyW'), key('ShiftLeft')), 'Corre hacia el muro'], [0.7, null, 'Salta y se cuelga'], [1.2, null, 'Se sube a pulso'], [1.7, null, 'Cruza y se deja caer'], [2.6, all(key('KeyW', false), key('ShiftLeft', false)), 'Sigue']] },
+  { id: 'casa_puerta', group: 'movimiento', title: 'Casa: entrar por la puerta',
+    how: 'Acercarse a la puerta',
+    desc: `Casa de una planta (${n(HT.HOUSE.ancho)} × ${n(HT.HOUSE.fondo)} m, ${n(HT.HOUSE.alto)} m de alto) con una puerta y seis ventanas sin cristal. La puerta se abre sola cuando alguien (jugador o zombi) llega a menos de ${n(HT.DOOR.cerca)} m, hacia el lado contrario, y se cierra al alejarse.`,
+    place: [-9.5, 3.2, Math.PI / 2], seconds: 4.2, view: Math.PI * 0.15, dist: 6, high: 2.2,
+    steps: [[0.1, key('KeyW'), 'Camina hacia la puerta'], [1.2, null, 'Se abre hacia dentro'], [2.6, null, 'Entra'], [3.4, key('KeyW', false), 'Dentro; la puerta se cierra']] },
+  { id: 'casa_ventana', group: 'movimiento', title: 'Casa: entrar por una ventana',
+    how: 'Correr de frente contra la ventana',
+    desc: `El alféizar queda a ${n(HT.HOUSE.ventana.bajo)} m: corriendo de frente se pasa por el hueco apoyando la mano, como una barda media. También se dispara a través.`,
+    place: [-14, 9.5, 0], seconds: 2.6, view: Math.PI * 0.5, dist: 5, high: 1.6,
+    steps: [[0.1, all(key('KeyW'), key('ShiftLeft')), 'Corre hacia la ventana'], [0.9, null, 'Pasa por el hueco'], [1.6, all(key('KeyW', false), key('ShiftLeft', false)), 'Dentro']] },
   { id: 'golpe', group: 'combate', title: 'Puñetazo',
     how: 'F · mando X',
     desc: `Dura ${n(T.PUNCH_TIME)} s y conecta al ${n(T.PUNCH_HIT * 100)} % de la animación. Empuja lo que haya delante del personaje y quita 1,5 de vida a un zombi (tienen ${n(Z.HEALTH)}). Mientras golpea se mueve a un cuarto de velocidad.`,

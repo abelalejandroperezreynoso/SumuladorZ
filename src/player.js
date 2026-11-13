@@ -809,7 +809,14 @@ export class Player {
     if (along < V.frente) return false;
     const dx = -hit.nx, dz = -hit.nz, s0 = hit.dist * along;
     // Altura de lo que hay a distancia `s` (sobre los pies): Infinity si está macizo hasta arriba.
-    const TOP = V.escala + 0.3, DEEP = 3;
+    // Primero busca de frente dónde deja de haber muro (así vale también el hueco de una
+    // ventana, con su dintel y el techo por encima); desde ahí se mide hacia abajo.
+    let clear = null;
+    for (let y = 0.4; y <= V.escala + 0.01; y += 0.15) {
+      if (!probeWall(world, t.x, feet + y, t.z, dx, dz, s0 + 0.3)) { clear = y; break; }
+    }
+    if (clear === null) return false;
+    const TOP = clear + 0.1, DEEP = 3;
     const topAt = (s) => {
       const r = world.castRay(new RAPIER.Ray({ x: t.x + dx * s, y: feet + TOP, z: t.z + dz * s }, { x: 0, y: -1, z: 0 }),
         TOP + DEEP, true, RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC, GROUPS.cover);
