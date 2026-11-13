@@ -145,7 +145,7 @@ llegan dos, luego tres, y así sucesivamente.
   postura y el impulso que llevaba. Los cadáveres y los trozos se quedan en el escenario hasta
   que termina la horda (se conservan los 240 más recientes).
 - **Rematar en el suelo**: si golpeas con un zombi arrastrándose delante (a menos de 1,6 m), el
-  golpe va al suelo: sin arma lo aplastas de un pisotón; con el bate, lo descargas de arriba abajo.
+  golpe va al suelo: sin arma lo aplastas de un pisotón; con el bate, lo descargas de arriba abajo. Son golpes con todo el cuerpo: sacuden la cámara y el zombi rebota.
   Los dos lo matan de un golpe.
 
 El zombi usa el mismo esqueleto del personaje, en verde.

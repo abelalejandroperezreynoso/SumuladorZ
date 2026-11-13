@@ -17,6 +17,7 @@ import { WEAPON_NAMES } from './player.js';
 
 setupPWA();
 
+const HIT_STOP = 0.12; // ritmo del mundo durante la pausa de un impacto (1 = normal)
 const overlayMsg = document.getElementById('overlay-msg');
 const hudStatus = document.getElementById('hud-status');
 const healthFill = document.getElementById('health-fill');
@@ -160,6 +161,8 @@ async function start() {
   const timer = new THREE.Timer();
 
   function tick(dt) {
+    // Pausa del impacto: tras un golpe fuerte el mundo va un instante a cámara muy lenta.
+    if (combat.freeze > 0) { combat.freeze -= dt; dt *= HIT_STOP; }
     input.pollGamepad(dt);
     if (input.justPressed('KeyR') || player.position.y < -20) resetWorld();
     if (input.justPressed('KeyP')) toggleAuto();
@@ -178,6 +181,7 @@ async function start() {
     physics.step(dt);
     physics.sync(dt);
     combat.update(dt);
+    if (combat.jolt) { cam.kick(combat.jolt); combat.jolt = 0; }
     // La cámara se actualiza antes de apuntar para que mira y disparo coincidan.
     const t = player.body.translation();
     cam.update(dt, input, { x: t.x, y: t.y - 0.87, z: t.z }, physics, player.view);

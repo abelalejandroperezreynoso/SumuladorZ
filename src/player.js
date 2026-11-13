@@ -189,7 +189,16 @@ const LOW_RANGE = 1.6; // un zombi a rastras a menos de esto, y delante, recibe 
 const LOW_Y = 0.3; // altura del centro del golpe bajo (m)
 // Pisotón: adónde sube el pie derecho antes de bajar (m: al frente, a su lado y de alto) y
 // en qué fracción del golpe está arriba; baja de golpe hasta conectar (PUNCH_HIT).
-const STOMP = { frente: 0.12, lado: 0.1, alto: 0.5, arriba: 0.28, suelta: 0.6 };
+const STOMP = { frente: 0.16, lado: 0.1, alto: 0.74, arriba: 0.28, suelta: 0.62 };
+// Golpe bajo con todo el cuerpo: al cargar se echa atrás (`carga`, rad) y al conectar se deja
+// caer sobre el golpe: baja la cadera (`baja`, m), se encorva (`tronco`, rad) y los brazos
+// van atrás (`brazos`, rad). `antes`/`despues`: fracción del golpe que tarda en caer y en
+// volver a levantarse. Al conectar: sacudida de cámara (`sacudida`, m), pausa (`pausa`, s) y
+// empujón hacia arriba al zombi aplastado (`rebote`, m/s).
+const SLAM_BODY = {
+  pisotón: { carga: 0.2, baja: 0.2, tronco: 0.45, brazos: 0.7, antes: 0.12, despues: 0.5, sacudida: 0.09, pausa: 0.09, rebote: 2.6 },
+  bate: { carga: 0, baja: 0.24, tronco: 0, brazos: 0, antes: 0.14, despues: 0.38, sacudida: 0.13, pausa: 0.11, rebote: 3.4 },
+};
 export const MAX_AMMO = 99;
 export const WEAPON_NAMES = { manos: 'Sin arma', bate: 'Bate', pistola: 'Pistola' };
 const WEAPON_ORDER = ['manos', 'bate', 'pistola'];
@@ -232,10 +241,10 @@ SWING_KEYS.push(SWING_KEYS[0]);
 // por encima de la cabeza y baja en vertical hasta el suelo, con el tronco doblándose.
 const SLAM_KEYS = [
   SWING_KEYS[0],
-  { mano: [-0.06, 0.2, 0.14], bate: [-0.1, 0.8, -0.7], giro: -0.12, frente: -0.12 }, // impulso: arriba y atrás
-  { mano: [-0.03, 0.18, 0.3], bate: [0, 1, 0.15], giro: -0.05, frente: 0.1 }, // las manos tiran hacia abajo
-  { mano: [0, -0.5, 0.36], bate: [0, -0.9, 0.45], giro: 0.05, frente: 0.85 }, // conecta en el suelo
-  { mano: [0, -0.44, 0.36], bate: [0, -0.75, 0.6], giro: 0.05, frente: 0.7 }, // rebota
+  { mano: [-0.05, 0.34, 0.04], bate: [-0.08, 0.45, -0.9], giro: -0.15, frente: -0.3 }, // impulso: por encima de la cabeza, arqueado atrás
+  { mano: [-0.03, 0.26, 0.3], bate: [0, 1, 0.1], giro: -0.05, frente: 0.1 }, // las manos tiran hacia abajo
+  { mano: [0, -0.52, 0.36], bate: [0, -0.9, 0.45], giro: 0.05, frente: 1.0 }, // conecta en el suelo
+  { mano: [0, -0.42, 0.36], bate: [0, -0.7, 0.65], giro: 0.05, frente: 0.8 }, // rebota
   SWING_KEYS[0],
 ];
 const curves = (keys) => {
@@ -306,7 +315,7 @@ export const PLAYER_CLIPS = {
 // Valores que el catálogo muestra en sus fichas (así nunca quedan desfasados).
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
-  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, LOW_RANGE, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
+  SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, LOW_RANGE, SLAM_BODY, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SLIDE_SPEED, COVER_ARRIVE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, PEEK_HOLD, PEEK_LOOK,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
   HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
@@ -406,6 +415,8 @@ export class Player {
     this.infiniteAmmo = false; // piloto automático y pruebas
     this.meleeKind = 'puño';
     this.meleeLow = null; // golpe bajo en curso: { x, z, d } hacia el zombi que se arrastra
+    this.slamDrop = 0; // golpe bajo: cuánto se ha dejado caer sobre el golpe (0-1)
+    this.slamLoad = 0; // ...y cuánto se echa atrás para cargarlo (0-1)
     this.stomp = 0;
     this.fireWas = false;
     this.dryFire = 0; // >0 un instante tras apretar el gatillo sin balas (la interfaz lo avisa)
@@ -1556,9 +1567,18 @@ export class Player {
    */
   poseStomp() {
     const low = this.meleeLow;
-    this.stomp = 0;
-    if (this.punchT < 0 || !low || this.meleeKind === 'bate') return;
-    const u = this.punchT / PUNCH_TIME, S = STOMP;
+    this.stomp = this.slamDrop = this.slamLoad = 0;
+    if (this.punchT < 0 || !low) return;
+    // Con el bate o con el pie, el cuerpo entero acompaña: carga atrás y cae sobre el golpe.
+    const bat = this.meleeKind === 'bate';
+    if (bat && !this.swinging) return;
+    const u = this.punchT / (bat ? SWING_TIME : PUNCH_TIME), S = STOMP;
+    const hit = bat ? SWING_HIT : PUNCH_HIT, B = SLAM_BODY[bat ? 'bate' : 'pisotón'];
+    const fall = THREE.MathUtils.smoothstep(u, hit - B.antes, hit);
+    this.slamDrop = fall ** 2 * (1 - THREE.MathUtils.smoothstep(u, hit + 0.06, hit + B.despues));
+    this.slamLoad = THREE.MathUtils.smoothstep(u, 0, S.arriba) * (1 - fall);
+    if (bat) return;
+    if (B.carga) this.applyTorso(this.slamLoad, { giro: 0, lado: 0, frente: -B.carga, cuello: 0, cabeza: B.carga * 0.6 });
     const leg = this.legs.find((l) => l.side === -1);
     if (!leg) return;
     this.model.updateMatrixWorld(true);
@@ -1572,7 +1592,7 @@ export class Player {
     const down = _knee.set(this.position.x + dx * d, this.position.y + 0.14, this.position.z + dz * d);
     const smooth = (a, b) => THREE.MathUtils.smoothstep(u, a, b);
     if (u < S.arriba) foot.lerp(up, smooth(0, S.arriba));
-    else if (u < PUNCH_HIT) foot.lerpVectors(up, down, ((u - S.arriba) / (PUNCH_HIT - S.arriba)) ** 2);
+    else if (u < PUNCH_HIT) foot.lerpVectors(up, down, ((u - S.arriba) / (PUNCH_HIT - S.arriba)) ** 3);
     else foot.lerpVectors(down, foot.clone(), smooth(S.suelta, 1));
     this.stomp = u < PUNCH_HIT ? smooth(0, S.arriba) : 1 - smooth(S.suelta, 1); // para el catálogo
     this.gait.place(-1, foot, this.facing);
@@ -1833,16 +1853,17 @@ export class Player {
       undefined, GROUPS.query,
     );
     const seen = new Set();
-    let hits = 0;
+    let hits = 0, crushed = 0;
     for (const collider of found) {
       const body = collider.parent();
       if (!body || seen.has(body.handle)) continue;
       const zombie = this.physics.meta.get(collider.handle)?.zombie;
       if (zombie) {
         seen.add(body.handle);
-        zombie.damage(M.damage, this);
+        zombie.damage(M.damage, this, low ? SLAM_BODY[this.meleeKind === 'bate' ? 'bate' : 'pisotón'].rebote : 0);
         combat.punchHits++;
         hits++;
+        crushed++;
         continue;
       }
       if (!body.isDynamic()) continue;
@@ -1855,6 +1876,11 @@ export class Player {
       hits++;
     }
     if (hits) combat.spark(_v.set(center.x, center.y, center.z), 0.5, 0xffffff);
+    // Golpe bajo: el suelo retumba (más si aplasta a un zombi) y saltan trozos.
+    if (low) {
+      const B = SLAM_BODY[this.meleeKind === 'bate' ? 'bate' : 'pisotón'], k = crushed ? 1 : 0.35;
+      combat.impact(_v.set(center.x, this.position.y, center.z), B.sacudida * k, crushed ? B.pausa : 0, crushed ? 12 : 0);
+    }
   }
 
   /**
@@ -1966,12 +1992,14 @@ export class Player {
     this.poseStomp();
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
-    if (jc > 0.01 || cc > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
+    const sd = this.slamDrop, SB = SLAM_BODY[this.meleeKind === 'bate' ? 'bate' : 'pisotón'];
+    if (jc > 0.01 || cc > 0.01 || sd > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
       // Inclinación del tronco a cubierto: 0,3 rad agachado del todo; de rodillas, la de su postura.
       const K = POSES.rodillas;
       const coverLean = THREE.MathUtils.lerp(0.3, K.tronco / Math.max(K.agachado, 0.05), this.kneel) * cc;
       this.applyCrouch(
-        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc, this.proneSquat), Math.max(0.45 * jc, coverLean), 0.7 * jc,
+        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc, this.proneSquat, SB.baja * sd), Math.max(0.45 * jc, coverLean, SB.tronco * sd),
+        Math.max(0.7 * jc, SB.brazos * sd),
         this.coverLean, this.coverSit * cc,
       );
     }
