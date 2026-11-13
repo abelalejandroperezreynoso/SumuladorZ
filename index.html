@@ -99,7 +99,6 @@
       .cat-seg button { border-radius: 0 !important; margin-left: -1px; }
       .cat-seg button:first-child { border-radius: 6px 0 0 6px !important; margin-left: 0; }
       .cat-seg button:last-child { border-radius: 0 6px 6px 0 !important; }
-      #cat-bones { margin-left: auto; }
       #cat-progress { height: 3px; background: rgba(255, 255, 255, 0.15); border-radius: 2px; overflow: hidden; flex: none; }
       #cat-progress i { display: block; height: 100%; background: #a9bb7c; transform-origin: left center; transform: scaleX(0); }
       #cat-body { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 10px; padding-right: 2px; }
@@ -194,7 +193,6 @@
               <input type="range" id="m-sens" min="0.4" max="2" step="0.05" value="1"></label>
             <label class="m-row" for="m-invert"><span>Invertir el eje vertical</span><input type="checkbox" class="m-switch" id="m-invert"></label>
             <label class="m-row" for="m-auto"><span>Piloto automático<br /><small style="opacity:.6">El juego se juega solo</small></span><input type="checkbox" class="m-switch" id="m-auto"></label>
-            <label class="m-row" for="m-bones"><span>Ver solo los esqueletos<br /><small style="opacity:.6">Del personaje y de los zombis</small></span><input type="checkbox" class="m-switch" id="m-bones"></label>
           </div>
           <div data-panel="controles">
             <h2>Controles</h2>
@@ -205,7 +203,7 @@
               <dt>F</dt><dd>Golpear</dd><dt>C</dt><dd>Cubrirse / salir de la cobertura</dd><dt>Ratón · rueda</dt><dd>Cámara · zoom</dd>
               <dt>1 · 2 · 3</dt><dd>Sin arma · bate · pistola</dd>
               <dt>Esc</dt><dd>Pausa</dd><dt>H</dt><dd>Iniciar o detener la horda</dd><dt>R</dt><dd>Reiniciar el mundo</dd>
-              <dt>P · K · G</dt><dd>Piloto · esqueleto · catálogo</dd>
+              <dt>P · G</dt><dd>Piloto automático · catálogo</dd>
             </dl>
             <h3>Mando</h3>
             <dl class="m-keys">

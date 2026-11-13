@@ -2,11 +2,8 @@ import * as THREE from 'three';
 import { BODY } from './proportions.js';
 
 // Vista de esqueleto al estilo de Blender: cada hueso es un octaedro alargado, ancho junto a su
-// origen y afilado hacia la punta, con una esfera en cada articulación. La usan el jugador y los
-// zombis; mientras está activa, la malla del modelo se oculta (sigue animándose igual).
-
-// Por ahora el juego se ve solo con esqueletos (menú → Ajustes para ver los modelos).
-export const SKELETON_DEFAULT = true;
+// origen y afilado hacia la punta, con una esfera en cada articulación. Es como se ven el jugador
+// y los zombis: del modelo 3D solo se conservan los huesos y las animaciones.
 
 const SKIP = /Index|Middle|Ring|Pinky|Thumb|^PT|^Root$/; // dedos y huesos auxiliares
 const STATURE = 1.75; // estatura a la que se escala el modelo (m)
@@ -55,11 +52,9 @@ export class SkeletonView {
     this.model = model;
     this.scene = scene;
     this.group = new THREE.Group();
-    this.group.visible = false;
     scene.add(this.group);
     this.links = [];
     this.joints = [];
-    this.only = false;
     const mat = paletteMaterials(kind);
     const bones = {};
     model.traverse((o) => { if (o.isBone) bones[o.name] = o; });
@@ -102,16 +97,9 @@ export class SkeletonView {
     }
   }
 
-  /** Muestra solo el esqueleto (true) o el modelo normal (false). */
-  set(only) {
-    this.only = only;
-    this.group.visible = only;
-    this.model.traverse((o) => { if (o.isMesh) o.visible = !only; });
-  }
-
   /** Coloca huesos y articulaciones sobre la pose final de este fotograma. */
   update() {
-    if (!this.only || !this.group.visible) return;
+    if (!this.group.visible) return;
     this.model.updateMatrixWorld(true);
     for (const j of this.joints) {
       j.bone.getWorldPosition(j.mesh.position);

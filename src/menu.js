@@ -15,8 +15,8 @@ function save(settings) {
 
 export class Menu {
   /**
-   * actions: { play(evento), pause(), toggleHorde(), reset(), catalog(), toggleAuto(), toggleSkeleton(),
-   * hordeActive(), autoActive(), skeletonActive(), applySettings(settings) }
+   * actions: { play(evento), pause(), toggleHorde(), reset(), catalog(), toggleAuto(),
+   * hordeActive(), autoActive(), applySettings(settings) }
    */
   constructor(actions) {
     this.actions = actions;
@@ -67,7 +67,6 @@ export class Menu {
     invert.checked = !!this.settings.invert;
     invert.addEventListener('change', () => { this.settings.invert = invert.checked; this.saveSettings(); });
     $('m-auto').addEventListener('change', () => actions.toggleAuto(true));
-    $('m-bones').addEventListener('change', () => actions.toggleSkeleton());
     actions.applySettings(this.settings);
   }
 
@@ -106,7 +105,6 @@ export class Menu {
     const horde = this.actions.hordeActive();
     this.horde.textContent = paused ? (horde ? 'Detener la horda' : 'Iniciar la horda') : 'Jugar contra la horda';
     $('m-auto').checked = this.actions.autoActive();
-    $('m-bones').checked = this.actions.skeletonActive();
   }
 
   get paused() {

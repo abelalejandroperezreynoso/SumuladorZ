@@ -39,7 +39,7 @@ const ZOMBIE_LAYERS = [['Brazos al frente', (z) => z.arms]];
 
 export class Catalog {
   /**
-   * game: lo mismo que window.__game. hooks: { toggleSkeleton(): boolean, onOpen(), onClose() }.
+   * game: lo mismo que window.__game. hooks: { onOpen(), onClose() }.
    */
   constructor(game, hooks = {}) {
     this.game = game;
@@ -114,7 +114,6 @@ export class Catalog {
           <div class="cat-seg" id="cat-speed">
             <button data-speed="1" class="on">1×</button><button data-speed="0.5">½×</button><button data-speed="0.25">¼×</button>
           </div>
-          <button id="cat-bones">Esqueleto</button>
         </div>
         <div id="cat-progress"><i></i></div>
         <div id="cat-body">
@@ -126,7 +125,7 @@ export class Catalog {
     this.root = root;
     const $ = (id) => root.querySelector('#' + id);
     this.el = { stage: $('cat-stage'), panel: $('cat-panel'), select: $('cat-select'), pause: $('cat-pause'),
-      bones: $('cat-bones'), progress: $('cat-progress').firstElementChild, live: $('cat-live'), info: $('cat-info') };
+      progress: $('cat-progress').firstElementChild, live: $('cat-live'), info: $('cat-info') };
 
     // Lo que ocurra dentro del catálogo no debe llegar a los controles del juego.
     for (const type of ['touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel']) {
@@ -138,7 +137,6 @@ export class Catalog {
     this.el.select.addEventListener('change', () => this.show(this.el.select.value));
     this.el.pause.addEventListener('click', () => this.setPaused(!this.paused));
     $('cat-step').addEventListener('click', () => { this.setPaused(true); this.advance(1 / 60); });
-    this.el.bones.addEventListener('click', () => this.toggleBones());
     $('cat-tabs').addEventListener('click', (e) => {
       const tab = e.target.dataset?.tab;
       if (tab && tab !== this.tab) this.setTab(tab);
@@ -228,14 +226,9 @@ export class Catalog {
       else if (e.code === 'ArrowRight') this.cycle(1);
       else if (e.code === 'ArrowLeft') this.cycle(-1);
       else if (e.code === 'Space') this.setPaused(!this.paused);
-      else if (e.code === 'KeyK') this.toggleBones();
       else return;
       e.preventDefault();
     });
-  }
-
-  toggleBones() {
-    this.el.bones.classList.toggle('on', !!this.hooks.toggleSkeleton?.());
   }
 
   setPaused(paused) {
@@ -556,7 +549,6 @@ export class Catalog {
     this.root.hidden = false;
     document.body.classList.add('catalog');
     this.hooks.onOpen?.();
-    this.el.bones.classList.toggle('on', this.game.player.skeletonOnly);
     this.setPaused(false);
     this.layout();
     this.show(id ?? this.item?.id ?? this.item?.name ?? this.items[0]);
@@ -669,7 +661,7 @@ export class Catalog {
     const dist = (it?.dist ?? 3.6) * this.zoom * this.fit;
     const p = sub.position;
     player.model.visible = true;
-    player.skeleton.visible = player.skeletonOnly;
+    player.skeleton.visible = true;
     for (const m of this.marks) m.visible = false;
     if (this.editing) {
       // Editando, la cámara mira al cuerpo (o a la parte seleccionada) para poder acercarse.

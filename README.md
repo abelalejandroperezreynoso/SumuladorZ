@@ -45,11 +45,11 @@ salto y carrera. Mejor en horizontal.
 La pantalla de inicio y la pausa son el mismo menú: **Jugar** (o **Continuar**), **Jugar contra
 la horda** (en pausa, iniciarla o detenerla) y **Reiniciar el mundo**, más cuatro apartados:
 
-- **Ajustes**: sensibilidad de la cámara, invertir el eje vertical, piloto automático y ver solo
-  los esqueletos. La sensibilidad y el eje se recuerdan en el navegador.
+- **Ajustes**: sensibilidad de la cámara, invertir el eje vertical y piloto automático. La
+  sensibilidad y el eje se recuerdan en el navegador.
 
-Por ahora el personaje y los zombis se ven solo como esqueletos (el jugador gris, los zombis
-verdes). El ajuste «Ver solo los esqueletos» (o `K`) devuelve los modelos.
+El personaje y los zombis se ven como esqueletos (el jugador gris, los zombis verdes). Del
+modelo 3D solo se usan los huesos y las animaciones: sus mallas se quitan al cargar.
 - **Controles**: teclado y ratón, mando y táctil.
 - **Catálogo**: mecánicas y animaciones en vivo (ver más abajo).
 - **Información**: de qué va el juego, la versión instalada y **Buscar actualización**, que
@@ -98,7 +98,6 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Reiniciar el mundo | `R` |
 | Iniciar / detener la horda | `H` |
 | Piloto automático | `P` |
-| Alternar esqueletos y modelos | `K` |
 | Catálogo de mecánicas y animaciones | `G` |
 
 ## Armas y balas
@@ -132,7 +131,7 @@ llegan dos, luego tres, y así sucesivamente.
   daño; si llega a cero, la horda termina y reapareces.
 - **Matarlos**: aguantan 3 balas o 2 puñetazos.
 
-El zombi usa el mismo modelo del personaje recoloreado (piel verdosa y ropa oscura).
+El zombi usa el mismo esqueleto del personaje, en verde.
 
 ## Piloto automático
 
@@ -158,9 +157,9 @@ escena con el motor real y una cámara lateral, así que muestra siempre el jueg
   la gira sobre su propio eje y un botón quita su giro. «Ajustes generales» tiene además un
   deslizador por articulación. «Copiar valores» da un texto corto con los números para
   fijarlos en el código (`POSES` en `src/player.js`). Los cambios duran hasta recargar la página.
-- **Mandos**: pausa, avance cuadro a cuadro, velocidad (1×, ½×, ¼×) y vista de esqueleto.
+- **Mandos**: pausa, avance cuadro a cuadro, velocidad (1×, ½×, ¼×).
   Arrastrar sobre la escena gira la cámara y la rueda acerca. Teclado: `←` `→` cambian de
-  ficha, `Espacio` pausa, `K` esqueleto, `Esc` cierra.
+  ficha, `Espacio` pausa, `Esc` cierra.
 
 Las escenas están en `src/catalog-scenes.js` y las comparte `tools/watch.cjs`: una escena nueva
 aparece en el catálogo y en las tiras de fotogramas. La lista de clips y sus usos sale de
@@ -177,7 +176,6 @@ cámara, y velocidad de giro.
 npx vite --port 5199 &
 node tools/watch.cjs salida            # todas las escenas
 node tools/watch.cjs salida zombi giro # solo algunas
-SKELETON=0 node tools/watch.cjs salida # tiras con los modelos (por defecto, esqueletos)
 ```
 
 `tools/gameplay.cjs` hace jugar una partida larga con un estilo (`bot`, `stand` o `punch`) y
@@ -220,7 +218,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 | `src/camera.js` | Cámara en tercera persona con colisión |
 | `src/combat.js` | Proyectiles físicos, impactos y contadores |
 | `src/pickups.js` | Armas y cajas de balas que se recogen, y sus modelos |
-| `src/skeleton.js` | Vista de esqueleto del personaje y de los zombis |
+| `src/skeleton.js` | Esqueleto dibujado del personaje y de los zombis |
 | `src/proportions.js` | Medidas del cuerpo: corrige el largo de brazos y manos del modelo |
 | `src/input.js` | Teclado, ratón y mando |
 | `src/touch.js` | Controles táctiles |

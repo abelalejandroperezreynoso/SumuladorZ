@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { SkeletonView, SKELETON_DEFAULT } from './skeleton.js';
+import { SkeletonView } from './skeleton.js';
 import { RAPIER, GROUPS } from './physics.js';
 
 const RADIUS = 0.35;
@@ -35,10 +35,6 @@ const SEPARATION = 0.8; // distancia mínima entre zombis (m)
 const SEPARATION_SPEED = 1.5; // velocidad máxima del empuje que los separa (m/s)
 
 // Colores del modelo para convertirlo en zombi: piel verdosa y ropa sucia.
-const ZOMBIE_PALETTE = {
-  Skin: 0x6f8f5a, Skin_Darker: 0x4f6b42, LightBrown: 0x3a3f36, LightBlue: 0x2b2a26,
-  Red_Dark: 0x1a1a18, Hair: 0x1c1a14, Eye: 0xd8d2a0, White: 0x9aa08a,
-};
 
 // Estado del zombi -> clip del modelo, y los valores que muestra el catálogo.
 export const ZOMBIE_CLIPS = {
@@ -91,7 +87,6 @@ class Zombie {
     this.model.position.copy(this.position);
     horde.scene.add(this.model);
     this.skel = new SkeletonView(this.model, horde.scene, 'zombie');
-    this.skel.set(horde.skeletonOnly);
     this.mixer = new THREE.AnimationMixer(this.model);
     const action = (name) => this.mixer.clipAction(horde.clips[name]);
     this.actions = Object.fromEntries(Object.entries(ZOMBIE_CLIPS).map(([state, name]) => [state, action(name)]));
@@ -404,7 +399,6 @@ class Zombie {
 /** Horda por oleadas: la oleada N suelta N zombis y la siguiente llega al matarlos a todos. */
 export class Horde {
   constructor(scene, physics, assets) {
-    this.skeletonOnly = SKELETON_DEFAULT;
     this.scene = scene;
     this.physics = physics;
     this.zombies = [];
@@ -414,25 +408,8 @@ export class Horde {
     this.waveT = 0;
     this.onWave = null; // (número de oleada) => void
 
-    // Plantilla del zombi: el mismo modelo del personaje, recoloreado.
+    // Plantilla del zombi: el mismo esqueleto del personaje (ya escalado y sin mallas).
     const template = assets.scene;
-    const box = new THREE.Box3().setFromObject(template);
-    template.scale.setScalar(1.75 / (box.max.y - box.min.y));
-    const materials = new Map();
-    template.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = true;
-      o.frustumCulled = false;
-      if (!materials.has(o.material)) {
-        const m = o.material.clone();
-        const color = ZOMBIE_PALETTE[m.name];
-        if (color !== undefined) m.color.set(color);
-        m.roughness = 0.95;
-        m.metalness = 0;
-        materials.set(o.material, m);
-      }
-      o.material = materials.get(o.material);
-    });
     this.template = template;
     this.clips = Object.fromEntries(assets.animations.map((c) => [c.name, c]));
 
@@ -540,9 +517,4 @@ export class Horde {
     }
   }
 
-  /** Zombis con solo el esqueleto (true) o con su modelo (false), también los que lleguen después. */
-  setSkeleton(only) {
-    this.skeletonOnly = only;
-    for (const z of this.zombies) z.skel.set(only);
-  }
 }
