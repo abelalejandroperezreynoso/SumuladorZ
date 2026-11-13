@@ -79,6 +79,7 @@ async function start() {
   combat.player = player;
   const horde = new Horde(scene, physics, player.assets);
   combat.horde = horde;
+  horde.house = house;
   horde.onWave = (n) => showToast(`Oleada ${n}`);
   let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '', aimShown = false;
   const weaponBtn = document.getElementById('weapon-btn');
@@ -108,6 +109,7 @@ async function start() {
   };
   const resetWorld = () => {
     physics.reset();
+    house.reset();
     player.respawn();
     pickups.reset();
     combat.targetHits = combat.punchHits = 0;

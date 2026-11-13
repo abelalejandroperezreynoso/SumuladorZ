@@ -145,6 +145,7 @@ export class Combat {
       const meta = this.physics.meta.get(b1 ? h2 : h1);
       const p = bullet.body.translation();
       _point.set(p.x, p.y, p.z);
+      if (meta?.break) meta.break(bullet.dir); // cristal de una ventana
       if (meta?.body.isDynamic()) this.physics.flash(meta);
       this.registerHit(meta, 'bullet');
       this.spark(_point);

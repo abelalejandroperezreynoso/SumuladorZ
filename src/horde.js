@@ -27,6 +27,16 @@ const BITE_REACH = 1.5;
 const BITE_DAMAGE = 15;
 const BITE_WINDUP = 0.35; // cuánto se echa atrás antes de morder (fracción del lanzamiento)
 // Mordida de pie: cuánto se dobla hacia delante cada hueso con la cabeza lanzada (rad).
+// Entrar por una ventana: revienta el cristal de un cabezazo (`romper`, s; se rompe a esa
+// `fraccion`) y trepa (`tiempo`, s): echa los brazos y el tronco por el hueco, queda doblado
+// sobre el alféizar, se desliza de cabeza al otro lado, cae al suelo y se levanta. Cada momento
+// (fracción del tiempo): avance de la cadera respecto al muro (m), su altura (m) y cuánto se
+// vuelca el cuerpo hacia delante (rad).
+const WINDOW = {
+  romper: 0.8, fraccion: 0.6, tiempo: 2.4, cadera: 0.95, patadas: 0.5,
+  claves: [[0, -0.7, 0.95, 0], [0.18, -0.36, 1.0, 0.75], [0.42, 0.02, 1.16, 1.45], [0.62, 0.5, 0.42, 1.95],
+    [0.74, 0.72, 0.28, 1.5], [1, 0.95, 0.95, 0]],
+};
 const BITE_BEND = [['Abdomen', 0.22], ['Torso', 0.25], ['Neck', 0.3], ['Head', -0.12]];
 const HEALTH = 3; // una bala quita 1; un puñetazo, 1,5
 const STAGGER = 0.35;
@@ -92,7 +102,7 @@ export const ZOMBIE_CLIPS = {
 export const ZOMBIE_TUNING = {
   VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
   BITE_DAMAGE, HEALTH, STAGGER, RAGDOLL_MAX, REMAINS_MAX, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
-  JOINT_ZONE, HEAD_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_SPEEDS, LIMP, CRAWL_FALL, DEBRIS_TIME,
+  WINDOW, JOINT_ZONE, HEAD_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_SPEEDS, LIMP, CRAWL_FALL, DEBRIS_TIME,
 };
 
 const _to = new THREE.Vector3();
@@ -193,7 +203,9 @@ class Zombie {
   constructor(horde, x, z) {
     this.horde = horde;
     this.hp = HEALTH;
-    this.state = 'wander'; // wander | chase | attack | stagger | dead
+    this.state = 'wander'; // wander | chase | attack | stagger | window | dead
+    this.win = null; // ventana por la que está entrando: { w, side, t, from, smash }
+    this.winPose = null; // postura de ese paso: { s, y, pitch, u }
     this.facing = Math.random() * Math.PI * 2;
     this.position = new THREE.Vector3(x, 0, z);
     this.target = new THREE.Vector3(x, 0, z); // adónde se dirige
@@ -371,7 +383,8 @@ class Zombie {
     const len = _to.length();
     _to.divideScalar(len);
     const hit = this.horde.physics.world.castRay(
-      new RAPIER.Ray(eye, _to), len, true, RAPIER.QueryFilterFlags.ONLY_FIXED,
+      new RAPIER.Ray(eye, _to), len, true, RAPIER.QueryFilterFlags.ONLY_FIXED, undefined, undefined, undefined,
+      (c) => !this.horde.physics.meta.get(c.handle)?.glass, // a través del cristal se ve
     );
     return !hit;
   }
@@ -413,6 +426,7 @@ class Zombie {
       if (this.crawler) _to.multiplyScalar(slam ? 0.3 : 0.15).setY(slam || _to.y * 0.15); // aplastado contra el suelo: no sale despedido; rebota
       return this.die(_to.clone());
     }
+    if (this.state === 'window') return; // trepando por una ventana no se detiene
     this.state = 'stagger';
     this.timer = Math.max(STAGGER, this.fallT ?? 0);
     this.fallT = 0;
@@ -498,6 +512,7 @@ class Zombie {
       this.memory -= dt;
     }
 
+    if (this.state === 'window') return this.climbWindow(dt);
     let speed = 0;
     let wantFacing = null;
     if (this.state === 'stagger') {
@@ -520,8 +535,20 @@ class Zombie {
         }
       }
     } else if (this.state === 'chase') {
-      const tx = this.target.x - this.position.x, tz = this.target.z - this.position.z;
+      let tx = this.target.x - this.position.x, tz = this.target.z - this.position.z;
       const td = Math.hypot(tx, tz);
+      // Si la presa está al otro lado del muro de la casa, va al hueco que mejor le queda.
+      const route = this.horde.house?.route(this.position, this.target, this.crawler);
+      if (route) { tx = route.x - this.position.x; tz = route.z - this.position.z; }
+      if (route?.window && this.grounded) {
+        const w = route.window;
+        w.busy = WINDOW.tiempo * 0.55 + (w.broken ? 0 : WINDOW.romper);
+        this.win = { w, side: route.side, t: 0, smash: w.broken ? 0 : WINDOW.romper, from: { x: this.position.x, z: this.position.z } };
+        this.state = 'window';
+        this.detour = 0;
+        this.play('Idle', 0.2);
+        return this.climbWindow(0);
+      }
       if (this.sees && dist < ATTACK_RANGE) {
         this.state = 'attack';
         this.timer = 0;
@@ -637,6 +664,55 @@ class Zombie {
     if (t.y < -20) this.die();
   }
 
+  /**
+   * Entra por una ventana (estado `window`): primero revienta el cristal y después el cuerpo
+   * sigue las claves de WINDOW sin choques; la postura la arma `postPhysics`.
+   */
+  climbWindow(dt) {
+    const W = this.win, w = W.w, K = WINDOW, lerp = THREE.MathUtils.lerp;
+    const dx = -w.nx * W.side, dz = -w.nz * W.side; // hacia donde cruza
+    this.facing = dampAngle(this.facing, Math.atan2(dx, dz), 10, dt);
+    this.arms = THREE.MathUtils.damp(this.arms, 1, 8, dt);
+    this.moveSpeed = 0;
+    let lunge = 0, u = 0;
+    if (W.smash > 0) {
+      // Cabezazo: se echa atrás y lanza tronco y cabeza contra el cristal.
+      const k = W.t / K.romper;
+      lunge = k < K.fraccion * 0.6 ? -THREE.MathUtils.smoothstep(k, 0, K.fraccion * 0.6)
+        : k < K.fraccion ? lerp(-1, 1.3, ((k - K.fraccion * 0.6) / (K.fraccion * 0.4)) ** 2) : 1.3 * (1 - THREE.MathUtils.smoothstep(k, K.fraccion, 1));
+      if (k >= K.fraccion) this.horde.house.breakGlass(w, { x: dx, z: dz });
+      W.t += dt;
+      if (W.t >= K.romper) { W.smash = 0; W.t = 0; }
+    } else {
+      W.t += dt;
+      u = Math.min(1, W.t / K.tiempo);
+    }
+    this.lunge = THREE.MathUtils.damp(this.lunge, lunge, 30, dt);
+    // Postura entre las dos claves que tocan (suavizada).
+    let i = 1;
+    while (i < K.claves.length - 1 && K.claves[i][0] < u) i++;
+    const a = K.claves[i - 1], b = K.claves[i], k = THREE.MathUtils.smoothstep(u, a[0], b[0]);
+    const P = this.winPose ??= {};
+    P.u = u; P.s = lerp(a[1], b[1], k); P.y = lerp(a[2], b[2], k); P.pitch = lerp(a[3], b[3], k);
+    // Cruza por el centro de la ventana: se va centrando desde donde estaba.
+    const tx = -w.nz, tz = w.nx;
+    W.off ??= (W.from.x - w.x) * tx + (W.from.z - w.z) * tz;
+    W.back ??= (W.from.x - w.x) * dx + (W.from.z - w.z) * dz;
+    W.settle = Math.min(1, (W.settle ?? 0) + dt / 0.3);
+    const e = THREE.MathUtils.smoothstep(W.settle, 0, 1);
+    const back = lerp(W.back, P.s, e);
+    P.x = w.x + tx * W.off * (1 - e) + dx * back;
+    P.z = w.z + tz * W.off * (1 - e) + dz * back;
+    const t = this.body.translation();
+    this.body.setNextKinematicTranslation({ x: P.x, y: t.y, z: P.z });
+    if (u >= 1) {
+      this.state = 'chase';
+      this.win = this.winPose = null;
+      this.grounded = false;
+      this.vy = 0;
+    }
+  }
+
   /** Después del paso de física: coloca el modelo y aplica la pose. */
   postPhysics() {
     if (this.ragdoll) return this.poseRagdoll(); // muerto: los huesos siguen a la física
@@ -652,12 +728,29 @@ class Zombie {
     const t = this.body.translation();
     this.position.set(t.x, t.y - this.foot - 0.02, t.z);
     this.model.position.copy(this.position);
-    this.model.rotation.y = this.facing;
-    if (this.crawler) return this.poseCrawl();
+    this.model.rotation.set(0, this.facing, 0, 'YXZ');
+    const P = this.state === 'window' ? this.winPose : null;
+    if (P && P.pitch > 0.001) {
+      // Volcado sobre el alféizar: el modelo gira en torno a la cadera, que sigue su recorrido,
+      // con un bamboleo y las piernas pataleando mientras cuelgan.
+      const kick = Math.sin(Math.PI * P.u), t = P.u * WINDOW.tiempo;
+      this.model.rotation.set(P.pitch, this.facing, 0.14 * kick * Math.sin(t * 9), 'YXZ');
+      _c.set(0, WINDOW.cadera, 0).applyQuaternion(this.model.quaternion);
+      this.model.position.set(P.x - _c.x, this.position.y + P.y - _c.y, P.z - _c.z);
+      this.model.updateMatrixWorld(true);
+      _axis.set(1, 0, 0).applyQuaternion(this.model.quaternion); // su izquierda, ya volcado
+      for (const [name, phase] of [['UpperLegL', 0], ['UpperLegR', Math.PI]]) {
+        const bone = this.bones[name];
+        if (!bone || this.lost.has(bone)) continue;
+        this.saved.push(bone, bone.quaternion.clone());
+        turnWorld(bone, _axis, WINDOW.patadas * kick * Math.sin(t * 11 + phase));
+      }
+    }
+    if (this.crawler && !P) return this.poseCrawl();
     // Pies que no resbalan mientras deambula o persigue.
     const run = this.current === this.actions.Run;
     const walking = this.alive && (run || this.current === this.actions.Walk) && (this.moveSpeed ?? 0) > 0.15;
-    const standing = this.alive && !walking && this.current === this.actions.Idle;
+    const standing = this.alive && !walking && !P && this.current === this.actions.Idle;
     if (standing) this.gait.stand(this.mixerDt ?? 0, this.model, this.position.y, this.facing);
     else this.gait.update(this.mixerDt ?? 0, this.model, this.position.y, this.facing, this.moveSpeed ?? 0,
       (run ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), walking);
