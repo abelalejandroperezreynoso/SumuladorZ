@@ -6,6 +6,11 @@ const BULLET_LIFE = 2.5;
 const BULLET_RADIUS = 0.05;
 const BULLET_MASS = 0.12;
 const MAX_RANGE = 120;
+// Golpe contra el suelo: trozos que saltan y onda a ras de suelo.
+const CHUNK_LIFE = 0.7; // s
+const CHUNK_SPEED = 3.2; // m/s
+const CHUNK_GRAVITY = 14;
+const RING_SIZE = 1.1; // radio final de la onda (m)
 export const COMBAT_TUNING = { BULLET_SPEED }; // lo muestra el catálogo
 
 const _dir = new THREE.Vector3();
@@ -29,6 +34,13 @@ export class Combat {
     this.bulletGeo = new THREE.CapsuleGeometry(0.03, 0.5, 4, 8).rotateX(Math.PI / 2);
     this.bulletMat = new THREE.MeshBasicMaterial({ color: 0xffd98a });
     this.sparkGeo = new THREE.SphereGeometry(1, 10, 8);
+    this.chunks = []; // trozos que saltan de un golpe contra el suelo
+    this.chunkGeo = new THREE.TetrahedronGeometry(0.035);
+    this.chunkMat = new THREE.MeshLambertMaterial({ color: 0xa3c27a, flatShading: true });
+    this.ringGeo = new THREE.RingGeometry(0.72, 1, 24).rotateX(-Math.PI / 2);
+    this.jolt = 0; // sacudida pendiente para la cámara (m); la recoge main.js
+    this.freeze = 0; // pausa del impacto que queda (s de tiempo real); la aplica main.js
+    this.impacts = 0;
   }
 
   // Punto del mundo al que apunta la mira (centro de la pantalla).
@@ -90,6 +102,28 @@ export class Combat {
     this.sparks.push({ mesh, t: 0, size });
   }
 
+  /**
+   * Golpe contra el suelo en `point` (a ras de suelo): onda, `chunks` trozos que saltan,
+   * sacudida de cámara (`jolt`, m) y pausa del impacto (`freeze`, s).
+   */
+  impact(point, jolt, freeze = 0, chunks = 0) {
+    this.impacts++;
+    this.jolt = Math.max(this.jolt, jolt);
+    this.freeze = Math.max(this.freeze, freeze);
+    const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }));
+    ring.position.copy(point).y += 0.03;
+    this.scene.add(ring);
+    this.sparks.push({ mesh: ring, t: 0, size: RING_SIZE * (freeze ? 1 : 0.5) });
+    for (let i = 0; i < chunks; i++) {
+      const mesh = new THREE.Mesh(this.chunkGeo, this.chunkMat);
+      const a = (i / chunks) * Math.PI * 2 + Math.random(), out = CHUNK_SPEED * (0.35 + 0.65 * Math.random());
+      mesh.position.copy(point).y += 0.15;
+      mesh.rotation.set(Math.random() * 6, Math.random() * 6, 0);
+      this.scene.add(mesh);
+      this.chunks.push({ mesh, vx: Math.cos(a) * out, vy: CHUNK_SPEED * (0.6 + 0.8 * Math.random()), vz: Math.sin(a) * out, t: 0, floor: point.y + 0.03 });
+    }
+  }
+
   removeBullet(handle, bullet) {
     this.scene.remove(bullet.mesh);
     this.physics.world.removeRigidBody(bullet.body);
@@ -139,6 +173,17 @@ export class Combat {
       b.mesh.position.set(p.x, p.y, p.z);
       b.from.set(p.x, p.y, p.z);
       b.mesh.quaternion.setFromUnitVectors(Z, b.dir.set(v.x, v.y, v.z).normalize());
+    }
+
+    for (let i = this.chunks.length - 1; i >= 0; i--) {
+      const c = this.chunks[i], m = c.mesh;
+      c.t += dt / CHUNK_LIFE;
+      if (c.t >= 1) { this.scene.remove(m); this.chunks.splice(i, 1); continue; }
+      c.vy -= CHUNK_GRAVITY * dt;
+      m.position.x += c.vx * dt; m.position.y += c.vy * dt; m.position.z += c.vz * dt;
+      if (m.position.y < c.floor && c.vy < 0) { m.position.y = c.floor; c.vy *= -0.35; c.vx *= 0.5; c.vz *= 0.5; }
+      m.rotation.x += 9 * dt; m.rotation.z += 7 * dt;
+      m.scale.setScalar(1 - c.t ** 3);
     }
 
     for (let i = this.sparks.length - 1; i >= 0; i--) {

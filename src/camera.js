@@ -11,6 +11,10 @@ const AIM_FOV = 46;
 const AIM_SENS = 0.7; // la mira se mueve más despacio para afinar
 const LOW_DISTANCE = 0.55; // tumbado a cubierto la cámara baja y se acerca (fracción de la distancia)
 export const CAMERA_TUNING = { AIM_DISTANCE, AIM_SHOULDER, AIM_FOV, AIM_SENS, LOW_DISTANCE };
+// Sacudida por un golpe contra el suelo: un tirón hacia abajo que rebota y se apaga.
+const SHAKE_DECAY = 11; // cuánto se apaga por segundo
+const SHAKE_RATE = 38; // rapidez del rebote (rad/s)
+const SHAKE_TILT = 0.12; // cabeceo por metro de sacudida (rad/m)
 const _pivot = new THREE.Vector3();
 const _back = new THREE.Vector3();
 
@@ -28,6 +32,13 @@ export class ThirdPersonCamera {
     this.sensitivity = 1; // ajustes del menú
     this.invertY = false;
     this.forward = new THREE.Vector3(0, 0, -1); // dirección de la mirada
+    this.shake = 0; // amplitud actual de la sacudida (m)
+    this.shakeT = 0;
+  }
+
+  /** Sacude la cámara `amount` metros (un golpe fuerte contra el suelo). */
+  kick(amount) {
+    if (amount > this.shake) { this.shake = amount; this.shakeT = 0; }
   }
 
   /**
@@ -77,6 +88,13 @@ export class ThirdPersonCamera {
 
     this.camera.position.copy(_pivot).addScaledVector(_back, this.current);
     this.camera.lookAt(_pivot);
+    if (this.shake > 0.001) {
+      this.shakeT += dt;
+      const s = -this.shake * Math.cos(this.shakeT * SHAKE_RATE);
+      this.camera.position.y += s;
+      this.camera.rotateX(s * SHAKE_TILT);
+      this.shake *= Math.exp(-SHAKE_DECAY * dt);
+    } else this.shake = 0;
   }
 
   /** Campo de visión que corresponde al apuntado actual, partiendo de `base`. */

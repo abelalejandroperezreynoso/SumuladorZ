@@ -113,7 +113,11 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   El jugador, si al golpear hay un zombi a rastras delante (`LOW_RANGE`, `player.meleeLow`),
   golpea al suelo: sin arma, pisotón (`poseStomp`, `STOMP`, pierna con `Gait.place`); con el
   bate, batazo vertical (`SLAM_KEYS` en vez de `SWING_KEYS`). Daño en `MELEE.pisotón` y
-  `MELEE.bateBajo`. Escenas `pisoton` y `bate-suelo`.
+  `MELEE.bateBajo`. El usuario pidió que estos golpes se sientan agresivos: el cuerpo entero
+  carga atrás y cae sobre el golpe (`SLAM_BODY`, `slamDrop`/`slamLoad` en `poseStomp`, vía
+  `applyCrouch`) y al aplastar, `Combat.impact` da sacudida de cámara (`cam.kick`), pausa del
+  impacto (`combat.freeze`, `HIT_STOP` en `main.js`), onda y trozos; el zombi muerto rebota
+  (`damage(…, slam)`). Escenas `pisoton` y `bate-suelo`.
 - **Muerte de los zombis** — no hay clip de muerte: `Zombie.startRagdoll` (`src/horde.js`) crea
   un cuerpo físico por segmento (`RAGDOLL`, cápsulas en `GROUPS.debris`, unidos por rótulas)
   sobre la pose del momento y `poseRagdoll` lleva los huesos a esos cuerpos. Cuando todos
