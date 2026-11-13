@@ -41,7 +41,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   El personaje y los zombis son solo esqueletos (`src/skeleton.js`): el usuario pidió quitar
   los modelos 3D. Del GLB se usan los huesos y las animaciones; las mallas se eliminan al
   cargar (`Player.load`) y no hay forma de mostrarlas. No volver a ofrecer ni mencionar «el
-  modelo con piel». La cabeza lleva ojos y nariz para ver hacia dónde mira.
+  modelo con piel». La cabeza es un poliedro de caras planas, como los huesos, con el mentón en punta
+  hacia donde mira.
   Las animaciones de caminar y correr tuercen el pie izquierdo ~60° hacia dentro:
   `SkeletonView.straightenFeet` (márgenes en `FOOT_YAW`) endereza los pies de jugador y zombis.
 - **Equilibrio del juego** — `node tools/gameplay.cjs <bot|stand|punch> [segundos]`

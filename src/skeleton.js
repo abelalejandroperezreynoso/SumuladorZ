@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
 import { BODY } from './proportions.js';
 
 // Vista de esqueleto al estilo de Blender: cada hueso es un octaedro alargado, ancho junto a su
@@ -23,10 +24,17 @@ boneGeo.computeVertexNormals();
 const edgeGeo = new THREE.EdgesGeometry(boneGeo);
 const jointGeo = new THREE.SphereGeometry(0.03, 14, 10);
 const edgeMat = new THREE.LineBasicMaterial({ color: 0x111111 });
-// Cara: ojos y nariz para ver hacia dónde mira la cabeza.
-const eyeGeo = new THREE.SphereGeometry(HEAD_RADIUS * 0.17, 10, 8);
-const noseGeo = new THREE.ConeGeometry(HEAD_RADIUS * 0.16, HEAD_RADIUS * 0.45, 10).rotateX(Math.PI / 2); // punta hacia +Z
-const eyeMat = new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.4 });
+// Cabeza: un poliedro de caras planas con aristas marcadas, como los huesos. Su forma dice
+// hacia dónde mira: cráneo ancho atrás y arriba, frente y pómulos adelantados y mentón en
+// punta hacia delante (+Z). Medidas en radios de cabeza, desde su centro.
+const headGeo = new ConvexGeometry([
+  [0, 1.05, -0.1], [0.5, 0.85, -0.55], [-0.5, 0.85, -0.55], [0.45, 0.85, 0.4], [-0.45, 0.85, 0.4], // coronilla
+  [0.78, 0.3, -0.5], [-0.78, 0.3, -0.5], [0, 0.35, -0.98], [0.7, 0.3, 0.45], [-0.7, 0.3, 0.45], // sienes y nuca
+  [0.42, 0.42, 0.88], [-0.42, 0.42, 0.88], // frente
+  [0.55, -0.3, 0.72], [-0.55, -0.3, 0.72], [0.62, -0.35, -0.3], [-0.62, -0.35, -0.3], [0, -0.3, -0.75], // pómulos y base
+  [0.4, -0.85, 0.1], [-0.4, -0.85, 0.1], [0.2, -1.1, 0.74], [-0.2, -1.1, 0.74], // mandíbula y mentón
+].map(([x, y, z]) => new THREE.Vector3(x, y, z).multiplyScalar(HEAD_RADIUS)));
+const headEdges = new THREE.EdgesGeometry(headGeo, 8);
 
 // Colores por tipo de personaje (los materiales se comparten entre todos los del mismo tipo).
 const PALETTES = {
@@ -82,23 +90,14 @@ export class SkeletonView {
       if (SKIP.test(o.name)) continue;
       const joint = new THREE.Mesh(jointGeo, mat.joint);
       joint.castShadow = true;
-      const head = o.name === 'Head';
-      if (head) joint.scale.setScalar(HEAD_RADIUS / 0.03); // la cabeza, a su tamaño
       this.group.add(joint);
-      this.joints.push({ bone: o, mesh: joint, lift: head ? HEAD_UP : 0 });
-      if (head) {
-        // La cara sigue al hueso de la cabeza; se guarda el giro que la deja mirando al +Z
-        // del modelo en la pose de reposo.
-        const face = new THREE.Group();
-        for (const s of [-1, 1]) {
-          const eye = new THREE.Mesh(eyeGeo, eyeMat);
-          eye.position.set(s * HEAD_RADIUS * 0.38, HEAD_RADIUS * 0.22, HEAD_RADIUS * 0.86);
-          face.add(eye);
-        }
-        const nose = new THREE.Mesh(noseGeo, mat.joint);
-        nose.position.set(0, -HEAD_RADIUS * 0.05, HEAD_RADIUS * 1.05);
-        nose.castShadow = true;
-        face.add(nose);
+      this.joints.push({ bone: o, mesh: joint, lift: 0 });
+      if (o.name === 'Head') {
+        // La cabeza sigue a su hueso; se guarda el giro que la deja mirando al +Z del modelo
+        // en la pose de reposo.
+        const face = new THREE.Mesh(headGeo, mat.bone);
+        face.castShadow = true;
+        face.add(new THREE.LineSegments(headEdges, edgeMat));
         this.group.add(face);
         this.face = { bone: o, mesh: face, rest: null };
       }
