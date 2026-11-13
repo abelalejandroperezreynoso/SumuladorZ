@@ -22,6 +22,8 @@ export const GROUPS = {
   enemy: (G_ENEMY << 16) | (ALL & ~G_BULLET),
   enemyBody: (G_ENEMY << 16) | ALL,
   // Al moverse, un zombi ignora a los demás: se separan con un empuje suave (ver horde.js).
+  // Trozos desprendidos de un zombi: solo chocan con el escenario.
+  debris: (0x0020 << 16) | G_WORLD,
   enemyMove: (G_ENEMY << 16) | (ALL & ~(G_BULLET | G_ENEMY)),
 };
 

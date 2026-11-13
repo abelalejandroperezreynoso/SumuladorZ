@@ -182,6 +182,46 @@ export class SkeletonView {
     }
   }
 
+  /**
+   * Desmembramiento: separa del esqueleto las piezas de los huesos dados (un Set; sin él, todas
+   * las que queden) y las devuelve en un grupo aparte, en el mundo, que ya no sigue al modelo.
+   * Devuelve { group, size } (centro y tamaño de la caja que las contiene) o null si no hay nada.
+   */
+  detach(bones) {
+    const has = (b) => !bones || bones.has(b);
+    const box = new THREE.Box3();
+    const meshes = [];
+    this.joints = this.joints.filter((j) => {
+      if (!has(j.bone)) return true;
+      meshes.push(j.mesh);
+      box.expandByPoint(j.mesh.position);
+      return false;
+    });
+    // Un hueso dibujado se va si empieza en la pieza y no sale de ella (el muñón se queda).
+    this.links = this.links.filter((l) => {
+      if (!has(l.from) || (l.to && !has(l.to))) return true;
+      if (l.mesh.visible) {
+        meshes.push(l.mesh);
+        box.expandByPoint(l.mesh.position);
+        box.expandByPoint(_a.set(0, l.mesh.scale.x, 0).applyQuaternion(l.mesh.quaternion).add(l.mesh.position));
+      } else this.group.remove(l.mesh);
+      return false;
+    });
+    if (this.face && has(this.face.bone)) {
+      meshes.push(this.face.mesh);
+      box.expandByPoint(this.face.mesh.position);
+      box.expandByScalar(HEAD_RADIUS);
+      this.face = null;
+    }
+    if (!meshes.length) return null;
+    const group = new THREE.Group();
+    box.getCenter(group.position);
+    this.scene.add(group);
+    group.updateMatrixWorld(true);
+    for (const m of meshes) group.attach(m);
+    return { group, size: box.getSize(new THREE.Vector3()) };
+  }
+
   dispose() {
     this.scene.remove(this.group);
   }

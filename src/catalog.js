@@ -39,7 +39,7 @@ const PLAYER_LAYERS = [
   ['De pie relajado', (p) => p.standW],
   ['Pies clavados', (p) => p.gait.weight],
 ];
-const ZOMBIE_LAYERS = [['Brazos al frente', (z) => z.arms]];
+const ZOMBIE_LAYERS = [['Brazos al frente', (z) => z.arms], ['Arrastre', (z) => z.crawl]];
 
 export class Catalog {
   /**
