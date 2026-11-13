@@ -191,7 +191,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
 
 - **Coberturas** (delante del inicio): bloques con las tres alturas estándar, muy bajo
   (0,45 m), medio (1,1 m) y alto (2,4 m), una por cada tipo de cobertura. Con `C` el personaje se desliza
-  hasta la cobertura más cercana y apoya la espalda en ella, con la pistola en las dos manos delante
+  hasta la cobertura más cercana y apoya la espalda en ella, con la pistola en la mano derecha delante
   del pecho (sin ella, agachado apoya las manos en las rodillas); `A`/`D` lo mueven a lo largo. Sirve
   cualquier bloque o muro.
   Disparando sin apuntar no sale de la cobertura: saca los brazos y dispara a ciegas, con más desvío.
