@@ -65,7 +65,10 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   y clava el pie de apoyo en el mundo, recalculando la pierna. Si se cambia una velocidad de
   marcha o el ritmo de un clip, comprobar que el pie apoyado sigue quieto (la medida
   `footSlide` de `tools/watch.cjs` incluye el instante de apoyar y despegar; en apoyo pleno
-  debe dar ~0). De lado o hacia atrás (apuntando) no actúa.
+  debe dar ~0). De lado o hacia atrás (apuntando) no actúa. De pie (`Gait.stand`) los pies se
+  quedan donde pisaron y dan pasos cortos hasta su sitio al detenerse o al girar sobre el
+  sitio; al arrancar o frenar, un pie que ya no llega da un paso de ajuste en vez de deslizarse.
+  La corrección de pies va siempre después de armar la postura (`applyStand`).
 - **Brazos** — toda pose de brazo calculada por código pasa por `Player.reachArm`, que aplica
   `ARM_LIMITS` (el codo se dobla hacia fuera, abajo y atrás; la mano no va muy detrás de la
   espalda ni cruza el cuerpo salvo por delante). Usarlo en vez de girar huesos a mano.

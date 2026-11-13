@@ -389,7 +389,9 @@ class Zombie {
     // Pies que no resbalan mientras deambula o persigue.
     const run = this.current === this.actions.Run;
     const walking = this.alive && (run || this.current === this.actions.Walk) && (this.moveSpeed ?? 0) > 0.15;
-    this.gait.update(this.mixerDt ?? 0, this.model, this.position.y, this.facing, this.moveSpeed ?? 0,
+    const standing = this.alive && !walking && (this.current === this.actions.Idle || this.current === this.actions.Attack);
+    if (standing) this.gait.stand(this.mixerDt ?? 0, this.model, this.position.y, this.facing);
+    else this.gait.update(this.mixerDt ?? 0, this.model, this.position.y, this.facing, this.moveSpeed ?? 0,
       (run ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), walking);
 
     // Brazos extendidos hacia la presa mientras la persigue.

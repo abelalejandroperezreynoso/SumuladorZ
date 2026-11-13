@@ -1626,10 +1626,14 @@ export class Player {
     const striding = this.state === 'Walking' || this.state === 'Running';
     const ahead = this.speed > 0.3
       ? (this.velocity.x * Math.sin(this.facing) + this.velocity.z * Math.cos(this.facing)) / this.speed : 0;
-    const gaitOn = striding && this.grounded && !this.cover && !prone && this.crouch < 0.05 && ahead > 0.8;
-    if (gaitOn || this.gait.weight > 0.01) this.savePose();
-    this.gait.update(dt, this.model, this.position.y, this.facing, this.speed * ahead,
-      (this.state === 'Running' ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), gaitOn);
+    // Sin apuntar el cuerpo gira enseguida hacia donde va, así que vale desde el arranque;
+    // apuntando solo si avanza de frente (de lado o hacia atrás el clip no sirve).
+    const gaitOn = striding && this.grounded && !this.cover && !prone && this.crouch < 0.05
+      && (ahead > 0.8 || this.aimWeight < 0.3);
+    // De pie y quieto los pies se quedan donde pisaron y dan pasos cortos (tras la postura).
+    const standOn = !gaitOn && this.state === 'Idle' && this.grounded && !this.cover && !prone && this.crouch < 0.05
+      && this.coverCrouch < 0.02;
+    if (gaitOn || standOn || this.gait.weight > 0.01) this.savePose();
     if (prone) {
       const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
       const n = this.proneN;
@@ -1657,6 +1661,9 @@ export class Player {
       this.applyRecline(ease);
     }
     if (this.standW > 0.01 && !prone) this.applyStand(this.standW);
+    if (standOn) this.gait.stand(dt, this.model, this.position.y, this.facing);
+    else this.gait.update(dt, this.model, this.position.y, this.facing, this.speed * Math.max(ahead, 0),
+      (this.state === 'Running' ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), gaitOn);
     // Flexión del salto y agachado de cobertura comparten la misma pose procedimental.
     const jc = this.crouch, cc = this.coverCrouch;
     if (jc > 0.01 || cc > 0.01 || Math.abs(this.coverLean) > 0.005 || this.coverGrip > 0.01) {
