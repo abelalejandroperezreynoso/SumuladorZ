@@ -82,7 +82,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   apuntar el cañón sigue al antebrazo y la muñeca no se dobla más de `WRIST_MAX`. El batazo va entero por código
   (`SWING_KEYS`, `swingPhase`, `placeBat`): impulso atrás, golpe y acompañamiento, sin clip;
   durante el giro los límites de los brazos se miden en el marco del pecho (`armFrame`).
-- **Cobertura** — `coverMove` mide cada fotograma la distancia a cada final del muro
+- **Cobertura** — la entrada se desliza hasta el muro y en el último tramo (`COVER_ARRIVE`,
+  `cover.arrive` 0-1) frena, se da la vuelta, se agacha y coloca los brazos a la vez. `coverMove` mide cada fotograma la distancia a cada final del muro
   (`cover.edgeR`, `cover.edgeL`) y en qué límite está (`cover.limit`: -1 derecho, +1 izquierdo,
   0 ninguno; `LIMIT_RANGE`). El disparo a ciegas se decide con eso (`cover.blindMode`: `side`
   por el borde, girado hacia él; `over` por encima del muro bajo; `up` brazo en alto y tiro

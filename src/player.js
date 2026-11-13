@@ -46,7 +46,11 @@ const COVER_GAP = 0.05; // separación entre la cápsula y el muro
 const COVER_HUG = 0.27; // cuánto se arrima el cuerpo al muro, hasta apoyar la espalda (m)
 const COVER_HUG_AIM = 0.12; // ...y al levantarse de cara al muro para apuntar por encima
 const LIMIT_RANGE = 0.55; // a menos de esto del final del muro, está en su límite (m)
-const COVER_SLIDE_SPEED = 7; // velocidad del deslizamiento de entrada (m/s)
+const COVER_SLIDE_SPEED = 5.5; // velocidad del deslizamiento de entrada (m/s)
+const COVER_BRAKE = 6; // frenado al llegar: velocidad por metro que falta (1/s)
+// En el último tramo de la entrada se va dando la vuelta y agachando, para llegar ya de
+// espaldas y abajo en vez de hacerlo todo de golpe al tocar el muro.
+const COVER_ARRIVE = 1.1; // distancia al muro a la que empieza (m)
 const COVER_SPEED = 1.7; // velocidad pegado al muro (m/s)
 const COVER_CROUCH_SPEED = 1.3; // ...y agachado tras una cobertura baja
 const COVER_EXIT_TIME = 0.2; // tiempo tirando hacia fuera para despegarse (s)
@@ -273,7 +277,7 @@ export const PLAYER_CLIPS = {
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
-  COVER_RANGE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, PEEK_HOLD, PEEK_LOOK,
+  COVER_RANGE, COVER_SLIDE_SPEED, COVER_ARRIVE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, PEEK_HOLD, PEEK_LOOK,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
   HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
 };
@@ -612,6 +616,12 @@ export class Player {
       c.nx = hit.nx;
       c.nz = hit.nz;
       gap = hit.dist - (RADIUS + COVER_GAP);
+      // 0-1: cuánto de la llegada lleva hecho; gira por el lado que le queda más cerca.
+      c.arrive = c.attached ? 1 : THREE.MathUtils.smoothstep(1 - gap / COVER_ARRIVE, 0, 1);
+      if (!c.turnSide) {
+        const d = Math.atan2(Math.sin(this.facing - Math.atan2(-c.nx, -c.nz)), Math.cos(this.facing - Math.atan2(-c.nx, -c.nz)));
+        c.turnSide = d < 0 ? -1 : 1;
+      }
       if (gap < 0.12 && !c.attached) {
         c.attached = true;
         // Recostado no se da la vuelta: la cabeza queda hacia donde empujaba al llegar (o a la
@@ -707,7 +717,7 @@ export class Player {
     if (c.veryLow && this.blindW > 0.3) along = 0; // acostado no se arrastra con el arma fuera
     const vt = along * (c.veryLow ? PRONE_SPEED : c.high ? COVER_SPEED : COVER_CROUCH_SPEED) + c.peekDir * peekV;
     // El deslizamiento hacia el muro acelera en vez de arrancar de golpe.
-    const vnTarget = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * 10, -2, COVER_SLIDE_SPEED);
+    const vnTarget = c.peek > 0.02 ? 0 : THREE.MathUtils.clamp(gap * (c.attached ? 10 : COVER_BRAKE), -2, COVER_SLIDE_SPEED);
     c.vn = Math.min(vnTarget, (c.vn ?? Math.max(0, -(this.velocity.x * c.nx + this.velocity.z * c.nz))) + 45 * dt);
     const vn = c.vn;
     this.velocity.x = tx * vt - c.nx * vn;
@@ -804,6 +814,8 @@ export class Player {
       } else if (cover.mode === 'over') coverCrouchTarget = cover.veryLow ? POSES.rodillas.agachado : CROUCH_OVER;
       else if (cover.veryLow) proneTarget = 1;
       else if (!cover.high) coverCrouchTarget = CROUCH_HIDE;
+    } else if (cover && !cover.high && !cover.veryLow) {
+      coverCrouchTarget = CROUCH_HIDE * (cover.arrive ?? 0); // llegando a una cobertura baja
     }
     // Recostarse es más pausado que incorporarse a disparar.
     this.prone = THREE.MathUtils.damp(this.prone, proneTarget, proneTarget ? 6 : 9, dt);
@@ -918,7 +930,8 @@ export class Player {
       && this.crouch < 0.02 && this.speed < 0.3;
     this.standW = THREE.MathUtils.damp(this.standW, still ? 1 : 0, still ? 5 : 12, dt);
     this.breath += BREATH_RATE * dt;
-    this.coverReady = THREE.MathUtils.damp(this.coverReady, cover?.attached ? 1 : cover ? 0.5 : 0, 8, dt);
+    // Los brazos van tomando la postura de espera durante la llegada.
+    this.coverReady = THREE.MathUtils.damp(this.coverReady, cover?.attached ? 1 : cover ? 0.3 + 0.7 * (cover.arrive ?? 0) : 0, 10, dt);
     const blind = this.blindT > 0 && !!cover?.attached && !cover.mode && cover.peek < 0.02;
     this.blindW = THREE.MathUtils.damp(this.blindW, blind ? 1 : 0, blind ? 14 : 9, dt);
 
@@ -935,8 +948,9 @@ export class Player {
         // A ciegas en un límite del muro: se gira hacia ese borde, con el hombro en el muro,
         // para sacar el brazo de frente por él.
         this.turnToward(Math.atan2(cover.nz * cover.blindSide, -cover.nx * cover.blindSide), 14, dt);
-      } else
-      this.turnToward(Math.atan2(cover.nx * s, cover.nz * s), 14, dt);
+      } else if (!cover.attached) {
+        this.turnToward(Math.atan2(-cover.nx, -cover.nz) + Math.PI * (cover.veryLow ? 0 : cover.arrive ?? 0) * (cover.turnSide || 1), 16, dt); // acostado llega de cara
+      } else this.turnToward(Math.atan2(cover.nx, cover.nz), 14, dt);
     } else if (moving && !punching) {
       // Giro suave con velocidad máxima: una media vuelta tarda ~0,25 s en vez de un latigazo.
       this.turnToward(Math.atan2(_v.x, _v.z), 12, dt);
