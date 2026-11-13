@@ -120,6 +120,14 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   (`damage(…, slam)`). El batazo normal también (`SLAM_BODY.batazo`, `slamKey`): más giro
   de tronco, se hunde al conectar y, si da a un zombi, sacudida, pausa, trozos y sale
   despedido más lejos (`empuje`). Escenas `pisoton`, `bate-suelo` y `bate`.
+- **Bardas** — corriendo de frente contra un muro, o saltando junto a él, `Player.tryVault`
+  mide con rayos su altura, su fondo y el suelo del otro lado y deja el recorrido en
+  `player.vault` (`kind`: `salto` hasta `VAULT.salto`, `apoyo` hasta `VAULT.apoyo`, `escala`
+  hasta `VAULT.escala`; `onTop` si arriba hay sitio y se queda encima). Mientras dura,
+  `updateVault` mueve la cápsula por `vaultPath` sin mandos ni choques y `poseVault` arma la
+  postura (cuerpo ladeado y mano con `reachArm`; en la escalada, manos al borde, tronco y
+  piernas encogidas con `applyCrouch`). Al terminar sigue la física normal (si no hay suelo,
+  cae). Escenas `barda_baja`, `barda_media` y `barda_alta`. Los zombis no las pasan.
 - **Muerte de los zombis** — no hay clip de muerte: `Zombie.startRagdoll` (`src/horde.js`) crea
   un cuerpo físico por segmento (`RAGDOLL`, cápsulas en `GROUPS.debris`, unidos por rótulas)
   sobre la pose del momento y `poseRagdoll` lleva los huesos a esos cuerpos. Cuando todos
