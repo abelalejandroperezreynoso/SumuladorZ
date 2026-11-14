@@ -148,6 +148,7 @@ async function start() {
   });
   input.onPadStart = () => { if (!catalog?.active) resume(); };
   input.onPadMenu = pause;
+  input.onPadNav = (cmd) => { if (!catalog?.active) menu.nav(cmd); };
   document.addEventListener('pointerlockchange', () => {
     if (input.touchMode || input.padMode) return;
     if (input.locked) menu.setOpen(false);
