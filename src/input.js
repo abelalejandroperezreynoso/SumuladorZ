@@ -1,6 +1,8 @@
 import { RUN_THRESHOLD } from './touch.js';
 
 // Teclado + ratón con bloqueo de puntero (y joystick táctil en móviles).
+const PAD_HOLD = 0.22; // s que hay que mantener A para la carrera rápida (menos: es un salto)
+
 export class Input {
   constructor(element) {
     this.element = element;
@@ -84,7 +86,7 @@ export class Input {
 
   /**
    * Lee el mando (Xbox, PlayStation…) con la API Gamepad. Llamar al inicio de cada frame.
-   * Distribución estándar: A mantenido carrera rápida, RB saltar, X golpe, B cubrirse, Y correr rápido,
+   * Distribución estándar: A toque saltar y mantenido carrera rápida, RB saltar, X golpe, B cubrirse, Y correr rápido,
    * LT apuntar, RT disparar, cruceta ← → cambiar de arma, LB horda, Menú empezar, Vista reiniciar, stick izquierdo moverse (a fondo o pulsado
    * = correr), stick derecho cámara.
    */
@@ -122,7 +124,10 @@ export class Input {
     this.padStick.x = dz(ax[0] ?? 0);
     this.padStick.y = -dz(ax[1] ?? 0);
     this.padRun = now[10]; // stick pulsado: correr
-    this.padSprint = now[0]; // A mantenido: carrera rápida; al soltar, vuelve a la normalidad
+    // A: un toque salta; mantenido más de PAD_HOLD, carrera rápida hasta soltarlo.
+    this.padAHeld = now[0] ? (this.padAHeld ?? 0) + dt : 0;
+    if (!now[0] && prev[0] && !this.padSprint) this.pressed.add('Space');
+    this.padSprint = this.padAHeld > PAD_HOLD;
     // Stick derecho: equivale a mover el ratón (curva cuadrática para apuntar fino).
     const lx = dz(ax[2] ?? 0), ly = dz(ax[3] ?? 0);
     const LOOK = 1100 * dt;

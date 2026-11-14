@@ -120,7 +120,7 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   (`damage(…, slam)`). El batazo normal también (`SLAM_BODY.batazo`, `slamKey`): más giro
   de tronco, se hunde al conectar y, si da a un zombi, sacudida, pausa, trozos y sale
   despedido más lejos (`empuje`). Escenas `pisoton`, `bate-suelo` y `bate`.
-- **Bardas** — corriendo de frente contra un muro, o saltando junto a él, `Player.tryVault`
+- **Bardas** — en carrera rápida (`sprinting`) de frente contra un muro, o saltando junto a él, `Player.tryVault`
   mide con rayos su altura, su fondo y el suelo del otro lado y deja el recorrido en
   `player.vault` (`kind`: `salto` hasta `VAULT.salto`, `apoyo` hasta `VAULT.apoyo`, `escala`
   hasta `VAULT.escala`; `onTop` si arriba hay sitio y se queda encima). Mientras dura,

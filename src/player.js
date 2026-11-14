@@ -201,7 +201,7 @@ const SLAM_BODY = {
   batazo: { carga: 0, baja: 0.13, tronco: 0, brazos: 0, antes: 0.16, despues: 0.34, sacudida: 0.1, pausa: 0.1, rebote: 0, empuje: 2.2 },
   bate: { carga: 0, baja: 0.24, tronco: 0, brazos: 0, antes: 0.14, despues: 0.38, sacudida: 0.13, pausa: 0.11, rebote: 3.4 },
 };
-// Bardas: corriendo de frente contra un muro (o saltando junto a él) lo pasa por encima. Según
+// Bardas: en carrera rápida de frente contra un muro (o saltando junto a él) lo pasa por encima. Según
 // su altura sobre los pies (m): hasta `salto` lo salta sin tocarlo; hasta `apoyo` lo pasa
 // apoyando la mano izquierda, con las piernas por un lado; hasta `escala` se cuelga del borde,
 // se sube a pulso y se deja caer al otro lado. Si arriba hay sitio (más de `grosor` de fondo)
@@ -1057,9 +1057,9 @@ export class Player {
           : this.blindW > 0.7
     ));
 
-    // --- Bardas: corriendo de frente contra una, o saltando junto a ella, la pasa ---
+    // --- Bardas: en carrera rápida de frente contra una, o saltando junto a ella, la pasa ---
     if (!cover && this.grounded && moving && !punching && !aimHeld && this.jumpT < 0
-      && (this.speed > (WALK_SPEED + RUN_SPEED) / 2 || this.jumpBuffer > 0) && this.tryVault(_v)) {
+      && (this.sprinting || this.jumpBuffer > 0) && this.tryVault(_v)) {
       this.jumpBuffer = 0;
       return this.updateVault(0);
     }
