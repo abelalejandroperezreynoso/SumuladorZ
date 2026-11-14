@@ -129,15 +129,21 @@ export function box(parent, size, pos, material, shadow = true) {
   return m;
 }
 
+/** Lo que entran los marcos en su hueco (m), para no coincidir con el canto del muro. */
+const TRIM_INSET = 0.01;
+
 /**
  * Carpintería de una ventana, en el marco local del hueco (X a lo largo del muro, Z hacia
  * fuera con `out`): marco, alféizar que sobresale y contraventanas abiertas por fuera.
  */
 export function windowTrim(g, V, muro, out) {
   const h = V.alto - V.bajo, yc = (V.bajo + V.alto) / 2, d = muro + 0.05, t = 0.06;
-  box(g, [V.ancho + 2 * t, t, d], [0, V.alto + t / 2, 0], WOOD);
-  box(g, [t, h, d], [-V.ancho / 2 - t / 2, yc, 0], WOOD);
-  box(g, [t, h, d], [V.ancho / 2 + t / 2, yc, 0], WOOD);
+  // El marco entra un poco en el hueco: si su cara coincide con el canto del muro, las dos
+  // superficies parpadean (franjas a cuadros).
+  const e = TRIM_INSET;
+  box(g, [V.ancho + 2 * t, t, d], [0, V.alto + t / 2 - e, 0], WOOD);
+  box(g, [t, h, d], [-V.ancho / 2 - t / 2 + e, yc, 0], WOOD);
+  box(g, [t, h, d], [V.ancho / 2 + t / 2 - e, yc, 0], WOOD);
   box(g, [V.ancho + 2 * t + 0.1, 0.05, muro + 0.2], [0, V.bajo - 0.025, out * 0.05], WOOD_LIGHT); // alféizar
   // Por dentro: barra y dos cortinas recogidas a los lados.
   const zi = -out * (muro / 2 + 0.06);
@@ -241,8 +247,8 @@ export function decorate(scene, physics, H, tex, doorZ) {
 
   // --- Entrada: marco, tejadillo, felpudo, losas del camino y farol ---
   const P = H.puerta, dz = doorZ - H.z, fx = hx - H.muro / 2;
-  for (const s of [-1, 1]) at([H.muro + 0.06, P.alto + 0.07, 0.07], [fx, (P.alto + 0.07) / 2, dz + s * (P.ancho / 2 + 0.035)], WOOD_DARK);
-  at([H.muro + 0.06, 0.07, P.ancho + 0.14], [fx, P.alto + 0.035, dz], WOOD_DARK);
+  for (const s of [-1, 1]) at([H.muro + 0.06, P.alto + 0.07, 0.07], [fx, (P.alto + 0.07) / 2, dz + s * (P.ancho / 2 + 0.035 - TRIM_INSET)], WOOD_DARK);
+  at([H.muro + 0.06, 0.07, P.ancho + 0.14], [fx, P.alto + 0.035 - TRIM_INSET, dz], WOOD_DARK);
   const porch = at([0.9, 0.06, P.ancho + 0.9], [hx + 0.4, P.alto + 0.42, dz], roofMat);
   porch.rotation.z = -0.32;
   for (const s of [-1, 1]) {
