@@ -140,6 +140,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   rodeo supone (ventana o puerta; a rastras solo la puerta) y, plantados ante una ventana,
   pasan al estado `window` (`Zombie.climbWindow`, claves en `WINDOW`): cabezazo que rompe el
   cristal y paso volcados sobre el alféizar, sin choques; la postura se arma en `postPhysics`.
+  Brazos y piernas no atraviesan el muro: `Zombie.clearWall` gira cada extremidad que entra
+  (`wallDepth`) desde el hombro o la cadera lo mínimo que la saca, suavizado (`WALL_CLEAR`; las
+  piernas solo se doblan hacia delante). Medido: ≤2 cm de roce en toda la trepada.
   Escenas `casa_puerta`, `casa_ventana` y `zombi_ventana`.
   Los acabados van en `src/house-details.js`: texturas pintadas en lienzo (`houseTextures`;
   `worldUV` evita que se estiren), carpintería de ventanas (`windowTrim`), cristal con

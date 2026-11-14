@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { SkeletonView, bakeStatic } from './skeleton.js';
 import { RAPIER, GROUPS } from './physics.js';
+import { HOUSE_TUNING } from './house.js';
 
 const RADIUS = 0.35;
 const HALF = 0.5;
@@ -34,7 +35,7 @@ const BITE_WINDUP = 0.35; // cuánto se echa atrás antes de morder (fracción d
 // vuelca el cuerpo hacia delante (rad).
 const WINDOW = {
   romper: 0.8, fraccion: 0.6, tiempo: 2.4, cadera: 0.95, patadas: 0.5,
-  claves: [[0, -0.7, 0.95, 0], [0.18, -0.36, 1.0, 0.75], [0.42, 0.02, 1.16, 1.45], [0.62, 0.5, 0.42, 1.95],
+  claves: [[0, -0.7, 0.95, 0], [0.18, -0.36, 1.0, 0.75], [0.42, 0.02, 1.16, 1.45], [0.5, 0.26, 1.12, 1.75], [0.62, 0.5, 0.42, 1.95],
     [0.74, 0.72, 0.28, 1.5], [1, 0.95, 0.95, 0]],
 };
 const BITE_BEND = [['Abdomen', 0.22], ['Torso', 0.25], ['Neck', 0.3], ['Head', -0.12]];
@@ -707,7 +708,7 @@ class Zombie {
     this.body.setNextKinematicTranslation({ x: P.x, y: t.y, z: P.z });
     if (u >= 1) {
       this.state = 'chase';
-      this.win = this.winPose = null;
+      this.win = this.winPose = this.wallTurn = null;
       this.grounded = false;
       this.vy = 0;
     }
@@ -716,7 +717,8 @@ class Zombie {
   /** Después del paso de física: coloca el modelo y aplica la pose. */
   postPhysics() {
     if (this.ragdoll) return this.poseRagdoll(); // muerto: los huesos siguen a la física
-    for (let i = 0; i < this.saved.length; i += 2) this.saved[i].quaternion.copy(this.saved[i + 1]);
+    // De atrás adelante: si un hueso se guardó dos veces, gana la primera copia (la del clip).
+    for (let i = this.saved.length - 2; i >= 0; i -= 2) this.saved[i].quaternion.copy(this.saved[i + 1]);
     this.saved.length = 0;
     if (this.posed) {
       for (const a of this.armBones) a.bone.quaternion.copy(a.quat);
@@ -780,7 +782,73 @@ class Zombie {
       }
       this.posed = true;
     }
+    if (P) this.clearWall(this.win.w);
   }
+
+  /**
+   * Trepando por una ventana: brazos y piernas no atraviesan el muro. Cada extremidad que
+   * entra en él gira desde el hombro o la cadera (hacia delante o atrás del cuerpo) el
+   * ángulo más pequeño que la saca, por encima del alféizar o pegada a la pared.
+   */
+  clearWall(w) {
+    this.model.updateMatrixWorld(true);
+    _axis.set(1, 0, 0).applyQuaternion(this.model.quaternion); // su izquierda
+    for (const names of WALL_LIMBS) {
+      const chain = names.map((n) => this.bones[n]);
+      if (chain.some((b) => !b || this.lost.has(b))) continue;
+      const depth = () => {
+        let worst = 0;
+        for (let i = 0; i < chain.length - 1; i++) {
+          chain[i].getWorldPosition(_c);
+          chain[i + 1].getWorldPosition(_d);
+          for (let k = 0; k <= 6; k++) worst = Math.max(worst, wallDepth(w, _e.copy(_c).lerp(_d, k / 6)));
+        }
+        return worst;
+      };
+      const bone = chain[0], start = bone.quaternion.clone(), key = names[0];
+      const prev = (this.wallTurn ??= {})[key] ?? 0;
+      let target = 0;
+      if (depth() >= 0.005) {
+        // El menor giro que la saca; a igual giro, hacia el mismo lado que antes (sin saltos).
+        const sides = key.startsWith('UpperLeg') ? [1] : prev < 0 ? [-1, 1] : [1, -1];
+        let bestDepth = Infinity;
+        search: for (let a = WALL_CLEAR.paso; a <= WALL_CLEAR.giro + 1e-6; a += WALL_CLEAR.paso) {
+          for (const sgn of sides) {
+            bone.quaternion.copy(start);
+            turnWorld(bone, _axis, sgn * a);
+            const d = depth();
+            if (d < bestDepth - 0.002) { bestDepth = d; target = sgn * a; }
+            if (d < 0.005) break search;
+          }
+        }
+        bone.quaternion.copy(start);
+      }
+      // Se aparta deprisa (para no entrar en el muro) y vuelve despacio.
+      const rate = Math.abs(target) > Math.abs(prev) ? WALL_CLEAR.apartar : WALL_CLEAR.volver;
+      const angle = THREE.MathUtils.damp(prev, target, rate, this.mixerDt || 1 / 60);
+      this.wallTurn[key] = angle;
+      if (Math.abs(angle) < 1e-3) { bone.updateMatrixWorld(true); continue; }
+      if (!this.armBones.some((x) => x.bone === bone)) this.saved.push(bone, start.clone());
+      turnWorld(bone, _axis, angle);
+    }
+  }
+}
+
+// Extremidades que se apartan del muro al trepar: raíz (gira) y las articulaciones que le siguen.
+const WALL_LIMBS = [['UpperArmL', 'LowerArmL', 'WristL', 'Middle1L'], ['UpperArmR', 'LowerArmR', 'WristR', 'Middle1R'],
+  ['UpperLegL', 'LowerLegL', 'FootL'], ['UpperLegR', 'LowerLegR', 'FootR']];
+// Búsqueda del giro que saca la extremidad: de `paso` en `paso` rad hasta `giro`; grosor del hueso (m);
+// `apartar` y `volver`: cómo de deprisa sigue la extremidad a ese giro al alejarse del muro y al soltarlo.
+const WALL_CLEAR = { paso: 0.1, giro: 2.6, grosor: 0.04, apartar: 25, volver: 10 };
+/** Cuánto entra el punto p (con el grosor del hueso) en el muro de la ventana w, fuera del hueco (m). */
+function wallDepth(w, p) {
+  const H = HOUSE_TUNING.HOUSE, V = H.ventana, r = WALL_CLEAR.grosor;
+  const dx = p.x - w.x, dz = p.z - w.z;
+  const n = Math.abs(dx * w.nx + dz * w.nz), t = Math.abs(-dx * w.nz + dz * w.nx);
+  const inWall = H.muro / 2 + 0.03 + r - n;
+  if (inWall <= 0) return 0;
+  const free = Math.min(V.ancho / 2 - t, p.y - V.bajo, V.alto - p.y); // margen dentro del hueco
+  return free >= r ? 0 : Math.min(inWall, r - free);
 }
 
 /** Crea los cuerpos físicos del muñeco de trapo sobre la pose que tiene ahora mismo. */
