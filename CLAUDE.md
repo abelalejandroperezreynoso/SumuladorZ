@@ -127,7 +127,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
 - **Bardas** — en carrera rápida (`sprinting`) de frente contra un muro, o saltando junto a él, `Player.tryVault`
   mide con rayos su altura, su fondo y el suelo del otro lado y deja el recorrido en
   `player.vault` (`kind`: `salto` hasta `VAULT.salto`, `apoyo` hasta `VAULT.apoyo`, `escala`
-  hasta `VAULT.escala`; `onTop` si arriba hay sitio y se queda encima). Mientras dura,
+  hasta `VAULT.escala`; `onTop` si arriba hay sitio y se queda encima). Antes de empezar,
+  `vaultClear` prueba la cápsula entera (`VAULT_CLEAR`) a lo largo de todo `vaultPath`: si chocaría con
+  algo que no sea la propia barda (marco de ventana, poste, pared, techo), no salta. Mientras dura,
   `updateVault` mueve la cápsula por `vaultPath` sin mandos ni choques y `poseVault` arma la
   postura (cuerpo ladeado y mano con `reachArm`; en la escalada, manos al borde, tronco y
   piernas encogidas con `applyCrouch`). Al terminar sigue la física normal (si no hay suelo,
