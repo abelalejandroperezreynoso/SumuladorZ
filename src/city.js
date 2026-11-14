@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RAPIER } from './physics.js';
 import { cityTextures, cityMaterials, rng } from './city-textures.js';
 import { Batch } from './city-build.js';
+import { Glass } from './interior.js';
 import { BLOCKS, roadblock, DETAIL } from './city-blocks.js';
 import { lamp, tree, bench, bin, hydrant, busStop, trafficLight, car, cone, pick, rr } from './city-props.js';
 
@@ -86,6 +87,9 @@ export class City {
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     world.createCollider(RAPIER.ColliderDesc.cuboid(half + 40, 0.5, half + 40).setTranslation(C.x, -0.5, C.z), this.body);
     const marks = {};
+    /** Cristales que se rompen y edificios en los que se entra (src/interior.js). */
+    this.glass = new Glass(scene, physics);
+    this.interiors = [];
     let tris = 0, solids = 1;
     const batch = () => { const b = new Batch(world, this.body); b.marks = marks; return b; };
     const done = (b) => { tris += b.build(this.group); solids += b.solids; };
@@ -142,7 +146,7 @@ export class City {
     // --- Manzanas ---
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const type = LAYOUT[j][i], b = batch();
-      const G = { b, M, R: rng(1000 + i * 37 + j * 101), signs: T.signs };
+      const G = { b, M, R: rng(1000 + i * 37 + j * 101), signs: T.signs, glass: this.glass, interiors: this.interiors };
       b.push(C.x + blockAt(i), C.z + blockAt(j), 0, S);
       b.box(M.sidewalk, 0, -S, 0, C.manzana, S, C.manzana, { uv: [3, 3], topUV: 3 });
       b.solid(0, -S - 0.4, 0, C.manzana, S + 0.4, C.manzana);
@@ -157,6 +161,7 @@ export class City {
       done(b);
     }
 
+    this.glass.build(this.group);
     this.tris = tris; // (cifras para tools/city.cjs)
     this.solids = solids;
     this.buildMs = performance.now() - t0;
@@ -165,7 +170,7 @@ export class City {
     /** Dónde empieza el jugador y hacia dónde mira la cámara. */
     this.spawn = { x: sp.x, z: sp.z, yaw: 0 };
     /** Objetos del escenario: [tipo, x, z], como en `pickups.js`. */
-    this.pickups = ['pistola', 'bate', 'balas'].flatMap((kind) => (marks[kind] ?? []).map((m) => [kind, m.x, m.z]));
+    this.pickups = ['pistola', 'bate', 'balas'].flatMap((kind) => (marks[kind] ?? []).map((m) => [kind, m.x, m.z, m.y]));
 
     // --- Luces de verdad de las farolas más cercanas ---
     this.lights = [];
@@ -195,6 +200,7 @@ export class City {
 
   /** Lleva las luces a las farolas más cercanas a `pos`, encendiéndolas y apagándolas poco a poco. */
   update(dt, pos) {
+    this.glass.update(dt);
     this.scanT -= dt;
     if (this.scanT <= 0) {
       this.scanT = 0.3;

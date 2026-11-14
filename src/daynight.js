@@ -7,9 +7,9 @@ import * as THREE from 'three';
 export const CYCLE = { dia: 300, noche: 300, atardecer: 37.5, tramos: 16 };
 // Cielo en cada momento: cenit, horizonte (también es el color de la niebla) y luces.
 const SKY = {
-  dia: { top: 0x4f93d8, low: 0xa9cdea, hemi: 0xdfeeff, ground: 0x4a4f48, hemiK: 1.1, fog: [70, 270] },
+  dia: { top: 0x4f93d8, low: 0xa9cdea, hemi: 0xdfeeff, ground: 0x7d7a70, hemiK: 1.1, fog: [70, 270] },
   ocaso: { top: 0x3b3a78, low: 0xf08f58 },
-  noche: { top: 0x04060e, low: 0x0c1526, hemi: 0x7f98d0, ground: 0x161b26, hemiK: 0.5, fog: [16, 130] },
+  noche: { top: 0x04060e, low: 0x0c1526, hemi: 0x7f98d0, ground: 0x222631, hemiK: 0.5, fog: [16, 130] },
 };
 const SUN = { color: 0xfff2dd, low: 0xff9a55, fuerza: 2.4 };
 const MOON = { color: 0x9db4ff, fuerza: 0.8 };

@@ -51,6 +51,7 @@ export class GameMode {
     sky.setActive(true);
     this.torch.visible = true;
     horde.bounds = city.bounds;
+    horde.buildings = city.interiors;
     player.spawn = { x: city.spawn.x, y: CITY.bordillo + 0.06, z: city.spawn.z };
     pickups.layout = city.pickups;
     pickups.respawn = GAME.balas;
@@ -66,6 +67,7 @@ export class GameMode {
     horde.stop();
     horde.setMood(MOODS.normal);
     horde.bounds = this.sim.bounds;
+    horde.buildings = [];
     city.setActive(false);
     city.setNight(0);
     sky.setActive(false);
@@ -91,6 +93,7 @@ export class GameMode {
     cam.pitch = 0.16;
     this.outside = false;
     this.civT = 5;
+    city.glass.reset();
     horde.setMood(MOODS.dia);
     horde.setAmbient(this.population(), player, true);
     pickups.reset();

@@ -1,4 +1,5 @@
 import { mix } from './city-build.js';
+import { room } from './interior.js';
 import {
   pick, rr, lamp, post, tree, pine, bush, bench, bin, planter, barrier, sandbags, dumpster, crate, barrel, cone,
   chainFence, wallLine, picket, car, container, silo,
@@ -137,22 +138,40 @@ export function shopRow(G, w, d = 9, names = null) {
     const x = -w / 2 + (i + 0.5) * sw, two = R() < 0.5;
     const kind = R() < 0.5 ? 'brick' : 'plaster', tint = pick(R, kind === 'brick' ? BRICK_TINTS : PLASTER_TINTS);
     const h = two ? gh + 3.1 : gh + rr(R, 0.3, 1.1);
-    b.box(M.concrete, x, 0, 0, sw, gh, d, { color: mix(tint, 0x8a8a8a, 0.35), uv: [3, 3], top: false });
-    if (two) b.box(M[kind], x, gh, 0, sw, 3.1, d, { cells: [sw / Math.max(2, Math.round(sw / 2.8)), 3.1], cu: Math.floor(R() * 4), cv: Math.floor(R() * 4), color: tint, top: M.roof });
-    else b.box(M.concrete, x, gh, 0, sw, h - gh, d, { color: tint, uv: [3, 3], top: M.roof });
-    b.box(M.concrete, x, h, 0, sw + 0.1, 0.3, d + 0.1, { color: 0xd8d2c4, uv: [3, 3], top: M.roof });
-    const bays = Math.max(2, Math.round((sw - 0.6) / 3)), row = Math.floor(R() * 4);
-    b.vquad(M.shop, x, 0, d / 2 + 0.03, sw - 0.5, 3.25, { rect: [0, row / 4, bays / 4, (row + 1) / 4] });
-    b.box(M.plain, x, 3.28, d / 2 + 0.1, sw - 0.4, 0.74, 0.2, { color: 0x1d2023 });
-    const name = names?.[i] ?? pick(R, signs.shops);
-    b.vquad(M.signs, x, 3.33, d / 2 + 0.215, Math.min(sw - 0.9, 4.4), 0.64, { rect: signs.uv(name) });
-    if (R() < 0.65) b.wedge(M.plain, x, 2.62, d / 2 + 0.8, sw - 0.9, 1.6, 0.62, { rot: Math.PI, color: pick(R, AWNINGS), bottom: true });
-    b.solid(x, 0, 0, sw, h, d);
-    if (R() < 0.7) { b.box(M.plain, x + rr(R, -1.5, 1.5), h + 0.3, rr(R, -2, 2), 1.6, 0.9, 1.2, { color: 0x9ea3a8 }); }
-    // Puerta de servicio detrás.
-    b.push(x, 0, Math.PI);
-    b.vquad(M.details, rr(R, -1.5, 1.5), 0, d / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: 0x6f7479 });
+    // Planta baja: un local en el que se entra rompiendo el escaparate (o por la puerta de atrás, si quedó abierta).
+    const bays = Math.max(1, Math.round((sw - 1.4) / 3.3)), fw = Math.min(2.6, sw / bays - 0.9);
+    const backDoor = R() < 0.35, backAt = rr(R, -1.2, 1.2);
+    b.push(x, 0, 0);
+    room(G, sw, d, {
+      h: gh - 0.2, color: mix(tint, 0xb0b0b0, 0.35), floorColor: pick(R, [0x9a8f80, 0x7d8a8f, 0xa89a7a, 0x8a8078]),
+      sides: {
+        front: Array.from({ length: bays }, (_, k) => ({ at: -sw / 2 + ((k + 0.5) * sw) / bays, kind: 'front', w: fw })),
+        back: backDoor ? [{ at: backAt, kind: 'door', leafColor: 0x6f7479 }] : [],
+      },
+    });
+    // Mostrador y estanterías a medio saquear.
+    const wood = pick(R, [0x7a5a3a, 0x5a4330, 0x8f959b, 0x9a7448]);
+    b.box(M.plain, sw * 0.14, 0, -d * 0.18, Math.min(2.2, sw * 0.3), 1.0, 0.6, { color: wood, solid: true });
+    for (const s of [-1, 1]) {
+      b.box(M.plain, s * (sw / 2 - 0.5), 0, -d * 0.1, 0.45, 1.9, d * 0.5, { color: 0x8f959b, solid: true });
+      for (let k = 0; k < 3; k++) b.box(M.plain, s * (sw / 2 - 0.52), 0.45 + k * 0.5, -d * 0.1, 0.5, 0.26, d * 0.46, { color: pick(R, [0xc8322b, 0x2a4d8f, 0xd6a21e, 0x3d6b4a, 0xe8e8e4]), top: false });
+    }
+    if (R() < 0.45) b.mark('balas', -sw * 0.16, 0, -d * 0.24);
     b.pop();
+    if (two) b.box(M[kind], x, gh, 0, sw, 3.1, d, { cells: [sw / Math.max(2, Math.round(sw / 2.8)), 3.1], cu: Math.floor(R() * 4), cv: Math.floor(R() * 4), color: tint, top: M.roof, solid: true });
+    else b.box(M.concrete, x, gh, 0, sw, h - gh, d, { color: tint, uv: [3, 3], top: M.roof, solid: true });
+    b.box(M.concrete, x, h, 0, sw + 0.1, 0.3, d + 0.1, { color: 0xd8d2c4, uv: [3, 3], top: M.roof });
+    b.box(M.plain, x, 2.9, d / 2 + 0.1, sw - 0.4, 0.74, 0.2, { color: 0x1d2023 });
+    const name = names?.[i] ?? pick(R, signs.shops);
+    b.vquad(M.signs, x, 2.95, d / 2 + 0.215, Math.min(sw - 0.9, 4.4), 0.64, { rect: signs.uv(name) });
+    if (R() < 0.65) b.wedge(M.plain, x, 2.3, d / 2 + 0.8, sw - 0.9, 1.6, 0.56, { rot: Math.PI, color: pick(R, AWNINGS), bottom: true });
+    if (R() < 0.7) { b.box(M.plain, x + rr(R, -1.5, 1.5), h + 0.3, rr(R, -2, 2), 1.6, 0.9, 1.2, { color: 0x9ea3a8 }); }
+    // Puerta de servicio detrás (cerrada, si no es la que quedó abierta).
+    if (!backDoor) {
+      b.push(x, 0, Math.PI);
+      b.vquad(M.details, rr(R, -1.5, 1.5), 0, d / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: 0x6f7479 });
+      b.pop();
+    }
   }
 }
 
@@ -160,31 +179,45 @@ export function shopRow(G, w, d = 9, names = null) {
 export function house(G, w, d) {
   const { b, M, R } = G;
   const wall = pick(R, HOUSE_WALLS), roof = pick(R, HOUSE_ROOFS), trim = 0xf4f1e8;
-  const floors = R() < 0.45 ? 2 : 1, h = floors * 2.9;
+  const floors = R() < 0.45 ? 2 : 1, h = floors === 2 ? 6 : 3.1;
   const bw = rr(R, 8.5, 10.5), bd = rr(R, 6.5, 7.8), gside = R() < 0.5 ? 1 : -1;
   const bx = -gside * 1.9, bz = -1.2; // la casa deja sitio al garaje a un lado
   b.hquad(M.grass, 0, 0.012, 0, w, d, { uv: 4 });
   // Cuerpo, zócalo y tejado.
-  b.box(M.concrete, bx, 0, bz, bw, h, bd, { color: wall, uv: [3, 3], top: false, solid: true });
-  b.box(M.concrete, bx, 0, bz, bw + 0.1, 0.35, bd + 0.1, { color: 0x8d8a84, uv: [3, 3], top: false });
+  // La planta baja es un recinto en el que se entra: por una ventana, rompiendo el cristal, o
+  // por la puerta si quedó abierta. La planta alta (si la hay) es maciza.
+  const open = R() < 0.3, doorColor = pick(R, [0x6b2f2f, 0x2f4a3a, 0x2a3d5a, 0x7a5a3a, 0xf0f0ec]);
+  const pair = [{ at: -bw * 0.3, kind: 'window' }, { at: bw * 0.3, kind: 'window' }], one = [{ at: 0, kind: 'window' }];
+  b.push(bx, bz, 0);
+  room(G, bw, bd, {
+    color: wall, floorColor: pick(R, [0x8a6a48, 0x9a7a55, 0x7a6048]),
+    sides: { front: open ? [...pair, { at: 0, kind: 'door', leafColor: doorColor }] : pair, back: pair, right: gside > 0 ? [] : one, left: gside > 0 ? one : [] },
+  });
+  // Muebles: sofá, mesa y armario.
+  b.box(M.plain, -bw * 0.28, 0, -bd * 0.08, 0.9, 0.45, 1.9, { color: pick(R, [0x6b4a5a, 0x4a5a6b, 0x6b6248]), solid: true });
+  b.box(M.plain, -bw * 0.28 - 0.35, 0.45, -bd * 0.08, 0.2, 0.4, 1.9, { color: 0x4a4048 });
+  b.box(M.plain, bw * 0.12, 0, bd * 0.12, 1.3, 0.74, 0.8, { color: 0x7a5a3a, solid: true });
+  b.box(M.plain, gside * (bw / 2 - 0.5), 0, -bd * 0.2, 0.5, 1.9, 1.4, { color: 0x5a4330, solid: true });
+  if (R() < 0.4) b.mark('balas', bw * 0.12, 0, -bd * 0.2);
+  b.pop();
+  if (floors === 2) b.box(M.concrete, bx, 3.1, bz, bw, 2.9, bd, { color: wall, uv: [3, 3], top: false, solid: true });
   const rh = rr(R, 1.9, 2.6);
   b.prism(M.tiles, bx, h, bz, bw + 0.9, bd + 0.9, rh, { color: roof, gable: M.concrete, gableColor: wall });
   b.box(M.plain, bx, h - 0.06, bz, bw + 0.94, 0.07, bd + 0.94, { color: trim, bottom: true, top: false });
   b.box(M.concrete, bx + bw * 0.28, h + rh * 0.3, bz - bd * 0.15, 0.7, rh * 0.9 + 0.5, 0.7, { color: 0x8a5a48, uv: [1.5, 1.5] });
   // Ventanas y puerta (planta a planta, en las cuatro fachadas).
   const win = (x, y, z, rot, lit, ww = 1.25) => { b.push(bx, bz, rot); b.vquad(M.details, x, y, z + 0.025, ww, 1.25, { rect: lit ? WINDOW_LIT : WINDOW_DARK }); b.pop(); };
-  for (let f = 0; f < floors; f++) {
-    const y = f * 2.9 + 1.0;
-    for (const x of [-bw * 0.3, bw * 0.3]) { win(x, y, bd / 2, 0, R() < 0.5); win(x, y, bd / 2, Math.PI, R() < 0.4); }
-    if (f > 0) win(0, y, bd / 2, 0, R() < 0.5);
+  if (floors === 2) { // ventanas de la planta alta (pintadas)
+    const y = 4.1;
+    for (const x of [-bw * 0.3, 0, bw * 0.3]) win(x, y, bd / 2, 0, R() < 0.5);
+    for (const x of [-bw * 0.3, bw * 0.3]) win(x, y, bd / 2, Math.PI, R() < 0.4);
     for (const rot of [Math.PI / 2, -Math.PI / 2]) win(0, y, bw / 2, rot, R() < 0.4);
   }
-  const doorColor = pick(R, [0x6b2f2f, 0x2f4a3a, 0x2a3d5a, 0x7a5a3a, 0xf0f0ec]);
-  b.vquad(M.details, bx, 0.2, bz + bd / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: doorColor });
+  if (!open) b.vquad(M.details, bx, 0, bz + bd / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: doorColor });
   // Porche: losa, dos postes y tejadillo.
   const pz = bz + bd / 2;
-  b.box(M.concrete, bx, 0, pz + 0.8, 3.4, 0.2, 1.6, { color: 0xb5b0a6, uv: [2, 2], solid: true });
-  for (const s of [-1.5, 1.5]) b.box(M.plain, bx + s, 0.2, pz + 1.45, 0.12, 2.3, 0.12, { color: trim, solid: true });
+  b.box(M.concrete, bx, 0, pz + 0.85, 3.4, 0.06, 1.6, { color: 0xb5b0a6, uv: [2, 2] });
+  for (const s of [-1.5, 1.5]) b.box(M.plain, bx + s, 0, pz + 1.5, 0.12, 2.5, 0.12, { color: trim, solid: true });
   b.wedge(M.tiles, bx, 2.5, pz + 0.85, 3.8, 1.9, 0.6, { rot: Math.PI, color: roof, bottom: true, side: M.plain });
   b.hquad(M.pavers, bx, 0.02, (pz + 1.6 + d / 2) / 2, 1.3, d / 2 - pz - 1.6, { uv: 2 });
   // Garaje adosado y entrada de coches.
