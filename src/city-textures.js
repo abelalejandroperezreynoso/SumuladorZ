@@ -396,9 +396,9 @@ export function cityTextures() {
       ['MERCADO', '#e8a71a', '#2a1c05'], ['LIBRERÍA', '#274a7a', '#f2ecd8'], ['BAR EL PASO', '#5a1e3a', '#ffd9a8'], ['ZAPATERÍA', '#22303a', '#e6edf2'],
       ['FRUTERÍA', '#4f8a2c', '#fffbe0'], ['PIZZERÍA', '#a8281f', '#ffe9b0'], ['MODA', '#111111', '#ffffff'], ['LAVANDERÍA', '#3a8fb7', '#ffffff'],
       ['HOTEL', '#1b2440', '#ffd479'], ['SÚPER Z', '#d0261e', '#ffffff'], ['GASOLINERA', '#f2f2f2', '#c8322b'], ['HOSPITAL', '#f2f2ee', '#c8322b'],
-      ['ESCUELA', '#2c5a8a', '#ffffff'], ['24 H', '#f6d21a', '#16161a'],
+      ['ESCUELA', '#2c5a8a', '#ffffff'], ['24 H', '#f6d21a', '#16161a'], ['POLICÍA', '#1b2a4a', '#ffffff'], ['MOTEL', '#7a1e2a', '#ffe9b0'],
     ];
-    const W = 512, H = 576, rw = 256, rh = 64;
+    const rw = 256, rh = 64, W = 512, H = Math.ceil(NAMES.length / 2) * rh;
     const [c, g] = canvas(W, H);
     NAMES.forEach(([name, bg, fg], i) => {
       const x = (i % 2) * rw, y = Math.floor(i / 2) * rh;

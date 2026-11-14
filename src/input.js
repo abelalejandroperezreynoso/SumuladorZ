@@ -137,7 +137,7 @@ export class Input {
     if (edge(9)) { this.onPadMenu?.(); return; }
     if (edge(14)) this.pressed.add('PrevWeapon');
     if (edge(15)) this.pressed.add('NextWeapon');
-    const map = { 5: 'Space', 2: 'KeyF', 1: 'KeyC', 3: 'KeyQ', 8: 'KeyR', 4: 'KeyH', 12: 'KeyP' };
+    const map = { 5: 'Space', 2: 'KeyF', 1: 'KeyC', 3: 'KeyQ', 8: 'KeyR', 4: 'KeyH', 12: 'KeyP', 13: 'KeyE' }; // (cruceta abajo: subir a un coche patrulla)
     for (const i in map) if (edge(+i)) this.pressed.add(map[i]);
 
     this.padAim = now[6];

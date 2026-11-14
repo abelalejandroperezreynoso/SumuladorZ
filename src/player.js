@@ -459,6 +459,8 @@ export class Player {
     this.slamLoad = 0; // ...y cuánto se echa atrás para cargarlo (0-1)
     this.stomp = 0;
     this.vault = null; // barda que está pasando: ver tryVault
+    this.ride = null; // coche al que está subido (modo juego): ver enter()
+    this.rideK = 0; // 0 = fuera, 1 = sentado dentro
     this.vaultU = 0; // 0-1: avance de ese paso
     this.vaultTuck = 0; // cuánto encoge las piernas al pasarla (m)
     this.fireWas = false;
@@ -573,6 +575,8 @@ export class Player {
     this.jumpBuffer = this.landT = this.crouch = 0;
     this.cover = null;
     this.vault = null;
+    this.ride = null;
+    this.rideK = 0;
     this.sprinting = false;
     this.health = MAX_HEALTH;
     this.dead = false;
@@ -1006,6 +1010,42 @@ export class Player {
     return { s: lerp(v.s0 + 0.25, v.sEnd, sm(u, d, 1)), y: v.h };
   }
 
+  /**
+   * Sube a un coche: va de `out` (junto a la puerta) a `seat`, se queda `times.dentro` s y
+   * vuelve a bajar. `onSearch` se llama al acabar de registrarlo (antes de salir).
+   */
+  enter(car, times, sink, onSearch) {
+    if (this.ride || this.vault || this.dead) return false;
+    this.ride = { car, times, sink, onSearch, t: 0, done: false };
+    this.cover = null;
+    this.sprinting = false;
+    return true;
+  }
+
+  /** Mientras sube a un coche, lo registra y baja: sin mandos ni choques, como al pasar una barda. */
+  updateRide(dt) {
+    const r = this.ride, T = r.times, sm = (x) => THREE.MathUtils.smoothstep(x, 0, 1);
+    r.t += dt;
+    const k = r.t < T.entrar ? sm(r.t / T.entrar) : r.t < T.entrar + T.dentro ? 1 : 1 - sm((r.t - T.entrar - T.dentro) / T.salir);
+    this.rideK = k;
+    const a = r.car.out, b = r.car.seat;
+    this.body.setNextKinematicTranslation({ x: a.x + (b.x - a.x) * k, y: a.y + FOOT + 0.02, z: a.z + (b.z - a.z) * k });
+    this.velocity.set(0, 0, 0);
+    this.turnToward(r.car.facing + (1 - k) * 0.4, 14, dt);
+    this.grounded = true;
+    this.airTime = 0;
+    this.jumpT = -1;
+    this.jumpBuffer = this.landT = this.aimT = this.blindT = 0;
+    this.aiming = false;
+    const damp = (key, lambda) => { this[key] = THREE.MathUtils.damp(this[key], 0, lambda, dt); };
+    for (const key of ['crouch', 'coverCrouch', 'coverSit', 'coverLean', 'kneel', 'prone', 'coverGrip', 'aimWeight', 'standW',
+      'coverReady', 'blindW', 'batReady', 'batGrip']) damp(key, 14);
+    this.fireCooldown -= dt;
+    if (!r.done && r.t >= T.entrar + T.dentro) { r.done = true; r.onSearch?.(); }
+    if (r.t >= T.entrar + T.dentro + T.salir) { this.ride = null; this.rideK = 0; }
+    this.updateAnimation(dt, false);
+  }
+
   /** Mientras pasa una barda el cuerpo sigue su recorrido, sin mandos ni choques. */
   updateVault(dt) {
     const v = this.vault;
@@ -1091,6 +1131,7 @@ export class Player {
     if (this.hurtT > REGEN_DELAY) this.health = Math.min(MAX_HEALTH, this.health + REGEN_RATE * dt);
 
     if (this.vault) return this.updateVault(dt);
+    if (this.ride) return this.updateRide(dt);
     const punching = this.punchT >= 0;
     // Carrera rápida: se activa con un toque y dura mientras se siga avanzando.
     if (input.justPressed('KeyQ')) this.sprinting = !this.sprinting && moving && !this.cover;
@@ -2331,12 +2372,13 @@ export class Player {
     const jc = this.crouch, cc = this.coverCrouch;
     const sd = this.slamDrop, SB = SLAM_BODY[this.slamKey];
     const vt = this.vaultTuck;
-    if (jc > 0.01 || cc > 0.01 || sd > 0.01 || vt > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
+    const rk = this.ride ? this.ride.sink * this.rideK : 0; // sentado en un coche
+    if (jc > 0.01 || cc > 0.01 || sd > 0.01 || vt > 0.01 || rk > 0.01 || this.proneSquat > 0.01 || Math.abs(this.coverLean) > 0.005) {
       // Inclinación del tronco a cubierto: 0,3 rad agachado del todo; de rodillas, la de su postura.
       const K = POSES.rodillas;
       const coverLean = THREE.MathUtils.lerp(0.3, K.tronco / Math.max(K.agachado, 0.05), this.kneel) * cc;
       this.applyCrouch(
-        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc, this.proneSquat, SB.baja * sd, vt), Math.max(0.45 * jc, coverLean, SB.tronco * sd),
+        Math.max(CROUCH_DEPTH * jc, COVER_CROUCH * cc, this.proneSquat, SB.baja * sd, vt, rk), Math.max(0.45 * jc, coverLean, SB.tronco * sd, 0.5 * rk),
         Math.max(0.7 * jc, SB.brazos * sd),
         this.coverLean, this.coverSit * cc,
       );

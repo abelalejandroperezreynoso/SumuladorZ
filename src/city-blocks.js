@@ -393,6 +393,47 @@ export const BLOCKS = {
     b.mark('balas', 0, 0, 0);
   },
 
+  /** Comisaría: vestíbulo en el que se entra, calabozos, coches patrulla y antena. */
+  comisaria(G) {
+    const { b, M, R, signs } = G;
+    b.hquad(M.asphalt, 0, 0.012, 0, 40, 40, { uv: 6 });
+    b.push(0, -10, 0);
+    room(G, 32, 15, { h: 3.5, color: 0xd6dde2, floorColor: 0x8a8f96, sides: {
+      front: [{ at: -11, kind: 'front' }, { at: -6.5, kind: 'front' }, { at: 0, kind: 'door', w: 1.7, leafColor: 0x1b2a4a }, { at: 6.5, kind: 'front' }, { at: 11, kind: 'front' }],
+      back: [{ at: -12, kind: 'door', leafColor: 0x6f7479 }], left: [{ at: 0, kind: 'window' }], right: [{ at: 2, kind: 'window' }],
+    } });
+    b.box(M.plain, 0, 0, 1.5, 6, 1.05, 0.7, { color: 0x1b2a4a, solid: true }); // mostrador
+    for (const x of [-12, 12]) b.box(M.plain, x, 0, 5.2, 3, 0.45, 0.6, { color: 0x7a5a3a, solid: true });
+    // Calabozos: barrotes.
+    for (let x = 6; x <= 14.5; x += 0.28) b.box(M.plain, x, 0, -2.5, 0.05, 3.5, 0.05, { color: 0x3a4046, top: false });
+    b.solid(10.2, 0, -2.5, 8.8, 3.5, 0.1);
+    b.box(M.plain, 10, 0, -2.5, 0.1, 3.5, 4.6, { color: 0x8f959b, solid: true });
+    // Armería: taquillas y lo que quedó.
+    for (const x of [-14, -12.5, -11]) b.box(M.plain, x, 0, -6.3, 1.3, 2.0, 0.6, { color: 0x4f5a6a, solid: true });
+    b.mark('balas', -12.5, 0, -4.6); b.mark('balas', -9, 0, -5.4); b.mark('pistola', -6, 0, -5);
+    b.box(M.office, 0, 3.7, 0, 32, 6.6, 15, { cells: [3.2, 3.3], color: 0xd6dde2, cu: 1, top: M.roof, solid: true });
+    b.box(M.concrete, 0, 10.3, 0, 32.5, 0.6, 15.5, { color: 0xa8a39a, uv: [3, 3], top: M.roof });
+    b.box(M.plain, 0, 3.75, 7.6, 7, 1.5, 0.25, { color: 0x1d2023 });
+    b.vquad(M.signs, 0, 3.85, 7.74, 6.6, 1.3, { rect: signs.uv('POLICÍA') });
+    b.box(M.plain, 0, 3.4, 8.6, 5, 0.2, 2.2, { color: 0x1b2a4a, bottom: true });
+    roofGear(G, 26, 11, 10.9);
+    // Antena de radio.
+    for (const [sx, sz] of [[-1, -1], [1, -1], [0, 1]]) b.box(M.plain, 11 + sx * 0.5, 10.9, sz * 0.5, 0.08, 14, 0.08, { color: 0xc8322b });
+    for (let y = 12; y < 25; y += 2) b.box(M.plain, 11, y, 0, 1.1, 0.05, 1.1, { color: 0xe8e8e4, top: false });
+    b.box(M.lamp, 11, 24.9, 0, 0.3, 0.3, 0.3);
+    b.pop();
+    // Aparcamiento con coches patrulla y un furgón.
+    for (let i = 0; i <= 6; i++) b.hquad(M.mark, -9 + i * 3, 0.02, 9, 0.12, 5, { color: 0xe8e8e0 });
+    car(G, -7.5, 9, Math.PI / 2 + 0.05, { kind: 'policia' }); car(G, -1.5, 9.2, -Math.PI / 2, { kind: 'policia' }); car(G, 4.5, 8.8, Math.PI / 2 - 0.08, { kind: 'policia' });
+    car(G, 14, 13, 0.3, { kind: 'van', color: 0x1b2a4a });
+    barrier(G, -14, 18.5, 0); barrier(G, -10.8, 18.6, 0.05); sandbags(G, 12, 18.4, 0, 4);
+    for (const [x, z] of [[-17, 3], [-16.2, 3.4]]) cone(G, x, z);
+    b.box(M.plain, 17.5, 0, 17.5, 0.12, 9, 0.12, { color: 0xb9bec4, solid: true });
+    b.box(M.plain, 18.25, 7.6, 17.5, 1.5, 1.0, 0.03, { color: 0x2a4d8f });
+    lamp(G, -18, 12, Math.PI / 2, 7, 0.3); lamp(G, 18, 4, -Math.PI / 2, 7, 0.3);
+    chainFence(G, -19.6, -2, -19.6, 19.6); chainFence(G, 19.6, -2, 19.6, 12);
+  },
+
   /** Fábrica: nave grande, silos, chimenea y patio de contenedores tras una valla. */
   industria(G) {
     const { b, M, R } = G;
@@ -493,15 +534,24 @@ export const BLOCKS = {
     const { b, M, R, signs } = G;
     b.hquad(M.asphalt, 0, 0.012, 0, 40, 40, { uv: 6 });
     b.push(0, -11, 0);
-    b.box(M.concrete, 0, 0, 0, 38, 7, 17, { color: 0xe4dfd2, uv: [4, 3.5], top: M.roof, solid: true });
+    // Una nave diáfana con pasillos de estanterías: se entra rompiendo las lunas de la fachada.
+    room(G, 38, 17, { h: 4.8, color: 0xe4dfd2, floorColor: 0xb9b6ae, sides: {
+      front: [-15, -11, -7, -3, 3, 7, 11, 15].map((at) => ({ at, kind: 'front', w: 2.8 })),
+      back: [{ at: 14, kind: 'door', leafColor: 0x6f7479 }],
+    } });
+    for (const x of [-13.5, -8.5, -3.5, 3.5, 8.5, 13.5]) {
+      b.box(M.plain, x, 0, -1.6, 0.9, 1.8, 8.5, { color: 0x9ea3a8, solid: true });
+      for (let k = 0; k < 3; k++) b.box(M.plain, x, 0.4 + k * 0.5, -1.6, 0.96, 0.28, 8.3, { color: pick(R, [0xc8322b, 0x2a4d8f, 0xd6a21e, 0x3d6b4a, 0xe8e8e4, 0xe8701e]), top: false });
+    }
+    for (const x of [-9, -3, 3, 9]) b.box(M.plain, x, 0, 6.1, 2.2, 0.95, 0.8, { color: 0x4a4f55, solid: true }); // cajas
+    b.mark('balas', -11, 0, -6.5); b.mark('balas', 6, 0, -6.8); b.mark('balas', 16.5, 0, 4);
+    b.box(M.concrete, 0, 5, 0, 38, 2, 17, { color: 0xe4dfd2, uv: [4, 3.5], top: M.roof, solid: true });
     b.box(M.plain, 0, 5.2, 0, 38.2, 1.0, 17.2, { color: 0xc8322b, top: false });
-    b.vquad(M.shop, 0, 0, 8.53, 30, 3.6, { rect: [0, 0.25, 9 / 4, 0.5] });
     b.box(M.plain, 0, 3.7, 9.6, 32, 0.25, 2.2, { color: 0xc8322b, bottom: true });
     for (let x = -15; x <= 15; x += 6) b.box(M.plain, x, 0, 10.5, 0.2, 3.7, 0.2, { color: 0xe4dfd2, solid: true });
     b.box(M.plain, 0, 7, 8.2, 12.4, 3.2, 0.3, { color: 0x1d2023 });
     b.vquad(M.signs, 0, 7.1, 8.36, 12, 3, { rect: signs.uv('SÚPER Z') });
     roofGear(G, 34, 14, 7);
-    b.push(0, 0, Math.PI); b.vquad(M.details, -8, 1.1, 8.53, 4.2, 4.2, { rect: SHUTTER }); b.pop();
     b.pop();
     parkingRow(G, 0, 3.5, 12); parkingRow(G, 0, 15, 12);
     for (const x of [-17, 17]) { lamp(G, x, 9.2, 0, 7, 0.2); }
@@ -537,9 +587,11 @@ export const BLOCKS = {
     b.pop();
     // Tienda.
     b.push(-4, -13, 0);
-    b.box(M.concrete, 0, 0, 0, 16, 4, 9, { color: 0xf0ece4, uv: [3, 3], top: M.roof, solid: true });
+    room(G, 16, 9, { h: 3.2, color: 0xf0ece4, sides: { front: [-5.6, -2.2, 2.2, 5.6].map((at) => ({ at, kind: 'front' })) } });
+    b.box(M.plain, 5, 0, -2.2, 3, 1.0, 0.7, { color: 0x4a4f55, solid: true });
+    for (const x of [-4.5, -1]) b.box(M.plain, x, 0, -0.5, 0.7, 1.5, 4.5, { color: 0x9ea3a8, solid: true });
+    b.box(M.concrete, 0, 3.4, 0, 16, 0.6, 9, { color: 0xf0ece4, uv: [3, 3], top: M.roof });
     b.box(M.plain, 0, 3.4, 0, 16.2, 0.7, 9.2, { color: 0xc8322b, top: false });
-    b.vquad(M.shop, 0, 0, 4.53, 14, 3.3, { rect: [0, 0.5, 1, 0.75] });
     b.vquad(M.signs, 0, 3.42, 4.62, 4.4, 0.66, { rect: signs.uv('24 H') });
     roofGear(G, 12, 6, 4);
     b.pop();
@@ -557,7 +609,7 @@ export const BLOCKS = {
     for (let i = 0; i < 4; i++) b.cyl(M.plain, -18, 0.3 + i * 0.22, -5, 0.34, 0.22, { sides: 12, color: 0x141517 });
     b.solid(-18, 0, -5, 0.7, 0.9, 0.7);
     car(G, 14, 3, 1.2, { kind: 'quemado' });
-    b.mark('balas', -4, 0, -7);
+    b.mark('balas', -1, 0, -15.5);
     b.mark('balas', 10, 0, -6.5);
   },
 
@@ -755,6 +807,7 @@ export const BLOCKS = {
     car(G, 13, -9.5, Math.PI / 2 + 0.2, { kind: 'militar' });
     for (const [x, z, s] of [[5.5, 9, 1.0], [6.7, 9.2, 0.9], [6, 9.1, 0.8]]) crate(G, x, z, s, s === 0.8 ? 1.0 : 0);
     crate(G, -5.6, 9, 1.0); barrel(G, -6.9, 9.3, 0x4f5a3a); barrel(G, -7.4, 8.6, 0x4f5a3a);
+    car(G, -3, -12.6, 0.25, { kind: 'policia' });
     for (const [x, z] of [[-2, 18.5], [0, 18.8], [2, 18.5]]) cone(G, x, z);
     // Focos del puesto.
     lamp(G, -15.5, 13.5, Math.PI * 0.75, 7.5, 0.4); lamp(G, 15.5, 13.5, -Math.PI * 0.75, 7.5, 0.4);

@@ -94,7 +94,7 @@ export class Batch {
   /**
    * Caja con la base centrada en (x, y, z) y medidas (sx, sy, sz). Opciones: `rot` (giro
    * propio), `color` y `topColor` (0xrrggbb), `top` (material de la cara de arriba; false la
-   * omite), `sides: false`, `bottom: true`, `solid: true` (choca) y la proyección de textura:
+   * omite), `sides: false`, `bottom: true` (`under`: su material), `solid: true` (choca) y la proyección de textura:
    * `uv: [m, m]` metros por repetición, `cells: [vano, planta]` para fachadas (reparte un
    * número entero de ventanas; `cu`, `cv` desplazan la rejilla) o `rect: [u0, v0, u1, v1]`.
    */
@@ -125,7 +125,7 @@ export class Batch {
     const m = o.topUV ?? 4;
     const tcol = o.topColor !== undefined ? lin(o.topColor) : o.top === undefined || o.top === mat ? col : lin(0xffffff);
     if (top) this.quad(top, P(-hx, y1, hz), P(hx, y1, hz), P(hx, y1, -hz), P(-hx, y1, -hz), [0, 1, 0], [0, 0, sx / m, sz / m], tcol);
-    if (o.bottom) this.quad(top || mat, P(-hx, y0, -hz), P(hx, y0, -hz), P(hx, y0, hz), P(-hx, y0, hz), [0, -1, 0], [0, 0, sx / m, sz / m], tcol);
+    if (o.bottom) this.quad(o.under ?? (top || mat), P(-hx, y0, -hz), P(hx, y0, -hz), P(hx, y0, hz), P(-hx, y0, hz), [0, -1, 0], [0, 0, sx / m, sz / m], o.under ? col : tcol);
     if (o.solid) this.solid(x, y, z, sx, sy, sz, o.rot || 0);
     return this;
   }

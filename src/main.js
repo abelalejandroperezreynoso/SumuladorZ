@@ -84,7 +84,7 @@ async function start() {
   combat.horde = horde;
   horde.house = house;
   horde.onWave = (n) => showToast(`Oleada ${n}`);
-  let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '', aimShown = false;
+  let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '', aimShown = false, useShown = false;
   const weaponBtn = document.getElementById('weapon-btn');
   // Tocar (o pulsar) el arma de la esquina cambia a la siguiente.
   weaponBtn.addEventListener('touchstart', (e) => {
@@ -201,6 +201,9 @@ async function start() {
       pickups.reset(); // se pierden las armas: vuelven a su sitio
     }
     gameMode.update(dt); // día y noche, luces de la ciudad y linterna
+    // Coche patrulla al alcance: aviso en pantalla y, al pulsar, se sube a registrarlo.
+    const canUse = mode === 'juego' && !!gameMode.patrol(input.justPressed('KeyE'));
+    if (canUse !== useShown) { useShown = canUse; document.body.classList.toggle('can-use', canUse); }
 
     player.update(dt, input, cam, combat);
     pickups.update(dt);

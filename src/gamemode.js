@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MOODS } from './horde.js';
 import { zombieGlow } from './skeleton.js';
 import { CITY } from './city.js';
+import { PATROL } from './patrol.js';
 
 // Modo juego: sobrevivir en la ciudad. No hay oleadas: los zombis pueblan las calles y su
 // carácter cambia con la hora. De día son mansos (solo atacan si te acercas demasiado o les
@@ -94,6 +95,7 @@ export class GameMode {
     this.outside = false;
     this.civT = 5;
     city.glass.reset();
+    city.patrols.reset();
     horde.setMood(MOODS.dia);
     horde.setAmbient(this.population(), player, true);
     pickups.reset();
@@ -155,10 +157,30 @@ export class GameMode {
     this.restart(true);
   }
 
+  /**
+   * Coche patrulla a cuya puerta está el jugador, si puede subir (se muestra el aviso). Con
+   * `use` (se pulsó la tecla) sube, lo registra y se lleva la pistola y las balas.
+   */
+  patrol(use) {
+    const { city, player } = this;
+    const car = player.ride || player.vault || player.dead ? null : city.patrols.near(player.position);
+    if (car && use) {
+      player.enter(car, PATROL.tiempos, PATROL.hundido, () => {
+        const n = city.patrols.loot(car);
+        const had = player.has.pistola;
+        player.pickUp('pistola', n);
+        if (had && player.weapon === 'manos') player.weapon = 'pistola';
+        this.toast(had ? `Coche patrulla · +${n} balas` : `Coche patrulla · Pistola y ${n} balas`);
+      });
+    }
+    return car;
+  }
+
   update(dt) {
     if (!this.active) return;
     const { sky, city, player, cam, torch, horde } = this;
     sky.update(dt);
+    city.patrols.update(dt, player.ride?.car, 1 - sky.light);
     this.border();
     // Los primeros días aún queda gente viva: de vez en cuando pasa alguien huyendo.
     const C = GAME.civiles;

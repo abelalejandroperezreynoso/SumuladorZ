@@ -285,10 +285,10 @@ export function car(G, x, z, rot = 0, o = {}) {
     for (const [px, pz] of [[0.88, 0.78], [0.88, -0.78], [-1.38, 0.78], [-1.38, -0.78], [-0.25, 0.79], [-0.25, -0.79]]) b.box(M.plain, px, 0.89, pz, 0.07, 0.5, 0.05, { color, top: false });
     b.box(M.plain, 0, 0.27, 0, 4.46, 0.16, 1.7, { color: 0x1c1c1f, top: false });
     if (kind === 'taxi') b.box(M.plain, -0.25, 1.45, 0, 0.5, 0.16, 0.26, { color: 0xf4f0d8 });
-    if (kind === 'policia') {
+    if (kind === 'policia') { // la puerta del conductor y las luces son piezas aparte: ver src/patrol.js
       b.box(M.plain, -0.25, 0.4, 0, 1.6, 0.48, 1.82, { color: 0x1c1c1f, top: false });
-      b.box(M.plain, -0.25, 1.45, 0.3, 0.26, 0.12, 0.5, { color: 0xc8322b });
-      b.box(M.plain, -0.25, 1.45, -0.3, 0.26, 0.12, 0.5, { color: 0x2a4d8f });
+      b.box(M.plain, -0.25, 0.9, 0, 1.3, 0.02, 1.83, { color: 0x2a4d8f, top: false });
+      b.mark('patrulla', 0, 0, 0);
     }
     wheels([-1.42, 1.42], 0.91);
     lights(2.2, 0.62, 0.62);

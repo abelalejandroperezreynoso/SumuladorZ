@@ -209,6 +209,6 @@ export function room(G, w, d, o = {}) {
     b.pop();
   }
   b.hquad(o.floor ?? M.concrete, 0, 0.02, 0, w - 2 * t, d - 2 * t, { uv: 3, color: o.floorColor ?? 0x9a8f80 });
-  if (o.ceiling !== false) b.box(M.plain, 0, h, 0, w, 0.2, d, { color: 0xd9d2c2, bottom: true, top: o.top ?? M.roof, topColor: 0xffffff, solid: true });
+  if (o.ceiling !== false) b.box(M.plain, 0, h, 0, w, 0.2, d, { color: 0xe9e4d8, bottom: true, under: M.plain, top: o.top ?? M.roof, topColor: 0xffffff, solid: true });
   return it;
 }

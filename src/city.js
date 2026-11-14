@@ -3,6 +3,7 @@ import { RAPIER } from './physics.js';
 import { cityTextures, cityMaterials, rng } from './city-textures.js';
 import { Batch } from './city-build.js';
 import { Glass } from './interior.js';
+import { Patrols } from './patrol.js';
 import { BLOCKS, roadblock, DETAIL } from './city-blocks.js';
 import { lamp, tree, bench, bin, hydrant, busStop, trafficLight, car, cone, pick, rr } from './city-props.js';
 
@@ -21,7 +22,7 @@ export const CITY_TUNING = { CITY, LIGHTS };
 
 // Qué hay en cada manzana (fila = de norte a sur, columna = de oeste a este).
 const LAYOUT = [
-  ['industria', 'almacenes', 'obra', 'pisos', 'casas'],
+  ['industria', 'almacenes', 'obra', 'comisaria', 'casas'],
   ['super', 'pisos', 'torres', 'oficinas', 'casas'],
   ['tiendas', 'oficinas', 'plaza', 'tiendas', 'parque'],
   ['gasolinera', 'pisos', 'torres', 'hospital', 'escuela'],
@@ -162,6 +163,8 @@ export class City {
     }
 
     this.glass.build(this.group);
+    /** Coches patrulla que se registran (src/patrol.js). */
+    this.patrols = new Patrols(this.group, marks.patrulla ?? []);
     this.tris = tris; // (cifras para tools/city.cjs)
     this.solids = solids;
     this.buildMs = performance.now() - t0;
