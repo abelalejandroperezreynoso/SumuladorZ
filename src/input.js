@@ -81,9 +81,8 @@ export class Input {
 
   /**
    * Lee el mando (Xbox, PlayStation…) con la API Gamepad. Llamar al inicio de cada frame.
-   * Distribución estándar: A saltar, X golpe, B cubrirse, Y correr rápido, LT apuntar, RT disparar,
-   * cruceta ← → cambiar de arma,
-   * LB/RB horda, Menú empezar, Vista reiniciar, stick izquierdo moverse (a fondo o pulsado
+   * Distribución estándar: A mantenido correr, RB saltar, X golpe, B cubrirse, Y correr rápido,
+   * LT apuntar, RT disparar, cruceta ← → cambiar de arma, LB horda, Menú empezar, Vista reiniciar, stick izquierdo moverse (a fondo o pulsado
    * = correr), stick derecho cámara.
    */
   pollGamepad(dt) {
@@ -110,7 +109,7 @@ export class Input {
     const ax = pad.axes;
     this.padStick.x = dz(ax[0] ?? 0);
     this.padStick.y = -dz(ax[1] ?? 0);
-    this.padRun = now[10];
+    this.padRun = now[0] || now[10]; // A mantenido (o el stick pulsado): correr; al soltar, vuelve a andar
     // Stick derecho: equivale a mover el ratón (curva cuadrática para apuntar fino).
     const lx = dz(ax[2] ?? 0), ly = dz(ax[3] ?? 0);
     const LOOK = 1100 * dt;
@@ -120,7 +119,7 @@ export class Input {
     if (edge(9)) { this.onPadMenu?.(); return; }
     if (edge(14)) this.pressed.add('PrevWeapon');
     if (edge(15)) this.pressed.add('NextWeapon');
-    const map = { 0: 'Space', 2: 'KeyF', 1: 'KeyC', 3: 'KeyQ', 8: 'KeyR', 4: 'KeyH', 5: 'KeyH', 12: 'KeyP' };
+    const map = { 5: 'Space', 2: 'KeyF', 1: 'KeyC', 3: 'KeyQ', 8: 'KeyR', 4: 'KeyH', 12: 'KeyP' };
     for (const i in map) if (edge(+i)) this.pressed.add(map[i]);
 
     this.padAim = now[6];

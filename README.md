@@ -67,15 +67,16 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Acción | Botón |
 |---|---|
 | Moverse / correr | Stick izquierdo (a fondo o pulsado = correr) |
+| Correr mientras se mantiene | A |
 | Cámara | Stick derecho |
 | Disparar (con el bate o sin arma, golpear) | RT |
 | Cambiar de arma | Cruceta ← → |
 | Apuntar | LT |
-| Saltar | A |
+| Saltar | RB |
 | Golpe | X |
 | Cubrirse | B |
 | Carrera rápida | Y |
-| Horda | LB / RB |
+| Horda | LB |
 | Piloto automático | Cruceta arriba |
 | Pausa | Menú |
 | Reiniciar | Vista |
