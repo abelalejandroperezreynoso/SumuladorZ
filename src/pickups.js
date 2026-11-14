@@ -100,11 +100,14 @@ export class Pickups {
     this.onTake = onTake;
     this.items = [];
     this.t = 0;
+    this.layout = LAYOUT; // dónde está cada objeto: [tipo, x, z] (el modo juego pone el de la ciudad)
+    this.respawn = AMMO_RESPAWN; // segundos hasta que una caja del escenario reaparece
+    this.baseY = 0; // altura del suelo donde están los objetos del escenario
     this.reset();
   }
 
   /** Crea un objeto en (x, z). `life` > 0: desaparece pasado ese tiempo. */
-  drop(type, x, z, amount, { life = 0, fixed = false } = {}) {
+  drop(type, x, z, amount, { life = 0, fixed = false, y = 0 } = {}) {
     const group = new THREE.Group();
     const model = type === 'pistola' ? makeGun(gunMat) : type === 'bate' ? makeBat() : makeAmmoBox();
     if (type === 'pistola') { model.scale.setScalar(1.5); model.traverse((o) => { o.castShadow = true; }); }
@@ -117,7 +120,7 @@ export class Pickups {
     }));
     ring.position.y = 0.02;
     group.add(spin, ring);
-    group.position.set(x, 0, z);
+    group.position.set(x, y, z);
     this.scene.add(group);
     const item = {
       type, amount: amount ?? (type === 'balas' ? BOX_AMMO : type === 'pistola' ? GUN_AMMO : 0),
@@ -136,12 +139,12 @@ export class Pickups {
   /** Deja el escenario como al empezar. */
   reset() {
     this.clear();
-    for (const [type, x, z] of LAYOUT) this.drop(type, x, z, undefined, { fixed: true });
+    for (const [type, x, z] of this.layout) this.drop(type, x, z, undefined, { fixed: true, y: this.baseY });
   }
 
   /** Un zombi ha muerto en `position`: a veces suelta balas. */
   zombieDied(position) {
-    if (Math.random() < DROP_CHANCE) this.drop('balas', position.x, position.z, DROP_AMMO, { life: DROP_LIFE });
+    if (Math.random() < DROP_CHANCE) this.drop('balas', position.x, position.z, DROP_AMMO, { life: DROP_LIFE, y: Math.max(0, position.y) });
   }
 
   update(dt) {
@@ -171,7 +174,7 @@ export class Pickups {
       this.onTake?.(P.pickUp(it.type, it.amount), it.type);
       if (it.type === 'balas' && it.fixed) {
         it.taken = true;
-        it.back = AMMO_RESPAWN;
+        it.back = this.respawn;
         it.group.visible = false;
       } else this.remove(i);
     }

@@ -48,6 +48,28 @@ const DETOUR_PROBE = 1.6; // distancia libre hacia el objetivo para dar por term
 const SEPARATION = 0.8; // distancia mínima entre zombis (m)
 const SEPARATION_SPEED = 1.5; // velocidad máxima del empuje que los separa (m/s)
 
+// --- Carácter (modo juego: cambia con la hora) ---
+// `normal` es el de siempre (horda por oleadas). De día (`dia`) no buscan pelea: solo te notan
+// si te acercas demasiado (`view` de frente, `sense` por la espalda), caminan y te olvidan
+// enseguida. De noche (`noche`) te ven desde lejos mires adonde mires, te huelen aunque no te
+// vean (`scent`: cada poco, todos los que estén a esa distancia saben dónde estás), corren y
+// muerden más rápido. `seek`: probabilidad de deambular hacia el jugador; `run`: ritmo máximo
+// del clip de correr; `gang`: cuántos pueden morder a la vez (los demás empujan alrededor
+// esperando su turno: sin ese tope, una noche con veinte encima mataba en un segundo).
+export const MOODS = {
+  normal: { view: VIEW_RANGE, cos: VIEW_COS, sense: SENSE_RANGE, noise: NOISE_RANGE, memory: MEMORY, wander: WANDER_SPEED, chase: CHASE_SPEED, attack: ATTACK_TIME, bite: BITE_DAMAGE, seek: 0.5, scent: 0, run: 1.2, gang: Infinity },
+  dia: { view: 4.5, cos: Math.cos(THREE.MathUtils.degToRad(75)), sense: 2.2, noise: 9, memory: 2.5, wander: 0.55, chase: 1.9, attack: 1.15, bite: 12, seek: 0, scent: 0, run: 1.2, gang: Infinity },
+  noche: { view: 40, cos: -2, sense: 10, noise: 60, memory: 20, wander: 1.2, chase: 3.9, attack: 0.85, bite: 15, seek: 1, scent: 45, run: 1.5, gang: 3 },
+};
+const PROVOKED = 8; // de día, segundos que un zombi herido se comporta como uno normal
+const SCENT_EVERY = 2; // cada cuánto te huelen de noche (s)
+const DETOUR_FLIP = 8, DETOUR_FLIP_CITY = 22; // segundos bordeando un obstáculo antes de probar por el otro lado
+// Población del modo juego: en vez de oleadas, la horda mantiene `count` zombis repartidos
+// alrededor del jugador. Aparecen entre `min` y `max` metros, donde no se les ve, y los que
+// quedan a más de `far` se retiran. Lo fija el modo juego según la hora (ver src/main.js).
+const AMBIENT_EVERY = 0.35; // segundos entre un zombi nuevo y el siguiente
+const AMBIENT_LIFT = 0.14; // aparecen esto por encima del suelo (hay aceras) y caen
+
 // --- Zonas del cuerpo y desmembramiento ---
 // Las balas no chocan con la cápsula del zombi: se comprueba su trayectoria contra el
 // esqueleto. Si pasa a menos de JOINT_ZONE de una articulación, el cuerpo se parte por ahí y
@@ -104,6 +126,7 @@ export const ZOMBIE_TUNING = {
   VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
   BITE_DAMAGE, HEALTH, STAGGER, RAGDOLL_MAX, REMAINS_MAX, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
   WINDOW, JOINT_ZONE, HEAD_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_SPEEDS, LIMP, CRAWL_FALL, DEBRIS_TIME,
+  MOODS, PROVOKED, SCENT_EVERY,
 };
 
 const _to = new THREE.Vector3();
@@ -201,8 +224,9 @@ function dampAngle(a, b, lambda, dt) {
 }
 
 class Zombie {
-  constructor(horde, x, z) {
+  constructor(horde, x, z, lift = 0) {
     this.horde = horde;
+    this.rage = 0; // segundos que le quedan de furia tras recibir un golpe o un disparo de día
     this.hp = HEALTH;
     this.state = 'wander'; // wander | chase | attack | stagger | window | dead
     this.win = null; // ventana por la que está entrando: { w, side, t, from, smash }
@@ -269,7 +293,7 @@ class Zombie {
     // --- Física: cápsula cinemática ---
     const world = horde.physics.world;
     this.body = world.createRigidBody(
-      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, FOOT + 0.05, z),
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, FOOT + 0.05 + lift, z),
     );
     this.collider = world.createCollider(
       RAPIER.ColliderDesc.capsule(HALF, RADIUS).setCollisionGroups(GROUPS.enemy), this.body,
@@ -278,6 +302,9 @@ class Zombie {
   }
 
   get alive() { return this.state !== 'dead'; }
+
+  /** Carácter actual: el de la horda, salvo que de día esté furioso (entonces, el normal). */
+  get mood() { return this.rage > 0 && this.horde.mood === MOODS.dia ? MOODS.normal : this.horde.mood; }
 
   /** Altura del pecho sobre su posición (línea de tiro). */
   get aimY() { return this.crawler ? AIM_CRAWL : AIM_STAND; }
@@ -371,11 +398,11 @@ class Zombie {
   /** ¿Ve al jugador? Dentro del cono de visión, a su alcance y sin muros de por medio. */
   canSee(player) {
     const dx = player.position.x - this.position.x, dz = player.position.z - this.position.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist > VIEW_RANGE) return false;
-    if (dist > SENSE_RANGE) {
+    const dist = Math.hypot(dx, dz), M = this.mood;
+    if (dist > M.view) return false;
+    if (dist > M.sense) {
       const facingDot = (dx * Math.sin(this.facing) + dz * Math.cos(this.facing)) / dist;
-      if (facingDot < VIEW_COS) return false;
+      if (facingDot < M.cos) return false;
     }
     // Línea de visión de los ojos a la cabeza del jugador (más baja si está agachado o tumbado a cubierto).
     const eye = { x: this.position.x, y: this.position.y + (this.crawler ? AIM_CRAWL : EYE), z: this.position.z };
@@ -409,10 +436,10 @@ class Zombie {
   }
 
   /** Algo llamó su atención (un disparo, un golpe): va a investigar. */
-  alert(point) {
+  alert(point, memory = this.mood.memory) {
     if (!this.alive) return;
     this.target.copy(point);
-    this.memory = MEMORY;
+    this.memory = Math.max(this.memory, memory);
     if (this.state === 'wander') this.state = 'chase';
   }
 
@@ -420,7 +447,7 @@ class Zombie {
   damage(amount, player, slam = 0, power = 1) {
     if (!this.alive) return;
     this.hp -= amount;
-    this.alert(player.position);
+    this.provoke(player);
     if (this.hp <= 0) {
       // A golpes: sale despedido lejos de quien le pega.
       _to.subVectors(this.position, player.position).setY(0).normalize().multiplyScalar(2.2 * power).setY(0.8 * (1 + power) / 2);
@@ -432,6 +459,12 @@ class Zombie {
     this.timer = Math.max(STAGGER, this.fallT ?? 0);
     this.fallT = 0;
     if (!this.crawler) this.play('Hit', 0.05);
+  }
+
+  /** Le han hecho daño: de día deja de ser manso un rato y va a por quien le atacó. */
+  provoke(player) {
+    this.rage = PROVOKED;
+    this.alert(player.position, Math.max(this.mood.memory, MEMORY));
   }
 
   /** Muere: en el próximo fotograma se desploma como un cuerpo articulado. `push`: empujón (m/s). */
@@ -460,13 +493,23 @@ class Zombie {
   pickWanderTarget(player) {
     this.wanderT = 3 + Math.random() * 4;
     // La mitad de las veces deambula hacia la zona del jugador: la horda acaba encontrándolo.
-    const cx = Math.random() < 0.5 ? player.position.x : this.position.x;
-    const cz = Math.random() < 0.5 ? player.position.z : this.position.z;
+    const seek = this.mood.seek, B = this.horde.bounds;
+    const cx = Math.random() < seek ? player.position.x : this.position.x;
+    const cz = Math.random() < seek ? player.position.z : this.position.z;
     const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 6;
     this.target.set(
-      THREE.MathUtils.clamp(cx + Math.sin(a) * r, -ARENA, ARENA), 0,
-      THREE.MathUtils.clamp(cz + Math.cos(a) * r, -ARENA, ARENA),
+      THREE.MathUtils.clamp(cx + Math.sin(a) * r, B.x0, B.x1), 0,
+      THREE.MathUtils.clamp(cz + Math.cos(a) * r, B.z0, B.z1),
     );
+    if (!this.horde.ambient) return;
+    // En la ciudad no se empeña en atravesar un edificio: si hay un muro de camino, se queda antes.
+    const tx = this.target.x - this.position.x, tz = this.target.z - this.position.z, d = Math.hypot(tx, tz);
+    if (d < 0.5) return;
+    const hit = this.horde.physics.world.castRay(
+      new RAPIER.Ray({ x: this.position.x, y: this.position.y + 0.6, z: this.position.z }, { x: tx / d, y: 0, z: tz / d }), d + 0.6, true,
+      RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC, GROUPS.cover,
+    );
+    if (hit) this.target.set(this.position.x + (tx / d) * Math.max(0, hit.timeOfImpact - 0.9), 0, this.position.z + (tz / d) * Math.max(0, hit.timeOfImpact - 0.9));
   }
 
   /** Antes del paso de física: sentidos, decisión y movimiento. */
@@ -504,10 +547,12 @@ class Zombie {
 
     const dx = player.position.x - this.position.x, dz = player.position.z - this.position.z;
     const dist = Math.hypot(dx, dz);
+    this.rage = Math.max(0, this.rage - dt);
+    const M = this.mood;
     this.sees = !player.dead && this.canSee(player);
     if (this.sees) {
       this.target.copy(player.position);
-      this.memory = MEMORY;
+      this.memory = Math.max(this.memory, M.memory);
       if (this.state === 'wander') this.state = 'chase';
     } else {
       this.memory -= dt;
@@ -522,11 +567,11 @@ class Zombie {
     } else if (this.state === 'attack') {
       this.timer += dt;
       wantFacing = Math.atan2(dx, dz);
-      if (!this.bit && this.timer >= ATTACK_TIME * ATTACK_HIT) {
+      if (!this.bit && this.timer >= M.attack * ATTACK_HIT) {
         this.bit = true;
-        if (dist < BITE_REACH && Math.abs(player.position.y - this.position.y) < 1.2) player.damage(BITE_DAMAGE);
+        if (dist < BITE_REACH && Math.abs(player.position.y - this.position.y) < 1.2) player.damage(M.bite);
       }
-      if (this.timer >= ATTACK_TIME) {
+      if (this.timer >= M.attack) {
         if (this.sees && dist < ATTACK_RANGE) {
           // Sigue a tiro: encadena otra mordida sin pasar un fotograma por la carrera.
           this.timer = 0;
@@ -550,7 +595,8 @@ class Zombie {
         this.play('Idle', 0.2);
         return this.climbWindow(0);
       }
-      if (this.sees && dist < ATTACK_RANGE) {
+      if (this.sees && dist < ATTACK_RANGE && this.horde.attackers < M.gang) {
+        this.horde.attackers++;
         this.state = 'attack';
         this.timer = 0;
         this.bit = false;
@@ -559,7 +605,7 @@ class Zombie {
         this.state = 'wander'; // llegó al último lugar donde te vio y ya no estás
         this.wanderT = 0;
       } else {
-        speed = this.crawler ? CRAWL_SPEEDS[this.limbs] : CHASE_SPEED * this.limp;
+        speed = this.crawler ? CRAWL_SPEEDS[this.limbs] : M.chase * this.limp;
         wantFacing = Math.atan2(tx, tz) + this.sidestep;
       }
     } else {
@@ -569,7 +615,7 @@ class Zombie {
         if (this.wanderT > 0) this.wanderT = Math.min(this.wanderT, 1.5); // se queda un momento quieto
         else this.pickWanderTarget(player);
       } else {
-        speed = this.crawler ? CRAWL_SPEEDS[this.limbs] * CRAWL_WANDER : WANDER_SPEED * this.limp;
+        speed = this.crawler ? CRAWL_SPEEDS[this.limbs] * CRAWL_WANDER : M.wander * this.limp;
         wantFacing = Math.atan2(tx, tz) + this.sidestep;
       }
     }
@@ -581,7 +627,7 @@ class Zombie {
     // morder (ATTACK_HIT), aguanta un instante y se recoge.
     let lunge = 0;
     if (this.state === 'attack') {
-      const u = this.timer / ATTACK_TIME, hit = ATTACK_HIT;
+      const u = this.timer / M.attack, hit = ATTACK_HIT;
       lunge = u < hit * 0.6 ? -BITE_WINDUP * THREE.MathUtils.smoothstep(u, 0, hit * 0.6)
         : u < hit ? THREE.MathUtils.lerp(-BITE_WINDUP, 1, ((u - hit * 0.6) / (hit * 0.4)) ** 2)
           : u < hit + 0.15 ? 1 : 1 - THREE.MathUtils.smoothstep(u, hit + 0.15, 1);
@@ -630,7 +676,7 @@ class Zombie {
         this.lastSide = this.detour;
         this.lastSideT = 3;
         this.detour = 0;
-      } else if (this.blockedT > 0.5 || this.detourT > 8) {
+      } else if (this.blockedT > 0.5 || this.detourT > (this.horde.ambient ? DETOUR_FLIP_CITY : DETOUR_FLIP)) {
         this.detour = -this.detour; // rincón o rodeo demasiado largo: prueba por el otro lado
         this.detourT = 0;
         this.blockedT = 0;
@@ -653,7 +699,7 @@ class Zombie {
         // caminar a esa velocidad hacía que los pies patinaran. Ritmos medidos con tools/watch.cjs.
         if (this.state === 'chase') {
           this.play('Run', 0.3);
-          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 3.1, 0.6, 1.2);
+          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 3.1, 0.6, M.run);
         } else {
           this.play('Walk', 0.3);
           this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 0.85, 0.6, 1.4);
@@ -974,6 +1020,12 @@ export class Horde {
     this.kills = 0;
     this.waveT = 0;
     this.onWave = null; // (número de oleada) => void
+    this.mood = MOODS.normal; // carácter de los zombis (ver MOODS)
+    this.bounds = { x0: -ARENA, x1: ARENA, z0: -ARENA, z1: ARENA }; // zona por la que se mueven
+    this.ambient = null; // población del modo juego: { count, min, max, far }
+    this.ambientT = 0;
+    this.scentT = 0;
+    this.attackers = 0;
 
     // Plantilla del zombi: el mismo esqueleto del personaje (ya escalado y sin mallas).
     const template = assets.scene;
@@ -1097,25 +1149,57 @@ export class Horde {
     this.debris.splice(i, 1);
   }
 
-  // Un punto libre alrededor del jugador, lejos de él y fuera de los obstáculos.
-  spawnPoint(player) {
+  /**
+   * Un punto libre alrededor del jugador, entre `min` y `max` metros y fuera de los obstáculos.
+   * Con `hidden` solo valen los puntos que el jugador no ve (hay un muro de por medio) y, si no
+   * encuentra ninguno, devuelve null.
+   */
+  spawnPoint(player, min = SPAWN_MIN, max = SPAWN_MAX, hidden = false) {
     const shape = new RAPIER.Capsule(HALF, RADIUS + 0.15);
-    const rot = { x: 0, y: 0, z: 0, w: 1 };
+    const rot = { x: 0, y: 0, z: 0, w: 1 }, B = this.bounds, P = player.position;
     let x = 0, z = 0;
     for (let i = 0; i < 30; i++) {
       const a = Math.random() * Math.PI * 2;
-      const r = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
-      x = THREE.MathUtils.clamp(player.position.x + Math.sin(a) * r, -ARENA, ARENA);
-      z = THREE.MathUtils.clamp(player.position.z + Math.cos(a) * r, -ARENA, ARENA);
-      if (Math.hypot(x - player.position.x, z - player.position.z) < SPAWN_MIN * 0.7) continue;
-      const blocked = this.physics.world.intersectionWithShape({ x, y: FOOT + 0.3, z }, rot, shape);
-      if (!blocked) break;
+      const r = min + Math.random() * (max - min);
+      x = THREE.MathUtils.clamp(P.x + Math.sin(a) * r, B.x0, B.x1);
+      z = THREE.MathUtils.clamp(P.z + Math.cos(a) * r, B.z0, B.z1);
+      const d = Math.hypot(x - P.x, z - P.z);
+      if (d < min * 0.7) continue;
+      const blocked = this.physics.world.intersectionWithShape({ x, y: FOOT + 0.3 + (hidden ? AMBIENT_LIFT : 0), z }, rot, shape);
+      if (blocked) continue;
+      if (!hidden) return { x, z };
+      const eye = { x: P.x, y: P.y + 1.6, z: P.z };
+      const seen = !this.physics.world.castRay(
+        new RAPIER.Ray(eye, { x: (x - P.x) / d, y: -0.3 / d, z: (z - P.z) / d }), d - 0.5, true, RAPIER.QueryFilterFlags.ONLY_FIXED,
+      );
+      if (!seen) return { x, z };
     }
-    return { x, z };
+    return hidden ? null : { x, z };
+  }
+
+  /** Cambia el carácter de los zombis (MOODS). Al amansarse olvidan lo que perseguían. */
+  setMood(mood) {
+    if (mood === this.mood) return;
+    this.mood = mood;
+    for (const z of this.zombies) z.memory = Math.min(z.memory, mood.memory);
+  }
+
+  /**
+   * Modo juego: mantiene una población alrededor del jugador en vez de oleadas (null lo
+   * desactiva). `fill`: coloca ya a todos, repartidos, sin esperar a que vayan apareciendo.
+   */
+  setAmbient(config, player = null, fill = false) {
+    this.ambient = config;
+    this.ambientT = this.scentT = 0;
+    if (!config || !fill || !player) return;
+    for (let i = this.alive; i < config.count; i++) {
+      const p = this.spawnPoint(player, config.min, config.far * 0.8, true) ?? this.spawnPoint(player, config.max, config.far * 0.8);
+      this.zombies.push(new Zombie(this, p.x, p.z, AMBIENT_LIFT));
+    }
   }
 
   /** El ruido (un disparo) atrae a los zombis cercanos. */
-  noise(point, range = NOISE_RANGE) {
+  noise(point, range = this.mood.noise) {
     for (const z of this.zombies) {
       if (z.position.distanceTo(point) < range) z.alert(point);
     }
@@ -1134,8 +1218,39 @@ export class Horde {
         this.onWave?.(this.wave);
       }
     }
+    const A = this.ambient;
+    if (A && !player.dead) {
+      this.ambientT -= dt;
+      if (this.ambientT <= 0) {
+        this.ambientT = AMBIENT_EVERY;
+        // Los que quedaron muy lejos se retiran (salvo que estén persiguiendo a la vista)...
+        for (let i = this.zombies.length - 1; i >= 0; i--) {
+          const z = this.zombies[i];
+          if (!z.alive || z.sees || z.state === 'window') continue;
+          if (Math.hypot(z.position.x - player.position.x, z.position.z - player.position.z) > A.far) {
+            z.dispose();
+            this.zombies.splice(i, 1);
+          }
+        }
+        // ...y entra uno nuevo donde no se le vea, hasta completar la población.
+        if (this.alive < A.count) {
+          const p = this.spawnPoint(player, A.min, A.max, true);
+          if (p) this.zombies.push(new Zombie(this, p.x, p.z, AMBIENT_LIFT));
+        }
+      }
+      // De noche te huelen: los que están cerca van a por ti aunque no te vean.
+      this.scentT -= dt;
+      if (this.mood.scent > 0 && this.scentT <= 0) {
+        this.scentT = SCENT_EVERY;
+        for (const z of this.zombies) {
+          if (z.alive && z.position.distanceTo(player.position) < this.mood.scent) z.alert(player.position);
+        }
+      }
+    }
     // Los zombis no chocan entre sí: un empuje suave evita que se amontonen.
     const zs = this.zombies;
+    this.attackers = 0; // cuántos están mordiendo ahora (ver `gang` en MOODS)
+    for (const z of zs) if (z.state === 'attack') this.attackers++;
     for (const z of zs) z.pushX = z.pushZ = 0;
     for (let i = 0; i < zs.length; i++) {
       if (!zs[i].alive) continue;

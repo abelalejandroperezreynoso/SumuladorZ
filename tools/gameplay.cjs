@@ -16,7 +16,7 @@ const MODE=process.argv[2]||'bot', SECS=+process.argv[3]||360;
   p.on('pageerror',e=>console.log('ERR',e.message));
   await p.goto(process.env.GAME_URL || 'http://localhost:5199/');
   await p.waitForFunction(()=>window.__game,null,{timeout:60000});
-  const r=await p.evaluate(({MODE,SECS})=>{const g=window.__game; g.renderer.setAnimationLoop(null);g.renderer.render=()=>{};g.input.touchMode=true;g.input.started=true;
+  const r=await p.evaluate(({MODE,SECS})=>{const g=window.__game; g.setMode('sim'); /* la horda por oleadas es del mundo de simulación */ g.renderer.setAnimationLoop(null);g.renderer.render=()=>{};g.input.touchMode=true;g.input.started=true;
     const dt=1/60,P=g.player,H=g.horde,A=g.autopilot;
     const waves=[];let cur=null,lastHealth=100,lastShots=0,lastKills=0,deaths=[],t=0,minHealth=100,firstContact=null;
     // Munición infinita y pistola desde el principio, como en los análisis anteriores.

@@ -14,6 +14,8 @@ import { setupPWA, setupUpdateButton, cacheLoadedFiles } from './pwa.js';
 import { Menu } from './menu.js';
 import { Pickups } from './pickups.js';
 import { WEAPON_NAMES } from './player.js';
+import { DayNight } from './daynight.js';
+import { GameMode } from './gamemode.js';
 
 setupPWA();
 
@@ -72,7 +74,8 @@ async function start() {
   if (!globalThis.__MODEL_GLB_B64) preloadModel().catch(() => {}); // el error sale en Player.load
   await initPhysics();
   const physics = new Physics(scene);
-  const { sun, house } = buildWorld(scene, physics);
+  status('Construyendo la ciudad…');
+  const { sun, hemi, house, city } = buildWorld(scene, physics);
   status('Cargando personaje…');
   const player = await Player.load(scene, physics);
   const combat = new Combat(scene, physics);
@@ -97,7 +100,22 @@ async function start() {
   horde.onKill = (position) => pickups.zombieDied(position);
   let catalog = null; // catálogo de mecánicas (se crea al final, cuando existe tick)
 
+  // --- Modos: «juego» (la ciudad, con día y noche) y «sim» (el mundo de pruebas) ---
+  const sky = new DayNight(scene, { sun, hemi, camera });
+  const gameMode = new GameMode({ scene, city, sky, horde, player, pickups, cam, toast: showToast });
+  let mode = 'sim';
+  const setMode = (next) => {
+    if (next === mode) return;
+    mode = next;
+    if (autopilot.active) toggleAuto(true);
+    combat.targetHits = combat.punchHits = 0;
+    if (mode === 'juego') gameMode.enter(!menu.started); // (en la pantalla de inicio la partida empieza al pulsar «Jugar»)
+    else { gameMode.leave(); physics.reset(); house.reset(); }
+    hudKey = '';
+  };
+
   const toggleHorde = () => {
+    if (mode !== 'sim') return; // las oleadas son del mundo de simulación
     if (horde.active) { horde.stop(); showToast('Horda detenida'); } else horde.start();
   };
   const toggleAuto = (quiet) => {
@@ -108,6 +126,7 @@ async function start() {
     if (!quiet) showToast(autopilot.active ? 'Piloto automático' : 'Control manual'); // desde el menú ya lo dice el interruptor
   };
   const resetWorld = () => {
+    if (mode === 'juego') return gameMode.restart();
     physics.reset();
     house.reset();
     player.respawn();
@@ -123,6 +142,8 @@ async function start() {
       input.touchMode = true;
       document.body.classList.add('touch');
     }
+    // Mientras se ve la pantalla de inicio la ciudad sigue viva: la partida empieza ahora.
+    if (!menu.started && mode === 'juego') gameMode.restart();
     input.lock();
     if (input.touchMode || input.padMode) menu.setOpen(false);
   };
@@ -140,6 +161,8 @@ async function start() {
     pause,
     toggleHorde,
     reset: resetWorld,
+    mode: () => mode,
+    switchMode: () => setMode(mode === 'juego' ? 'sim' : 'juego'),
     catalog: () => catalog.open(),
     toggleAuto,
     hordeActive: () => horde.active,
@@ -160,7 +183,6 @@ async function start() {
   setupUpdateButton(document.getElementById('m-update'), showToast);
   document.getElementById('m-version').textContent = `${__BUILD__.id} · ${__BUILD__.date.slice(0, 10)}`;
 
-  const sunOffset = new THREE.Vector3(18, 30, 12);
   const timer = new THREE.Timer();
 
   function tick(dt) {
@@ -171,12 +193,14 @@ async function start() {
     if (input.justPressed('KeyP')) toggleAuto();
     autopilot.update(dt);
     if (input.justPressed('KeyH')) toggleHorde();
-    if (player.dead) {
+    if (player.dead && mode === 'juego') gameMode.died();
+    else if (player.dead) {
       showToast(horde.active ? `Te comieron en la oleada ${horde.wave}` : 'Te comieron');
       horde.stop();
       player.respawn();
       pickups.reset(); // se pierden las armas: vuelven a su sitio
     }
+    gameMode.update(dt); // día y noche, luces de la ciudad y linterna
 
     player.update(dt, input, cam, combat);
     pickups.update(dt);
@@ -205,21 +229,22 @@ async function start() {
       horde.noise(player.position);
     }
 
-    // La sombra del sol sigue al jugador.
-    sun.target.position.copy(player.position);
-    sun.position.copy(player.position).add(sunOffset);
+    // La sombra del sol (o de la luna) sigue al jugador, y el cielo, a la cámara.
+    sky.follow(player.position);
 
     if (!catalog?.skipRender) renderer.render(scene, viewing ? catalog.camera : camera);
     input.endFrame();
 
     // Interfaz: oleada y piloto (solo si están activos), barra de vida y borde rojo al recibir daño.
     const alive = horde.alive;
-    const key = `${horde.active}|${horde.wave}|${alive}|${autopilot.active}`;
+    const key = mode === 'juego' ? `j|${sky.phase}|${horde.kills}|${autopilot.active}` : `${horde.active}|${horde.wave}|${alive}|${autopilot.active}`;
     if (key !== hudKey) {
       hudKey = key;
-      hudStatus.innerHTML = (horde.active
-        ? `<span class="horde">${horde.wave ? `Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}` : 'Horda'}</span>` : '')
-        + (autopilot.active ? '<span class="auto">Piloto automático</span>' : '');
+      const chips = mode === 'juego'
+        ? (sky.phase === 'noche' ? '<span class="horde">Noche · van a por ti</span>' : sky.phase === 'atardecer' ? '<span class="dusk">Atardecer</span>' : '')
+          + (horde.kills ? `<span>${horde.kills} ${horde.kills === 1 ? 'baja' : 'bajas'}</span>` : '')
+        : horde.active ? `<span class="horde">${horde.wave ? `Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}` : 'Horda'}</span>` : '';
+      hudStatus.innerHTML = chips + (autopilot.active ? '<span class="auto">Piloto automático</span>' : '');
     }
     // Carrera rápida: el botón queda marcado y la cámara abre un poco el campo de visión.
     // La mira solo aparece al apuntar; disparar sin apuntar no la muestra.
@@ -253,12 +278,20 @@ async function start() {
     hurt.style.opacity = Math.max(0, 0.75 - player.hurtT * 0.9) * (player.healthFraction < 1 ? 1 : 0);
   }
   // Para depuración desde la consola (y para el catálogo y las herramientas de tools/).
-  const game = { scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick, pickups, house };
-  catalog = new Catalog(game);
+  const game = {
+    scene, physics, player, combat, horde, autopilot, cam, input, renderer, tick, pickups, house, city, camera, sky, gameMode, setMode,
+    get mode() { return mode; },
+  };
+  // El catálogo usa el mundo de simulación: al abrirlo se pasa a él y, al cerrarlo, el modo
+  // juego empieza una partida nueva.
+  let modeBefore = null;
+  catalog = new Catalog(game, {
+    onOpen: () => { modeBefore = mode; setMode('sim'); },
+    onClose: () => { if (modeBefore === 'juego') setMode('juego'); },
+  });
   game.catalog = catalog;
   // El catálogo se abre desde el menú, con G o con #catalogo en la dirección.
   addEventListener('keydown', (e) => { if (e.code === 'KeyG' && !e.repeat) catalog.toggle(); });
-  if (location.hash === '#catalogo') catalog.open();
 
   renderer.setAnimationLoop(() => {
     timer.update();
@@ -272,6 +305,8 @@ async function start() {
     } else tick(dt);
   });
 
+  setMode('juego'); // se empieza en la ciudad; la simulación se elige en el menú
+  if (location.hash === '#catalogo') catalog.open();
   menu.ready();
   try { sessionStorage.removeItem('bootRetry'); } catch { /* sin almacenamiento */ }
   window.__game = game;

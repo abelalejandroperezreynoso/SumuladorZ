@@ -9,7 +9,7 @@ const FLEE_START = 5; // huye si un zombi se acerca a menos de esto (m)
 const FLEE_END = 10; // ...hasta alejarse esta distancia
 const PUNCH_RANGE = 1.4;
 const COVER_LEAVE = 4; // abandona la cobertura si un zombi llega tan cerca (m)
-const ARENA_EDGE = 30; // cerca de los muros, la huida se curva hacia el centro
+const ARENA_MARGIN = 4; // a esta distancia del borde de la zona, la huida se curva hacia el centro
 const COVER_SEEK = 7; // con los zombis más lejos que esto, busca una cobertura (m)
 const COVER_SCAN = 16; // alcance de esa búsqueda (m)
 const COVER_VARIETY = 6; // metros de más que acepta recorrer por un tipo de cobertura menos usado
@@ -274,13 +274,15 @@ export class Autopilot {
       let az = P.position.z - (near ? tz / near : target.position.z);
       const al = Math.hypot(ax, az) || 1;
       ax /= al; az /= al;
-      const edge = Math.max(Math.abs(P.position.x), Math.abs(P.position.z));
-      if (edge > ARENA_EDGE - 8) {
-        const k = THREE.MathUtils.clamp((edge - (ARENA_EDGE - 8)) / 8, 0, 1) * 1.6;
-        const cl = Math.hypot(P.position.x, P.position.z) || 1;
+      // (La zona es la de la horda: el mundo de simulación o la ciudad.)
+      const B = this.horde.bounds, px = P.position.x - (B.x0 + B.x1) / 2, pz = P.position.z - (B.z0 + B.z1) / 2;
+      const limit = (B.x1 - B.x0) / 2 - ARENA_MARGIN, edge = Math.max(Math.abs(px), Math.abs(pz));
+      if (edge > limit - 8) {
+        const k = THREE.MathUtils.clamp((edge - (limit - 8)) / 8, 0, 1) * 1.6;
+        const cl = Math.hypot(px, pz) || 1;
         // Tangente al muro (para rodear) más un empuje hacia el centro.
-        ax += (-P.position.z / cl) * k - (P.position.x / cl) * k;
-        az += (P.position.x / cl) * k - (P.position.z / cl) * k;
+        ax += (-pz / cl) * k - (px / cl) * k;
+        az += (px / cl) * k - (pz / cl) * k;
       }
       const a = Math.atan2(ax, az) + this.fleeTurn;
       const fx = Math.sin(a), fz = Math.cos(a);

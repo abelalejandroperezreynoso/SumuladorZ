@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-    <title>SumuladorZ — Mundo de pruebas</title>
+    <title>SumuladorZ</title>
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; background: #0b0f14; font-family: system-ui, sans-serif; color: #e8eef5; }
       canvas { display: block; }
@@ -36,6 +36,21 @@
       #hud-status span { padding: 3px 10px; border-radius: 999px; background: rgba(10, 14, 20, 0.55); font: 600 12px system-ui, sans-serif; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
       #hud-status .horde { background: rgba(150, 30, 30, 0.6); }
       #hud-status .auto { background: rgba(40, 110, 190, 0.6); }
+      #hud-status .dusk { background: rgba(190, 95, 40, 0.65); }
+      /* --- Reloj del modo juego (src/daynight.js): arriba a la derecha; el arma se aparta a su izquierda --- */
+      #clock { position: fixed; z-index: 5; right: max(10px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); width: 104px; text-align: center; pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
+      #clock svg { display: block; width: 100%; height: auto; }
+      #clock text { font-family: Georgia, 'Times New Roman', serif; }
+      #clock-label { margin-top: 1px; font: 600 11px system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+      #clock[data-phase="atardecer"] #clock-label { color: #ffc98a; }
+      #clock[data-phase="noche"] #clock-label { color: #ff9c8c; }
+      body.game-mode #weapon-btn { right: calc(max(10px, env(safe-area-inset-right)) + 114px); }
+      body.in-menu #clock { display: none !important; }
+      @media (max-height: 460px) {
+        #clock { width: 78px; }
+        #clock-label { font-size: 10px; }
+        body.game-mode #weapon-btn { right: calc(max(10px, env(safe-area-inset-right)) + 88px); }
+      }
       #toast { position: fixed; z-index: 30; left: 0; right: 0; top: 22%; text-align: center; font: 700 30px system-ui, sans-serif; letter-spacing: 1px; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
       /* --- Menú: pantalla de inicio y pausa (mismo panel) --- */
       #overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); box-sizing: border-box; background: rgba(5, 8, 12, 0.62); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
@@ -53,6 +68,7 @@
       .menu-actions button.primary { background: #e8eef5; color: #0b0f14 !important; border-color: #e8eef5; font-size: 17px; }
       .menu-actions button:disabled { opacity: 0.45; cursor: default; }
       #overlay:not(.paused) .paused-only { display: none; }
+      #overlay.mode-juego #m-horde { display: none; } /* la horda por oleadas es de la simulación */
       .menu-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
       .menu-tabs button { padding: 8px 10px; font-size: 13px !important; border: 1px solid rgba(255, 255, 255, 0.14); background: transparent; }
       .menu-tabs button.on { background: rgba(255, 212, 121, 0.16); border-color: rgba(255, 212, 121, 0.6); }
@@ -172,15 +188,16 @@
     <button id="weapon-btn" aria-label="Cambiar de arma">Sin arma</button>
     <div id="toast"></div>
     <div id="rotate">Gira el teléfono en horizontal para jugar mejor</div>
-    <div id="overlay">
+    <div id="overlay" class="mode-juego">
       <div class="menu-card" role="dialog" aria-labelledby="m-title">
         <div class="menu-main">
           <h1 id="m-title">SumuladorZ</h1>
           <p id="overlay-msg">Cargando…</p>
           <div class="menu-actions">
             <button id="m-play" class="primary" disabled>Jugar</button>
-            <button id="m-horde" disabled>Jugar contra la horda</button>
-            <button id="m-reset" class="paused-only">Reiniciar el mundo</button>
+            <button id="m-horde" disabled>Iniciar la horda</button>
+            <button id="m-reset" class="paused-only">Reiniciar la partida</button>
+            <button id="m-mode" disabled>Simulación (mundo de pruebas)</button>
           </div>
           <nav class="menu-tabs" aria-label="Más opciones">
             <button data-sec="ajustes">Ajustes</button>
@@ -205,7 +222,7 @@
               <dt>Espacio</dt><dd>Saltar</dd><dt>Clic izquierdo</dt><dd>Disparar</dd><dt>Clic derecho</dt><dd>Apuntar</dd>
               <dt>F</dt><dd>Golpear</dd><dt>C</dt><dd>Cubrirse / salir de la cobertura</dd><dt>Ratón · rueda</dt><dd>Cámara · zoom</dd>
               <dt>1 · 2 · 3</dt><dd>Sin arma · bate · pistola</dd>
-              <dt>Esc</dt><dd>Pausa</dd><dt>H</dt><dd>Iniciar o detener la horda</dd><dt>R</dt><dd>Reiniciar el mundo</dd>
+              <dt>Esc</dt><dd>Pausa</dd><dt>H</dt><dd>Iniciar o detener la horda (simulación)</dd><dt>R</dt><dd>Reiniciar la partida o el mundo</dd>
               <dt>P · G</dt><dd>Piloto automático · catálogo</dd>
             </dl>
             <h3>Mando</h3>
@@ -224,7 +241,8 @@
           </div>
           <div data-panel="info">
             <h2>Información</h2>
-            <p>Juego 3D en tercera persona. Sobrevive a oleadas de zombis cada vez más numerosas y rápidas; los disparos hacen ruido y los atraen.</p>
+            <p>Juego 3D en tercera persona. En el <b>modo juego</b> sobrevives en una ciudad en cuarentena. El día y la noche duran 5 minutos cada uno (el reloj de arriba a la derecha lo marca): <b>de día</b> los zombis no atacan si no te acercas demasiado o les haces daño; <b>de noche</b> son muchos más, te huelen, corren y van a por ti. Los disparos hacen ruido y los atraen.</p>
+            <p>La <b>simulación</b> es el mundo de pruebas de las mecánicas, con su horda por oleadas cada vez más numerosas.</p>
             <p>Empiezas sin armas. Pasa por encima de la <b>pistola</b>, del <b>bate</b> y de las <b>cajas de balas</b> para recogerlos; las cajas reaparecen al rato y los zombis a veces sueltan balas. Si mueres, las armas vuelven a su sitio.</p>
             <p>Con <b>C</b> te pegas a un muro u objeto cercano. Tras uno bajo te agachas, tras uno alto te asomas por el borde y tras uno muy bajo te recuestas. Al apuntar te incorporas para disparar.</p>
             <p>El <b>Catálogo</b> muestra cada mecánica y animación en vivo y permite editar posturas.</p>
