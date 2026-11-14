@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RAPIER } from './physics.js';
-import { houseTextures, worldUV, box, windowTrim, glazing, decorate, mergeStatic, WOOD, WOOD_DARK, WOOD_LIGHT } from './house-details.js';
+import { houseTextures, worldUV, box, windowTrim, glazing, decorate, mergeStatic, solidify, WOOD, WOOD_DARK, WOOD_LIGHT } from './house-details.js';
 
 // Casa de una planta: cuatro muros con huecos de puerta y ventanas, suelo y techo plano.
 // Medidas en metros. Por las ventanas se pasa como por una barda
@@ -101,6 +101,7 @@ export class House {
     scene.add(floor);
     physics.add({ size: [H.ancho, H.techo, H.fondo], pos: [H.x, H.alto + H.techo / 2, H.z], color: CEILING });
     decorate(scene, physics, H, tex, doorZ);
+    solidify(trims, physics);
     mergeStatic(trims, scene);
 
     // Luz interior suave: bajo el techo apenas llega la del cielo.
