@@ -11,16 +11,42 @@ Tiene dos modos:
 
 ## Modo juego
 
-**La ciudad** (`src/city.js`) es una cuadrícula de 5 × 5 manzanas (302 m de lado) cercada por un
-muro de cuarentena con torres de vigilancia. Cada manzana es de un tipo: torres de cristal,
-bloques de oficinas, pisos de ladrillo con balcones y escalera de incendios, hileras de tiendas
-con toldos y rótulos, casas con jardín y garaje, una fábrica con silos y chimenea, almacenes con
-muelles de carga, una obra con su grúa, un supermercado con aparcamiento, una gasolinera, un
-hospital con helipuerto y carpas de triaje, una escuela con pista, una iglesia con cementerio,
-un parque y la plaza central, donde se empieza junto a un puesto de control militar abandonado
-(ahí están la pistola y el bate). En las calles hay farolas, semáforos, coches, autobuses y
-barricadas. Todo choca y sirve de cobertura; coches, barreras y vallas se pasan como bardas.
-Las cajas de balas están repartidas por las manzanas y reaparecen a los 2 minutos.
+**La ciudad** (`src/city.js`) no tiene muro. En el centro hay una cuadrícula de 5 × 5 manzanas
+(302 m de lado), cada una de un tipo: torres de cristal, oficinas, pisos de ladrillo con
+balcones y escalera de incendios, hileras de tiendas, casas con jardín, una fábrica, almacenes,
+una obra con su grúa, la comisaría, un supermercado, una gasolinera, un hospital, una escuela,
+una iglesia con cementerio, un parque y la plaza central, donde se empieza junto a un puesto de
+control militar abandonado (ahí están la pistola y el bate). Alrededor están las afueras
+(`src/city-outskirts.js`), donde las calles van en curva:
+
+- **Este y sur, zonas residenciales**: urbanizaciones de casas con jardín a lo largo de una
+  media luna y de una avenida que serpentea, con un estanque, un campo de fútbol y la carretera
+  de salida, atascada de coches y cortada por un control abandonado.
+- **Norte, zona industrial**: naves, depósitos, patio de contenedores con grúa pórtico,
+  subestación eléctrica, chimeneas y la vía del tren con un mercancías parado.
+- **Oeste, casco antiguo**: callejuelas estrechas de adoquín entre casas de pisos y tiendas,
+  con tendederos de lado a lado, contenedores y una plazuela con puestos de mercado.
+
+En las calles hay farolas, semáforos, coches, autobuses, barricadas, un helicóptero estrellado,
+alcantarillas y manchas. Todo choca y sirve de cobertura; coches, barreras y vallas se pasan
+como bardas. Las cajas de balas están repartidas (muchas, dentro de tiendas y casas) y
+reaparecen a los 2 minutos.
+
+**Entrar en los edificios** (`src/interior.js`): en las tiendas, las casas, el supermercado, la
+tienda de la gasolinera y la comisaría se puede entrar. Los escaparates se rompen de un golpe
+(`F`) o de un balazo y se entra andando; las ventanas de las casas, rotas, se pasan como una
+barda (saltando junto a ellas). Algunas puertas quedaron abiertas. Los zombis ven a través del
+cristal y, si te persiguen, lo revientan de un cabezazo para entrar (o salir). Torres, oficinas
+y bloques de pisos son macizos.
+
+**Coches patrulla** (`src/patrol.js`): hay trece, con las luces girando (frente a la comisaría,
+en la plaza, en cortes de calle y en el control de la salida). Junto a la puerta del conductor
+aparece el aviso: con `E` (cruceta abajo en el mando, botón «Coche» en táctil) subes, lo
+registras y bajas con una pistola y entre 14 y 22 balas. Cada coche da su botín una vez.
+
+**El límite**: a 262 m del centro la ciudad se acaba, sin nada que lo marque. Si lo cruzas,
+llega una horda por el lado hacia el que huyes: zombis más rápidos que tu carrera rápida y sin
+tope de mordidas, más cuanto más te alejas. Al volver dentro se calman.
 
 **Día y noche** (`src/daynight.js`): el día dura 5 minutos y la noche otros 5. El sol y la luna
 cruzan el cielo, que enrojece al atardecer; de noche salen las estrellas, se encienden las
@@ -31,20 +57,27 @@ atardecer y azules de noche. La aguja da una vuelta por ciclo, los tramos ya pas
 el centro dice el día en que vas y debajo pone cuánto falta para que anochezca o amanezca.
 
 **Los zombis** no vienen por oleadas: pueblan las calles alrededor de ti (aparecen donde no los
-ves y se retiran al quedar lejos).
+ves y se retiran al quedar lejos), y cada día hay más.
 
 | | De día | De noche |
 |---|---|---|
-| Cuántos | 14 | 24 |
+| Cuántos | 12 el día 1 y 3 más cada día, hasta 28 | 20 la noche 1 y 4 más cada noche, hasta 38 |
 | Te notan | a 4,5 m de frente o 2,2 m por la espalda | a 40 m, mires adonde mires; además te huelen a 45 m aunque no te vean |
 | Velocidad | 1,9 m/s (tú caminas a 2,2) | 3,9 m/s (corres a 6) |
 | Te olvidan | a los 2,5 s | a los 20 s |
 | Oyen un disparo | a 9 m | a 60 m |
 | Mordida | 12 de vida cada 1,15 s | 15 cada 0,85 s; muerden 3 a la vez como mucho |
 
-De día, si le haces daño a uno, ese te persigue como un zombi normal durante 8 s. De noche
-brillan en rojo. Al amanecer se amansan y olvidan lo que perseguían. Si mueres, la partida
-vuelve a empezar en el día 1.
+- **En reposo comen**: más de la mitad están acuclillados sobre un cadáver, llevándose la carne
+  a la boca; los que deambulan van a comer si encuentran uno cerca.
+- **Al detectarte** no echan a correr sin más: se quedan un momento parados (se levantan, si
+  comían), vuelven la cara hacia ti y después corren a por ti.
+- **Los cinco primeros días aún queda gente viva**: de vez en cuando pasa una persona (en azul)
+  huyendo con uno a tres zombis detrás; cuando se cansa la alcanzan, la matan y se ponen a
+  comer de ella. Cada día pasa menos gente; desde el sexto, nadie.
+- De día, si le haces daño a uno, ese te persigue como un zombi normal durante 8 s. De noche
+  brillan en rojo. Al amanecer se amansan y olvidan lo que perseguían. Si mueres, la partida
+  vuelve a empezar en el día 1.
 
 ## Cómo ejecutarlo
 
@@ -262,6 +295,7 @@ node tools/gameplay.cjs stand 300
 `tools/city.cjs` fotografía la ciudad (vista aérea y ocho lugares, cada uno de día, al atardecer
 y de noche), dice lo que pesa (triángulos, bloques de choque, llamadas de dibujo) y mide el
 carácter de los zombis: a qué distancia te notan de día y cuánto tardan en morderte de noche.
+Con `FOTOS=0` solo hace las medidas.
 
 ```bash
 node tools/city.cjs salida
@@ -320,11 +354,13 @@ Las tres necesitan Playwright con Chromium instalado en el entorno; no son depen
 | `src/main.js` | Arranque, bucle principal y HUD |
 | `src/physics.js` | Mundo de Rapier, creación de cuerpos y sincronización con las mallas |
 | `src/world.js` | Construcción del escenario de pruebas |
-| `src/city.js` | Ciudad del modo juego: trazado, calles, muro y luces de las farolas |
+| `src/city.js` | Ciudad del modo juego: trazado del centro, calles, límite y luces de las farolas |
+| `src/city-outskirts.js` | Afueras: calles en curva, urbanizaciones, zona industrial y casco antiguo |
+| `src/interior.js`, `src/patrol.js` | Edificios en los que se entra y sus cristales; coches patrulla |
 | `src/city-blocks.js`, `src/city-props.js` | Edificios de cada tipo de manzana; mobiliario urbano y vehículos |
 | `src/city-build.js`, `src/city-textures.js` | Geometría agrupada por material; texturas pintadas en lienzo |
 | `src/daynight.js` | Ciclo de día y noche, cielo y reloj |
-| `src/gamemode.js` | Reglas del modo juego: población y carácter de los zombis según la hora, linterna |
+| `src/gamemode.js` | Reglas del modo juego: población y carácter de los zombis según la hora y el día, personas que huyen, horda del límite, linterna |
 | `src/player.js` | Personaje: movimiento, animaciones, golpe y pose de apuntado |
 | `src/gait.js` | Zancada a medida y pie de apoyo clavado al caminar y correr (jugador y zombis) |
 | `src/camera.js` | Cámara en tercera persona con colisión |

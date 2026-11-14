@@ -1257,7 +1257,7 @@ class Civilian extends Zombie {
 // Cadáver del que comen: charco de sangre, trozos de carne y unas costillas.
 const meatGeo = new THREE.IcosahedronGeometry(0.15, 0);
 const ribGeo = new THREE.BoxGeometry(0.03, 0.03, 0.3);
-const poolGeo = new THREE.CircleGeometry(0.8, 14).rotateX(-Math.PI / 2);
+const poolGeo = new THREE.CircleGeometry(0.6, 14).rotateX(-Math.PI / 2);
 const meatMat = new THREE.MeshStandardMaterial({ color: 0x7c1f1a, roughness: 0.55, flatShading: true });
 const ribMat = new THREE.MeshStandardMaterial({ color: 0xd8d0b8, roughness: 0.7 });
 const poolMat = new THREE.MeshStandardMaterial({ color: 0x4a0c0c, roughness: 0.25, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });

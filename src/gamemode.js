@@ -19,7 +19,7 @@ export const GAME = {
   // lado hacia el que se sale: `base` zombis más `porMetro` por cada metro que te alejes, hasta
   // `tope`, uno cada `cada` s. Vuelve la calma al regresar `vuelta` m dentro; los que quedan
   // siguen furiosos `furia` s.
-  limite: { base: 24, porMetro: 1.2, tope: 56, cada: 0.12, min: 14, max: 32, far: 85, vuelta: 5, furia: 20 },
+  limite: { base: 30, porMetro: 1.2, tope: 56, cada: 0.1, min: 10, max: 26, far: 85, vuelta: 5, furia: 20 },
   balas: 120, // segundos hasta que una caja de balas del escenario reaparece
   // Linterna del jugador: se enciende sola al oscurecer y alumbra hacia donde mira la cámara.
   linterna: { fuerza: 85, alcance: 34, angulo: 0.6, borde: 0.6 },
@@ -188,7 +188,7 @@ export class GameMode {
       this.civT -= dt;
       if (this.civT <= 0) {
         this.civT = (C.cada[0] + C.cada[1] * (sky.day - 1)) * (0.7 + 0.6 * Math.random());
-        if (horde.civilians.filter((c) => !c.dead).length < C.aLaVez && horde.alive < horde.ambient.count + 6) horde.spawnChase(player, 1 + Math.floor(Math.random() * C.cazadores));
+        if (horde.civilians.filter((c) => !c.dead).length < C.aLaVez && horde.alive < (horde.ambient?.count ?? 0) + 6) horde.spawnChase(player, 1 + Math.floor(Math.random() * C.cazadores));
       }
     }
     const dark = 1 - sky.light;

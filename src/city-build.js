@@ -137,6 +137,26 @@ export class Batch {
     return this;
   }
 
+  /**
+   * Cinta tendida en el suelo a lo largo de una línea de puntos [{ x, z }] (calles curvas,
+   * aceras, vías): `width` de ancho a la altura `y`. `offset` la desplaza hacia la izquierda
+   * de la marcha; `uv`: metros por repetición de la textura.
+   */
+  strip(mat, pts, width, y, o = {}) {
+    const m = o.uv ?? 4, col = lin(o.color ?? 0xffffff), off = o.offset ?? 0;
+    let prev = null, s = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)];
+      const tx = c.x - a.x, tz = c.z - a.z, l = Math.hypot(tx, tz) || 1, nx = -tz / l, nz = tx / l;
+      const px = pts[i].x + nx * off, pz = pts[i].z + nz * off;
+      const L = this.at(px + (nx * width) / 2, y, pz + (nz * width) / 2), R = this.at(px - (nx * width) / 2, y, pz - (nz * width) / 2);
+      if (i > 0) s += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+      if (prev) this.quad(mat, prev.R, prev.L, L, R, [0, 1, 0], [0, prev.s / m, width / m, s / m], col);
+      prev = { L, R, s };
+    }
+    return this;
+  }
+
   /** Cambia las UV de la última cara escrita en `mat` por un recorte fijo. */
   fixLast(mat, [u0, v0, u1, v1]) {
     const b = this.bucket(mat), i = b.uv.length - 8;

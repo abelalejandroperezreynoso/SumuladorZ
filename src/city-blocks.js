@@ -116,7 +116,7 @@ export function apartments(G, w, d, o = {}) {
   b.vquad(M.details, px, 0.16, d / 2 + 0.04, 1.9, 2.5, { rect: GLASS_DOOR });
   b.box(M.plain, px, 2.8, d / 2 + 0.7, 3, 0.14, 1.4, { color: mix(tint, 0x202020, 0.6), bottom: true });
   // Escalera de incendios en un costado (edificios de ladrillo).
-  if (kind === 'brick') {
+  if (kind === 'brick' && o.escape !== false) {
     b.push(0, 0, Math.PI / 2);
     for (let f = 1; f < floors; f++) {
       const y = f * fh - 0.1;
@@ -126,7 +126,7 @@ export function apartments(G, w, d, o = {}) {
     }
     b.pop();
   }
-  roofGear(G, w, d, h + 0.35, true);
+  if (w > 12) roofGear(G, w, d, h + 0.35, true);
   return h;
 }
 

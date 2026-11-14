@@ -64,16 +64,43 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   la que te notan de día, segundos hasta el primer mordisco y la muerte de noche, quieto).
   Para probar a mano: `g.sky.time = <segundo del ciclo>` (0 amanece, 300 anochece),
   `g.gameMode.restart()`.
-  - **Ciudad**: `City` (`src/city.js`) reparte 5 × 5 manzanas según `LAYOUT`; cada tipo es una
-    función de `BLOCKS` (`src/city-blocks.js`) que llena un solar de 40 × 40 m mirando a +Z.
-    Todo se dibuja con `Batch` (`src/city-build.js`: `box`, `prism`, `wedge`, `cyl`, `blob`,
-    `hquad`, `vquad` dentro de marcos `push`/`pop`), que escribe una malla por material y
-    manzana; `solid: true` añade el bloque de choque. Mobiliario y vehículos, en
-    `src/city-props.js`; texturas y materiales (fachadas en rejilla de 4 × 4 ventanas, con su
+  - **Ciudad**: `City` (`src/city.js`) reparte en el centro 5 × 5 manzanas según `LAYOUT`; cada
+    tipo es una función de `BLOCKS` (`src/city-blocks.js`) que llena un solar de 40 × 40 m
+    mirando a +Z. Todo se dibuja con `Batch` (`src/city-build.js`: `box`, `prism`, `wedge`,
+    `cyl`, `blob`, `hquad`, `vquad`, `strip` dentro de marcos `push`/`pop`), que escribe una
+    malla por material y lote; `solid: true` añade el bloque de choque. Mobiliario y vehículos,
+    en `src/city-props.js`; texturas y materiales (fachadas en rejilla de 4 × 4 ventanas, con su
     textura de luces para la noche), en `src/city-textures.js`. Los generadores anotan puntos
-    con `b.mark` (`lamp`, `balas`, `pistola`, `bate`, `spawn`). El azar parte de semillas fijas:
-    la ciudad sale siempre igual. Para añadir un tipo de manzana: función en `BLOCKS` y su
-    nombre en `LAYOUT`.
+    con `b.mark` (`lamp`, `balas`, `pistola`, `bate`, `spawn`, `patrulla`). El azar parte de
+    semillas fijas: la ciudad sale siempre igual.
+  - **Afueras** (el usuario pidió calles que no sean todas rectas, callejones y zonas
+    residenciales e industriales): `src/city-outskirts.js`. Cada calle es una curva
+    (`curve([[x, z]…])`, por los puntos que se le dan, respecto al centro de la ciudad);
+    `street` tiende calzada, aceras, línea y farolas con `Batch.strip`, y `lots` reparte solares
+    a sus lados mirando a la calzada (`lined` hace las dos cosas por lotes de mallas). Este y
+    sur: casas (`house`); norte: `INDUSTRY` (naves, depósitos, contenedores, subestación) y la
+    vía con el tren; oeste: casco antiguo de callejuelas (`shopRow` y `apartments` estrechos,
+    tendederos). Fuera del centro el suelo es llano (sin bordillo).
+  - **Sin muro y con límite** (pedido por el usuario): `CITY.limite` (262 m), `city.limit`.
+    `GameMode.border` vigila si el jugador lo cruza: `MOODS.horda` (8,8 m/s, más que la carrera
+    rápida) y una población que crece con los metros de más (`GAME.limite`), por delante de él
+    (`ambient.toward`, `seen`). Hay un tope invisible `CITY.tope` m más allá.
+  - **Edificios en los que se entra** (pedido: romper ventanas para entrar): `room()` en
+    `src/interior.js` levanta un recinto con muros por piezas y huecos `door` (abierta),
+    `window` (alféizar y cristal: rota, se pasa como una barda) o `front` (escaparate hasta el
+    suelo: roto, se entra andando). Lo usan `shopRow`, `house`, el supermercado, la tienda de
+    la gasolinera y la comisaría; torres, oficinas y pisos son macizos. `Glass` (`city.glass`)
+    dibuja todos los cristales en una malla y cada paño tiene su bloque de choque con
+    `meta.break`, como los de la casa del mundo de simulación; `glass.reset()` los repone.
+    Cada recinto es un `Interior` (`city.interiors`, `horde.buildings`) con `inside` y `route`:
+    `Horde.route` elige el edificio y el zombi revienta el cristal (`climbWindow`; con `walk`,
+    un escaparate, después pasa andando en vez de trepar).
+  - **Coches patrulla** (pedido: subir a ellos para tomar armas y munición): `Patrols`
+    (`src/patrol.js`, `city.patrols`) pone la puerta del conductor y las luces en cada marca
+    `patrulla` (`car(…, { kind: 'policia' })`). `GameMode.patrol` muestra el aviso
+    (`body.can-use`) junto a la puerta y, con `E`, llama a `Player.enter`: el jugador sube,
+    registra y baja (`player.ride`, `updateRide`, sin mandos ni choques, como una barda) y
+    recibe pistola y balas (`PATROL`). Una vez por coche y partida.
   - **Día y noche**: `DayNight` (`src/daynight.js`, `g.sky`): `CYCLE` (día y noche de 300 s; el
     usuario pidió 5 minutos cada uno), luz, niebla, bóveda, sol, luna y estrellas, y el reloj
     (`Clock`, SVG de 16 tramos al estilo que pidió el usuario). `sky.light` va de 1 (día) a 0.
@@ -81,12 +108,24 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
     charco de luz, pero solo las `LIGHTS.cuantas` más cercanas alumbran de verdad.
   - **Zombis según la hora** (pedido por el usuario: de día no son agresivos salvo que te
     acerques demasiado; de noche, muy agresivos): `MOODS` en `src/horde.js` (`normal`, `dia`,
-    `noche`) fija vista, oído, memoria, velocidades, mordida, olfato (`scent`) y cuántos muerden
-    a la vez (`gang`); `horde.setMood`. Un zombi herido de día pasa `PROVOKED` s furioso
-    (`rage`, carácter normal). `horde.setAmbient` mantiene la población alrededor del jugador
-    (`GAME` en `src/gamemode.js`: 14 de día, 24 de noche) en vez de oleadas; `horde.bounds` es la
-    zona por la que se mueven. `GameMode` (`g.gameMode`) cambia todo eso con las fases del reloj,
-    lleva la linterna y reinicia la partida al morir. Escenas `zombi_dia` y `zombi_noche`.
+    `noche`, `caza`, `horda`) fija vista, oído, memoria, velocidades, mordida, olfato (`scent`)
+    y cuántos muerden a la vez (`gang`); `horde.setMood`. Un zombi herido de día pasa
+    `PROVOKED` s furioso (`rage`, carácter normal). `horde.setAmbient` mantiene la población
+    alrededor del jugador en vez de oleadas; `horde.bounds` es la zona por la que se mueven.
+    **La densidad crece con los días** (pedido): `GAME.dia`/`noche` en `src/gamemode.js`
+    (`base` + `crece` por día, hasta `tope`), `GameMode.population`. `GameMode` (`g.gameMode`)
+    cambia todo eso con las fases del reloj, lleva la linterna y reinicia la partida al morir.
+  - **Reposo y alerta** (pedido: en reposo comen carne en el suelo; al detectarte primero
+    vuelven la cara y después corren): estado `feed` (acuclillado junto a un cadáver de
+    `horde.carcasses`: `FEED`, `poseFeed`, piernas con `Gait.place`) y estado `notice`
+    (`NOTICE` s parado; la cabeza gira `look` hasta `LOOK_MAX`). `Zombie.notice()` es la única
+    puerta de `wander`/`feed` a `chase`. Vale también en la simulación.
+  - **Personas que huyen** (pedido: los 5 primeros días se ve gente perseguida y asesinada):
+    `Civilian` (extiende `Zombie`, esqueleto azul, `horde.civilians`) y `Horde.spawnChase`:
+    una persona con 1–3 zombis detrás (`z.prey`, carácter `caza`); cuando se cansa (`CIVIL`)
+    la alcanzan, cae como muñeco de trapo y los cazadores comen de su cadáver. `GAME.civiles`
+    fija los días y la frecuencia. Las balas no les afectan.
+  - Escenas `zombi_come`, `zombi_dia` y `zombi_noche`.
 - **Piloto automático** — tecla `P` en el juego (`src/autopilot.js`). Su registro está en
   `window.__game.autopilot.log` y `.stats`. Busca cobertura de forma activa y va rotando
   entre alta, baja y muy baja (`stats.coverTypes`). La escena `piloto` de `tools/watch.cjs`
@@ -222,10 +261,15 @@ Desde entonces: se empieza sin armas y la munición es limitada (pistola, bate y
 que se recogen); `gameplay.cjs` aún no mide cómo cambia eso la dificultad.
 
 Modo juego (ciudad, día y noche): medido con `tools/city.cjs`, de día un zombi te nota a 4,4 m
-de frente y 2,2 m por la espalda y te deja a los ~9 s de alejarte caminando; de noche, quieto
-en la plaza, el primer mordisco llega a los ~8 s y la muerte a los ~10 s. Sin medir: una noche
-entera con un jugador humano (correr, esconderse, pelear), y el rendimiento en un móvil real
-(cada zombi son ~45 llamadas de dibujo; de noche se ven 600–1700 por fotograma). Sin probar
+de frente y 2,1 m por la espalda y te deja a los ~11 s de alejarte caminando; de noche, quieto
+en la plaza, el primer mordisco llega a los ~10 s y la muerte a los ~12 s. Al salir del límite
+corriendo, primer mordisco a los ~4 s y muerte a los ~11 s (llega a alejarse unos 80 m: hasta
+el tope). La ciudad pesa ~420 000 triángulos, ~5600 bloques de choque, 141 interiores y 492
+cristales, y se construye en ~0,4 s. Sin medir: una partida de varios días con un jugador
+humano (el equilibrio de la noche, de la densidad creciente y de los refugios está ajustado
+solo con bots) y el rendimiento en un móvil real (cada zombi son ~45 llamadas de dibujo; con
+la población del tope o la horda del límite se pasa de 2000 por fotograma). Sin probar
 tampoco: por cómo se calcula la mordida (menos de 1,2 m de desnivel y 1,15 m de distancia),
-subido a algo alto (una furgoneta, un contenedor) los zombis no deberían alcanzarte, lo que
-puede hacer la noche demasiado fácil.
+subido a algo alto (una furgoneta, un contenedor) los zombis no deberían alcanzarte, y dentro
+de una tienda con el cristal entero solo entran si te persiguen: las dos cosas pueden hacer la
+noche demasiado fácil.
