@@ -78,6 +78,8 @@ export class City {
     this.center = { x: C.x, z: C.z };
     /** Zona por la que se mueven jugador y zombis (dentro del muro). */
     this.bounds = { x0: C.x - half + 1.5, x1: C.x + half - 1.5, z0: C.z - half + 1.5, z1: C.z + half - 1.5 };
+    /** Límite de la ciudad: fuera de él llega la horda (ver GameMode.border). */
+    this.limit = this.bounds;
     this.group = new THREE.Group();
     scene.add(this.group);
     const world = physics.world;

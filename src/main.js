@@ -237,11 +237,11 @@ async function start() {
 
     // Interfaz: oleada y piloto (solo si están activos), barra de vida y borde rojo al recibir daño.
     const alive = horde.alive;
-    const key = mode === 'juego' ? `j|${sky.phase}|${horde.kills}|${autopilot.active}` : `${horde.active}|${horde.wave}|${alive}|${autopilot.active}`;
+    const key = mode === 'juego' ? `j|${sky.phase}|${horde.kills}|${autopilot.active}|${gameMode.outside}` : `${horde.active}|${horde.wave}|${alive}|${autopilot.active}`;
     if (key !== hudKey) {
       hudKey = key;
       const chips = mode === 'juego'
-        ? (sky.phase === 'noche' ? '<span class="horde">Noche · van a por ti</span>' : sky.phase === 'atardecer' ? '<span class="dusk">Atardecer</span>' : '')
+        ? (gameMode.outside ? '<span class="horde">¡Fuera de la ciudad! Vuelve</span>' : sky.phase === 'noche' ? '<span class="horde">Noche · van a por ti</span>' : sky.phase === 'atardecer' ? '<span class="dusk">Atardecer</span>' : '')
           + (horde.kills ? `<span>${horde.kills} ${horde.kills === 1 ? 'baja' : 'bajas'}</span>` : '')
         : horde.active ? `<span class="horde">${horde.wave ? `Oleada ${horde.wave} · ${alive} ${alive === 1 ? 'zombi' : 'zombis'}` : 'Horda'}</span>` : '';
       hudStatus.innerHTML = chips + (autopilot.active ? '<span class="auto">Piloto automático</span>' : '');
