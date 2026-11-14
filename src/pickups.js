@@ -139,7 +139,7 @@ export class Pickups {
   /** Deja el escenario como al empezar. */
   reset() {
     this.clear();
-    for (const [type, x, z] of this.layout) this.drop(type, x, z, undefined, { fixed: true, y: this.baseY });
+    for (const [type, x, z, y] of this.layout) this.drop(type, x, z, undefined, { fixed: true, y: y ?? this.baseY });
   }
 
   /** Un zombi ha muerto en `position`: a veces suelta balas. */

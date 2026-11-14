@@ -2,17 +2,22 @@ import * as THREE from 'three';
 import { RAPIER } from './physics.js';
 import { cityTextures, cityMaterials, rng } from './city-textures.js';
 import { Batch } from './city-build.js';
-import { BLOCKS, roadblock, DETAIL } from './city-blocks.js';
+import { Glass } from './interior.js';
+import { Patrols } from './patrol.js';
+import { BLOCKS, roadblock } from './city-blocks.js';
+import { buildOutskirts, streetDetails } from './city-outskirts.js';
 import { lamp, tree, bench, bin, hydrant, busStop, trafficLight, car, cone, pick, rr } from './city-props.js';
 
-// Ciudad del modo juego: una cuadrícula de 5 × 5 manzanas de distinto tipo, con sus calles,
-// aceras, farolas y coches abandonados, cercada por un muro de cuarentena. Se construye una
-// sola vez al cargar, lejos del mundo de simulación (que sigue en el origen), y siempre sale
-// igual: todo el azar parte de semillas fijas.
+// Ciudad del modo juego: en el centro, una cuadrícula de 5 × 5 manzanas de distinto tipo, con
+// sus calles, aceras, farolas y coches abandonados; alrededor, las afueras (urbanizaciones,
+// polígono industrial y casco antiguo, de calles en curva: src/city-outskirts.js). No tiene
+// muro: su límite (`limite` m desde el centro) no se ve, pero cruzarlo atrae a la horda. Se
+// construye una sola vez al cargar, lejos del mundo de simulación (que sigue en el origen), y
+// siempre sale igual: todo el azar parte de semillas fijas.
 //
 // Medidas en metros. Cada manzana ocupa `manzana` de lado contando su acera (`acera`), que
 // sube `bordillo` sobre la calzada; entre manzanas hay `calle` de calzada.
-export const CITY = { x: 600, z: 0, manzanas: 5, manzana: 46, calle: 12, acera: 3, bordillo: 0.08, muro: 5 };
+export const CITY = { x: 600, z: 0, manzanas: 5, manzana: 46, calle: 12, acera: 3, bordillo: 0.08, limite: 262, tope: 85 };
 // Farolas con luz de verdad: solo las `LUCES` más cercanas al jugador (las demás brillan y
 // pintan su charco de luz en el suelo, pero no iluminan). `fuerza` y `alcance` de cada una.
 const LIGHTS = { cuantas: 3, fuerza: 46, alcance: 20, cambio: 5 };
@@ -20,7 +25,7 @@ export const CITY_TUNING = { CITY, LIGHTS };
 
 // Qué hay en cada manzana (fila = de norte a sur, columna = de oeste a este).
 const LAYOUT = [
-  ['industria', 'almacenes', 'obra', 'pisos', 'casas'],
+  ['industria', 'almacenes', 'obra', 'comisaria', 'casas'],
   ['super', 'pisos', 'torres', 'oficinas', 'casas'],
   ['tiendas', 'oficinas', 'plaza', 'tiendas', 'parque'],
   ['gasolinera', 'pisos', 'torres', 'hospital', 'escuela'],
@@ -77,13 +82,24 @@ export class City {
     this.half = half;
     this.center = { x: C.x, z: C.z };
     /** Zona por la que se mueven jugador y zombis (dentro del muro). */
-    this.bounds = { x0: C.x - half + 1.5, x1: C.x + half - 1.5, z0: C.z - half + 1.5, z1: C.z + half - 1.5 };
+    const L = C.limite;
+    /** Límite de la ciudad: fuera de él llega la horda (ver GameMode.border). */
+    this.limit = { x0: C.x - L, x1: C.x + L, z0: C.z - L, z1: C.z + L };
+    /** Zona por la que se mueven los zombis (más allá del límite, de donde viene la horda). */
+    this.bounds = { x0: C.x - L - C.tope + 8, x1: C.x + L + C.tope - 8, z0: C.z - L - C.tope + 8, z1: C.z + L + C.tope - 8 };
     this.group = new THREE.Group();
     scene.add(this.group);
     const world = physics.world;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    world.createCollider(RAPIER.ColliderDesc.cuboid(half + 40, 0.5, half + 40).setTranslation(C.x, -0.5, C.z), this.body);
+    world.createCollider(RAPIER.ColliderDesc.cuboid(L + 120, 0.5, L + 120).setTranslation(C.x, -0.5, C.z), this.body);
+    // Tope invisible mucho más allá del límite (la horda mata antes de llegar a él).
+    for (const [sx, sz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      world.createCollider(RAPIER.ColliderDesc.cuboid(sx ? 1 : L + 120, 20, sz ? 1 : L + 120).setTranslation(C.x + sx * (L + C.tope), 20, C.z + sz * (L + C.tope)), this.body);
+    }
     const marks = {};
+    /** Cristales que se rompen y edificios en los que se entra (src/interior.js). */
+    this.glass = new Glass(scene, physics);
+    this.interiors = [];
     let tris = 0, solids = 1;
     const batch = () => { const b = new Batch(world, this.body); b.marks = marks; return b; };
     const done = (b) => { tris += b.build(this.group); solids += b.solids; };
@@ -94,9 +110,9 @@ export class City {
     const base = batch();
     base.push(C.x, C.z);
     base.hquad(M.asphalt, 0, 0, 0, half * 2, half * 2, { uv: 6 });
-    // Campo de fuera del muro: cuatro franjas alrededor (no por debajo de la calzada, que a lo lejos se pelearía con ella).
-    const F = 600, e = half + 1;
-    SIDES.forEach((rot, i) => base.push(0, 0, rot).hquad(M.grass, 0, -0.02, e + F / 2, i % 2 ? e * 2 : e * 2 + F * 2, F, { uv: 9, color: 0x9a9a78 }).pop());
+    // Campo alrededor del centro: cuatro franjas (no por debajo de la calzada, que a lo lejos se pelearía con ella).
+    const F = 700;
+    SIDES.forEach((rot, i) => base.push(0, 0, rot).hquad(M.grass, 0, -0.03, half + F / 2, i % 2 ? half * 2 : half * 2 + F * 2, F, { uv: 9, color: 0xa8ac84 }).pop());
     const YELLOW = 0xd9b23c, WHITE = 0xe8e8e0;
     for (let k = 0; k <= N; k++) for (let j = 0; j < N; j++) {
       const a = roadAt(k), c = blockAt(j);
@@ -109,38 +125,14 @@ export class City {
         base.hquad(M.mark, c + e, 0.015, a + s, 3, 0.55, { color: WHITE });
       }
     }
-    const WALL = 0x8f8c86;
-    for (const rot of SIDES) {
-      base.push(0, 0, rot);
-      base.box(M.concrete, 0, 0, half + 0.5, half * 2 + 2, C.muro, 1, { color: WALL, uv: [4, 5], solid: true });
-      base.box(M.plain, 0, C.muro, half + 0.5, half * 2, 0.45, 0.5, { color: 0x4a4f55, top: false });
-      for (let x = -half + 4; x < half; x += 8) base.box(M.concrete, x, 0, half - 0.15, 0.7, C.muro + 0.3, 0.5, { color: 0x7d7a74, uv: [2, 5] });
-      for (let x = -half + 16; x < half; x += 32) base.vquad(M.details, x, 1.6, half - 0.03, 2.2, 2.2, { rect: DETAIL.WARNING, rot: Math.PI });
-      // Portones cerrados donde las calles llegaban a la carretera.
-      for (const x of [roadAt(2), roadAt(3)]) {
-        base.box(M.metal, x, 0, half - 0.1, 9.4, 4.4, 0.3, { color: 0x5a6068, uv: [1.5, 4.4] });
-        base.box(M.plain, x, 0.9, half - 0.27, 9.4, 0.5, 0.04, { color: 0xd9b23c, top: false });
-        for (const s of [-4.9, 4.9]) base.box(M.concrete, x + s, 0, half - 0.2, 0.9, C.muro + 0.6, 0.9, { color: 0x6f6c66, uv: [2, 5] });
-      }
-      // Torre de vigilancia en la esquina.
-      base.push(half - 3, half - 3, 0);
-      for (const sx of [-1.4, 1.4]) for (const sz of [-1.4, 1.4]) base.box(M.plain, sx, 0, sz, 0.25, 7.2, 0.25, { color: 0x4a4f55 });
-      base.solid(0, 0, 0, 3.2, 7.2, 3.2);
-      base.box(M.plain, 0, 7.2, 0, 4, 0.25, 4, { color: 0x5a5d60, bottom: true });
-      for (const [sx, sz, lx, lz] of [[0, 1, 4, 0.1], [0, -1, 4, 0.1], [1, 0, 0.1, 4], [-1, 0, 0.1, 4]]) base.box(M.plain, sx * 1.95, 7.45, sz * 1.95, lx, 1.1, lz, { color: 0x4f5a3a });
-      base.box(M.plain, 0, 9.9, 0, 4.6, 0.2, 4.6, { color: 0x3a4046, bottom: true });
-      for (const sx of [-1.9, 1.9]) for (const sz of [-1.9, 1.9]) base.box(M.plain, sx, 8.55, sz, 0.12, 1.35, 0.12, { color: 0x4a4f55 });
-      base.box(M.lamp, -1.6, 9.5, -1.6, 0.5, 0.35, 0.5, { bottom: true });
-      base.pop();
-      base.pop();
-    }
+    streetDetails({ b: base, M, R: rng(77), signs: T.signs, glass: this.glass, interiors: this.interiors }, half, roadAt, blockAt, N);
     base.pop();
     done(base);
 
     // --- Manzanas ---
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const type = LAYOUT[j][i], b = batch();
-      const G = { b, M, R: rng(1000 + i * 37 + j * 101), signs: T.signs };
+      const G = { b, M, R: rng(1000 + i * 37 + j * 101), signs: T.signs, glass: this.glass, interiors: this.interiors };
       b.push(C.x + blockAt(i), C.z + blockAt(j), 0, S);
       b.box(M.sidewalk, 0, -S, 0, C.manzana, S, C.manzana, { uv: [3, 3], topUV: 3 });
       b.solid(0, -S - 0.4, 0, C.manzana, S + 0.4, C.manzana);
@@ -155,6 +147,20 @@ export class City {
       done(b);
     }
 
+    // --- Afueras ---
+    buildOutskirts({
+      half, limit: L,
+      section: (seed, fn) => {
+        const b = batch();
+        b.push(C.x, C.z);
+        fn({ b, M, R: rng(seed), signs: T.signs, glass: this.glass, interiors: this.interiors });
+        b.pop();
+        done(b);
+      },
+    });
+    this.glass.build(this.group);
+    /** Coches patrulla que se registran (src/patrol.js). */
+    this.patrols = new Patrols(this.group, marks.patrulla ?? []);
     this.tris = tris; // (cifras para tools/city.cjs)
     this.solids = solids;
     this.buildMs = performance.now() - t0;
@@ -163,7 +169,7 @@ export class City {
     /** Dónde empieza el jugador y hacia dónde mira la cámara. */
     this.spawn = { x: sp.x, z: sp.z, yaw: 0 };
     /** Objetos del escenario: [tipo, x, z], como en `pickups.js`. */
-    this.pickups = ['pistola', 'bate', 'balas'].flatMap((kind) => (marks[kind] ?? []).map((m) => [kind, m.x, m.z]));
+    this.pickups = ['pistola', 'bate', 'balas'].flatMap((kind) => (marks[kind] ?? []).map((m) => [kind, m.x, m.z, m.y]));
 
     // --- Luces de verdad de las farolas más cercanas ---
     this.lights = [];
@@ -193,6 +199,7 @@ export class City {
 
   /** Lleva las luces a las farolas más cercanas a `pos`, encendiéndolas y apagándolas poco a poco. */
   update(dt, pos) {
+    this.glass.update(dt);
     this.scanT -= dt;
     if (this.scanT <= 0) {
       this.scanT = 0.3;

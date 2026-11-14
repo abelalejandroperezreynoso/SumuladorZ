@@ -60,7 +60,24 @@ export const MOODS = {
   normal: { view: VIEW_RANGE, cos: VIEW_COS, sense: SENSE_RANGE, noise: NOISE_RANGE, memory: MEMORY, wander: WANDER_SPEED, chase: CHASE_SPEED, attack: ATTACK_TIME, bite: BITE_DAMAGE, seek: 0.5, scent: 0, run: 1.2, gang: Infinity },
   dia: { view: 4.5, cos: Math.cos(THREE.MathUtils.degToRad(75)), sense: 2.2, noise: 9, memory: 2.5, wander: 0.55, chase: 1.9, attack: 1.15, bite: 12, seek: 0, scent: 0, run: 1.2, gang: Infinity },
   noche: { view: 40, cos: -2, sense: 10, noise: 60, memory: 20, wander: 1.2, chase: 3.9, attack: 0.85, bite: 15, seek: 1, scent: 45, run: 1.5, gang: 3 },
+  // Cazando a una persona (los primeros días): no la pierden de vista y la alcanzan cuando se cansa.
+  caza: { view: 70, cos: -2, sense: 70, noise: 0, memory: 30, wander: 1.2, chase: 5.3, attack: 0.7, bite: 55, seek: 0, scent: 0, run: 1.8, gang: Infinity },
+  // Horda del límite de la ciudad: más rápidos que la carrera rápida del jugador (8 m/s) y sin tope de mordidas.
+  horda: { view: 95, cos: -2, sense: 95, noise: 150, memory: 60, wander: 2, chase: 8.8, attack: 0.6, bite: 25, seek: 1, scent: 150, run: 2.9, gang: Infinity },
 };
+// --- Alerta, reposo y civiles ---
+// Al detectarte, un zombi no arranca a correr sin más: se queda `NOTICE` s parado volviendo la
+// cara hacia ti (la cabeza gira hasta `LOOK_MAX` rad respecto al cuerpo) y después te persigue.
+// Si estaba comiendo en el suelo tarda `NOTICE_FEED`, porque además se levanta.
+const NOTICE = 0.75, NOTICE_FEED = 1.05, LOOK_MAX = 1.35;
+// Comer: en reposo (modo juego) se acuclillan junto a un cadáver y comen. `baja`: cuánto baja
+// la cadera (m); `inclina`: vuelco del cuerpo (rad); `dobla`: giro de cada hueso del tronco;
+// `sitio`: distancia al cadáver (m); `comensales` por cadáver; van a uno que esté a menos de
+// `cerca` m; `probabilidad` de aparecer ya comiendo (de día y de noche); `maximo` de cadáveres.
+const FEED = { baja: 0.5, inclina: 0.3, dobla: [['Abdomen', 0.42], ['Torso', 0.46], ['Neck', 0.28]], sitio: 0.62, comensales: 3, cerca: 12, probabilidad: [0.55, 0.15], maximo: 28 };
+// Personas que huyen (los primeros días del modo juego): corren a `corre` m/s durante `aguante`
+// segundos y después, cansadas, a `cansado`; desaparecen si quedan a más de `lejos` m o pasan `dura` s.
+const CIVIL = { vida: 100, corre: 5.6, cansado: 2.7, aguante: [2.5, 6], lejos: 95, dura: 60 };
 const PROVOKED = 8; // de día, segundos que un zombi herido se comporta como uno normal
 const SCENT_EVERY = 2; // cada cuánto te huelen de noche (s)
 const DETOUR_FLIP = 8, DETOUR_FLIP_CITY = 22; // segundos bordeando un obstáculo antes de probar por el otro lado
@@ -126,7 +143,7 @@ export const ZOMBIE_TUNING = {
   VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
   BITE_DAMAGE, HEALTH, STAGGER, RAGDOLL_MAX, REMAINS_MAX, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
   WINDOW, JOINT_ZONE, HEAD_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_SPEEDS, LIMP, CRAWL_FALL, DEBRIS_TIME,
-  MOODS, PROVOKED, SCENT_EVERY,
+  MOODS, PROVOKED, SCENT_EVERY, NOTICE, NOTICE_FEED, LOOK_MAX, FEED, CIVIL,
 };
 
 const _to = new THREE.Vector3();
@@ -224,11 +241,18 @@ function dampAngle(a, b, lambda, dt) {
 }
 
 class Zombie {
-  constructor(horde, x, z, lift = 0) {
+  constructor(horde, x, z, lift = 0, kind = 'zombie') {
     this.horde = horde;
     this.rage = 0; // segundos que le quedan de furia tras recibir un golpe o un disparo de día
+    this.prey = null; // a quién persigue si no es al jugador (una persona que huye)
+    this.look = 0; // giro de la cabeza respecto al cuerpo (rad): mira a lo que ha detectado
+    this.feed = null; // cadáver del que está comiendo (estado `feed`)
+    this.goFeed = null; // ...o al que va a ponerse a comer
+    this.feedK = 0; // 0 = de pie, 1 = acuclillado comiendo
+    this.feedT = Math.random() * 10;
+    this.feedA = 0; // en qué lado del cadáver se pone (rad)
     this.hp = HEALTH;
-    this.state = 'wander'; // wander | chase | attack | stagger | window | dead
+    this.state = 'wander'; // wander | feed | notice | chase | attack | stagger | window | dead (y flee, los civiles)
     this.win = null; // ventana por la que está entrando: { w, side, t, from, smash }
     this.winPose = null; // postura de ese paso: { s, y, pitch, u }
     this.facing = Math.random() * Math.PI * 2;
@@ -267,7 +291,7 @@ class Zombie {
     this.model = cloneSkinned(horde.template);
     this.model.position.copy(this.position);
     horde.scene.add(this.model);
-    this.skel = new SkeletonView(this.model, horde.scene, 'zombie');
+    this.skel = new SkeletonView(this.model, horde.scene, kind);
     this.mixer = new THREE.AnimationMixer(this.model);
     const action = (name) => this.mixer.clipAction(horde.clips[name]);
     this.actions = Object.fromEntries(Object.entries(ZOMBIE_CLIPS).map(([state, name]) => [state, action(name)]));
@@ -298,13 +322,16 @@ class Zombie {
     this.collider = world.createCollider(
       RAPIER.ColliderDesc.capsule(HALF, RADIUS).setCollisionGroups(GROUPS.enemy), this.body,
     );
-    horde.physics.meta.set(this.collider.handle, { body: this.body, zombie: this });
+    horde.physics.meta.set(this.collider.handle, kind === 'zombie' ? { body: this.body, zombie: this } : { body: this.body, civilian: this });
   }
 
   get alive() { return this.state !== 'dead'; }
 
   /** Carácter actual: el de la horda, salvo que de día esté furioso (entonces, el normal). */
-  get mood() { return this.rage > 0 && this.horde.mood === MOODS.dia ? MOODS.normal : this.horde.mood; }
+  get mood() {
+    if (this.prey) return MOODS.caza;
+    return this.rage > 0 && this.horde.mood === MOODS.dia ? MOODS.normal : this.horde.mood;
+  }
 
   /** Altura del pecho sobre su posición (línea de tiro). */
   get aimY() { return this.crawler ? AIM_CRAWL : AIM_STAND; }
@@ -440,7 +467,52 @@ class Zombie {
     if (!this.alive) return;
     this.target.copy(point);
     this.memory = Math.max(this.memory, memory);
-    if (this.state === 'wander') this.state = 'chase';
+    this.notice();
+  }
+
+  /**
+   * Ha detectado algo: antes de correr se queda un momento parado (se levanta, si comía)
+   * y vuelve la cara hacia ello. Persiguiendo a una persona no se detiene.
+   */
+  notice() {
+    if (this.state !== 'wander' && this.state !== 'feed') return;
+    const fed = this.state === 'feed';
+    this.leaveFeed();
+    if (this.prey) { this.state = 'chase'; return; }
+    this.state = 'notice';
+    this.timer = fed ? NOTICE_FEED : NOTICE;
+    this.play('Idle', 0.2);
+  }
+
+  /** Dónde se pone a comer junto a un cadáver. */
+  feedSpot(c, out = _to) {
+    return out.set(c.x + Math.sin(this.feedA) * FEED.sitio, c.y, c.z + Math.cos(this.feedA) * FEED.sitio);
+  }
+
+  /** Va hasta un cadáver para comer (deambulando). */
+  reserve(c) {
+    this.leaveFeed();
+    this.goFeed = c;
+    this.feedA = c.phase + c.eaters * 2.1;
+    c.eaters++;
+    this.state = 'wander';
+    this.memory = 0;
+    this.wanderT = 18;
+    this.feedSpot(c, this.target);
+  }
+
+  /** Se acuclilla a comer de un cadáver (ya está a su lado). */
+  startFeed(c) {
+    this.goFeed = null;
+    this.feed = c;
+    this.state = 'feed';
+    this.play('Idle', 0.3);
+  }
+
+  leaveFeed() {
+    const c = this.feed ?? this.goFeed;
+    if (c) c.eaters = Math.max(0, c.eaters - 1);
+    this.feed = this.goFeed = null;
   }
 
   /** `power`: multiplica lo lejos que sale despedido al morir de pie. `slam`: golpe de arriba abajo; si lo mata a rastras, rebota contra el suelo a esa velocidad (m/s). */
@@ -469,6 +541,7 @@ class Zombie {
 
   /** Muere: en el próximo fotograma se desploma como un cuerpo articulado. `push`: empujón (m/s). */
   die(push = null) {
+    this.leaveFeed();
     this.state = 'dead';
     this.ragT = 0;
     this.push = push;
@@ -478,6 +551,7 @@ class Zombie {
   }
 
   dispose() {
+    this.leaveFeed();
     this.horde.scene.remove(this.model);
     this.skel.dispose();
     this.mixer.stopAllAction();
@@ -502,6 +576,9 @@ class Zombie {
       THREE.MathUtils.clamp(cz + Math.cos(a) * r, B.z0, B.z1),
     );
     if (!this.horde.ambient) return;
+    // En reposo, si hay un cadáver cerca con sitio, va a comer.
+    const c = this.horde.freeCarcass(this.position, FEED.cerca);
+    if (c && !this.crawler && Math.random() < 0.6) return this.reserve(c);
     // En la ciudad no se empeña en atravesar un edificio: si hay un muro de camino, se queda antes.
     const tx = this.target.x - this.position.x, tz = this.target.z - this.position.z, d = Math.hypot(tx, tz);
     if (d < 0.5) return;
@@ -512,8 +589,11 @@ class Zombie {
     if (hit) this.target.set(this.position.x + (tx / d) * Math.max(0, hit.timeOfImpact - 0.9), 0, this.position.z + (tz / d) * Math.max(0, hit.timeOfImpact - 0.9));
   }
 
-  /** Antes del paso de física: sentidos, decisión y movimiento. */
-  update(dt, player) {
+  /**
+   * Tareas de cada fotograma comunes a zombis y civiles: piezas arrancadas, cambio de cuerpo
+   * físico al quedarse sin piernas y la caída al morir. Devuelve true si está muerto.
+   */
+  reap(dt) {
     this.mixerDt = dt;
     // Piezas arrancadas por los impactos del fotograma anterior.
     for (const c of this.cuts) this.horde.detach(this, c.part, c.bones, c.dir);
@@ -542,18 +622,26 @@ class Zombie {
     if (this.state === 'dead') {
       if (!this.ragdoll) this.startRagdoll();
       this.ragT += dt;
-      return;
+      return true;
     }
+    return false;
+  }
 
-    const dx = player.position.x - this.position.x, dz = player.position.z - this.position.z;
+  /** Antes del paso de física: sentidos, decisión y movimiento. */
+  update(dt, player) {
+    if (this.reap(dt)) return;
+    if (this.prey?.dead) this.prey = null;
+    const prey = this.prey ?? player; // a quién persigue
+
+    const dx = prey.position.x - this.position.x, dz = prey.position.z - this.position.z;
     const dist = Math.hypot(dx, dz);
     this.rage = Math.max(0, this.rage - dt);
     const M = this.mood;
-    this.sees = !player.dead && this.canSee(player);
+    this.sees = !prey.dead && this.canSee(prey);
     if (this.sees) {
-      this.target.copy(player.position);
+      this.target.copy(prey.position);
       this.memory = Math.max(this.memory, M.memory);
-      if (this.state === 'wander') this.state = 'chase';
+      this.notice();
     } else {
       this.memory -= dt;
     }
@@ -564,12 +652,20 @@ class Zombie {
     if (this.state === 'stagger') {
       this.timer -= dt;
       if (this.timer <= 0) this.state = 'chase';
+    } else if (this.state === 'notice') {
+      // Parado, volviendo la cara: el cuerpo aún no gira.
+      this.timer -= dt;
+      if (this.timer <= 0) this.state = 'chase';
+    } else if (this.state === 'feed') {
+      const c = this.feed;
+      if (!c || c.gone || this.crawler) { this.leaveFeed(); this.state = 'wander'; this.wanderT = 0; }
+      else wantFacing = Math.atan2(c.x - this.position.x, c.z - this.position.z);
     } else if (this.state === 'attack') {
       this.timer += dt;
       wantFacing = Math.atan2(dx, dz);
       if (!this.bit && this.timer >= M.attack * ATTACK_HIT) {
         this.bit = true;
-        if (dist < BITE_REACH && Math.abs(player.position.y - this.position.y) < 1.2) player.damage(M.bite);
+        if (dist < BITE_REACH && Math.abs(prey.position.y - this.position.y) < 1.2) prey.damage(M.bite, this);
       }
       if (this.timer >= M.attack) {
         if (this.sees && dist < ATTACK_RANGE) {
@@ -584,12 +680,12 @@ class Zombie {
       let tx = this.target.x - this.position.x, tz = this.target.z - this.position.z;
       const td = Math.hypot(tx, tz);
       // Si la presa está al otro lado del muro de la casa, va al hueco que mejor le queda.
-      const route = this.horde.house?.route(this.position, this.target, this.crawler);
+      const route = this.horde.route(this.position, this.target, this.crawler);
       if (route) { tx = route.x - this.position.x; tz = route.z - this.position.z; }
       if (route?.window && this.grounded) {
         const w = route.window;
         w.busy = WINDOW.tiempo * 0.55 + (w.broken ? 0 : WINDOW.romper);
-        this.win = { w, side: route.side, t: 0, smash: w.broken ? 0 : WINDOW.romper, from: { x: this.position.x, z: this.position.z } };
+        this.win = { w, side: route.side, t: 0, smash: w.broken ? 0 : WINDOW.romper, from: { x: this.position.x, z: this.position.z }, house: route.house, walk: route.walk };
         this.state = 'window';
         this.detour = 0;
         this.play('Idle', 0.2);
@@ -611,7 +707,9 @@ class Zombie {
     } else {
       this.wanderT -= dt;
       const tx = this.target.x - this.position.x, tz = this.target.z - this.position.z;
-      if (this.wanderT <= 0 || Math.hypot(tx, tz) < 0.6) {
+      if (this.goFeed && (this.goFeed.gone || this.wanderT <= 0)) this.leaveFeed();
+      if (this.goFeed && Math.hypot(tx, tz) < 0.45) this.startFeed(this.goFeed); // llegó junto al cadáver
+      else if (this.wanderT <= 0 || Math.hypot(tx, tz) < 0.6) {
         if (this.wanderT > 0) this.wanderT = Math.min(this.wanderT, 1.5); // se queda un momento quieto
         else this.pickWanderTarget(player);
       } else {
@@ -620,6 +718,15 @@ class Zombie {
       }
     }
     if (wantFacing !== null) this.facing = dampAngle(this.facing, wantFacing, 6, dt);
+    // Cabeza: al detectar algo mira hacia ello antes de que el cuerpo se vuelva.
+    let look = 0;
+    if (this.state === 'notice') {
+      const a = Math.atan2(this.target.x - this.position.x, this.target.z - this.position.z) - this.facing;
+      look = THREE.MathUtils.clamp(Math.atan2(Math.sin(a), Math.cos(a)), -LOOK_MAX, LOOK_MAX);
+    }
+    this.look = THREE.MathUtils.damp(this.look, look, this.state === 'notice' ? 10 : 5, dt);
+    this.feedK = THREE.MathUtils.damp(this.feedK, this.state === 'feed' ? 1 : 0, this.state === 'feed' ? 4 : 6, dt);
+    this.feedT += dt;
     // Brazos al frente al perseguir; al morder bajan para que mande la animación de ataque.
     // Al morder agarra con los brazos y lanza la cabeza hacia la presa.
     const armsTarget = this.crawler ? 0 : this.state === 'chase' || this.state === 'attack' ? 1 : 0;
@@ -636,6 +743,32 @@ class Zombie {
     if (this.crawler) this.crawl = THREE.MathUtils.damp(this.crawl, 1, 7, dt);
     this.arms = THREE.MathUtils.damp(this.arms, armsTarget, 6, dt);
 
+    const t = this.step(dt, speed);
+
+    if (this.crawler) {
+      this.crawlT += (this.moveSpeed / CRAWL_STROKE) * dt * Math.PI; // una brazada de cada brazo por ciclo
+    } else if (this.state === 'chase' || this.state === 'wander') {
+      // Histéresis: una parada de un instante no corta la animación de caminar.
+      this.stillT = this.moveSpeed > 0.15 ? 0 : (this.stillT ?? 0) + dt;
+      if (this.stillT < 0.2) {
+        // Al perseguir usa el clip de correr a ritmo lento (zancada larga y pesada); el de
+        // caminar a esa velocidad hacía que los pies patinaran. Ritmos medidos con tools/watch.cjs.
+        if (this.state === 'chase') {
+          this.play('Run', 0.3);
+          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 3.1, 0.6, M.run);
+        } else {
+          this.play('Walk', 0.3);
+          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 0.85, 0.6, 1.4);
+        }
+      } else {
+        this.play('Idle');
+      }
+    }
+    if (t.y < -20) this.die();
+  }
+
+  /** Avanza `speed` m/s hacia donde mira, con choques, y rodea lo que le corte el paso. Devuelve dónde estaba su cuerpo. */
+  step(dt, speed) {
     // --- Movimiento con colisiones ---
     this.vy = this.grounded ? 0 : this.vy - 9.81 * dt;
     const delta = {
@@ -688,27 +821,7 @@ class Zombie {
       this.probeT = 0.3;
     }
     this.sidestep = this.detour * DETOUR_ANGLE;
-
-    if (this.crawler) {
-      this.crawlT += (this.moveSpeed / CRAWL_STROKE) * dt * Math.PI; // una brazada de cada brazo por ciclo
-    } else if (this.state === 'chase' || this.state === 'wander') {
-      // Histéresis: una parada de un instante no corta la animación de caminar.
-      this.stillT = this.moveSpeed > 0.15 ? 0 : (this.stillT ?? 0) + dt;
-      if (this.stillT < 0.2) {
-        // Al perseguir usa el clip de correr a ritmo lento (zancada larga y pesada); el de
-        // caminar a esa velocidad hacía que los pies patinaran. Ritmos medidos con tools/watch.cjs.
-        if (this.state === 'chase') {
-          this.play('Run', 0.3);
-          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 3.1, 0.6, M.run);
-        } else {
-          this.play('Walk', 0.3);
-          this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 0.85, 0.6, 1.4);
-        }
-      } else {
-        this.play('Idle');
-      }
-    }
-    if (t.y < -20) this.die();
+    return t;
   }
 
   /**
@@ -727,9 +840,16 @@ class Zombie {
       const k = W.t / K.romper;
       lunge = k < K.fraccion * 0.6 ? -THREE.MathUtils.smoothstep(k, 0, K.fraccion * 0.6)
         : k < K.fraccion ? lerp(-1, 1.3, ((k - K.fraccion * 0.6) / (K.fraccion * 0.4)) ** 2) : 1.3 * (1 - THREE.MathUtils.smoothstep(k, K.fraccion, 1));
-      if (k >= K.fraccion) this.horde.house.breakGlass(w, { x: dx, z: dz });
+      if (k >= K.fraccion) W.house.breakGlass(w, { x: dx, z: dz });
       W.t += dt;
-      if (W.t >= K.romper) { W.smash = 0; W.t = 0; }
+      if (W.t >= K.romper) {
+        W.smash = 0; W.t = 0;
+        if (W.walk) { // un escaparate: roto, se pasa andando
+          this.state = 'chase';
+          this.win = this.winPose = this.wallTurn = null;
+          return;
+        }
+      }
     } else {
       W.t += dt;
       u = Math.min(1, W.t / K.tiempo);
@@ -795,6 +915,12 @@ class Zombie {
       }
     }
     if (this.crawler && !P) return this.poseCrawl();
+    // Comiendo: la cadera baja y el cuerpo se vuelca hacia el cadáver (las piernas se doblan después).
+    const fk = this.alive ? this.feedK : 0;
+    if (fk > 0.01) {
+      this.model.position.y -= FEED.baja * fk;
+      this.model.rotation.set(FEED.inclina * fk, this.facing, 0, 'YXZ');
+    }
     // Pies que no resbalan mientras deambula o persigue.
     const run = this.current === this.actions.Run;
     const walking = this.alive && (run || this.current === this.actions.Walk) && (this.moveSpeed ?? 0) > 0.15;
@@ -803,6 +929,7 @@ class Zombie {
     else this.gait.update(this.mixerDt ?? 0, this.model, this.position.y, this.facing, this.moveSpeed ?? 0,
       (run ? CLIP_SPEED.Run : CLIP_SPEED.Walk) * (this.current?.timeScale ?? 1), walking);
 
+    if (fk > 0.01) this.poseFeed(fk);
     _axis.set(Math.cos(this.facing), 0, -Math.sin(this.facing)); // hacia su izquierda
     // Mordida: el tronco se dobla hacia la presa y el cuello estira la cabeza.
     if (Math.abs(this.lunge) > 0.01) {
@@ -829,6 +956,55 @@ class Zombie {
       this.posed = true;
     }
     if (P) this.clearWall(this.win.w);
+    // La cabeza se vuelve hacia lo que ha detectado (el cuello hace parte del giro).
+    if (Math.abs(this.look) > 0.01 && this.alive) {
+      this.model.updateMatrixWorld(true);
+      for (const [name, part] of [['Neck', 0.4], ['Head', 0.6]]) {
+        const bone = this.bones[name];
+        if (!bone || this.lost.has(bone)) continue;
+        this.saved.push(bone, bone.quaternion.clone());
+        turnWorld(bone, UP, this.look * part);
+      }
+    }
+  }
+
+  /**
+   * Acuclillado comiendo (peso k): los pies siguen en el suelo y las rodillas se doblan, el
+   * tronco se inclina sobre el cadáver, las manos van de la carne a la boca por turnos y la
+   * cabeza da tirones al arrancar.
+   */
+  poseFeed(k) {
+    const B = this.bones, t = this.feedT;
+    const turn = (bone) => this.saved.push(bone, bone.quaternion.clone());
+    this.model.updateMatrixWorld(true);
+    for (const leg of this.gait.legs) {
+      leg.foot.getWorldPosition(_c);
+      _c.y = this.position.y + 0.03;
+      this.gait.place(leg.side, _c, this.facing);
+    }
+    _fwd.set(Math.sin(this.facing), 0, Math.cos(this.facing));
+    _axis.set(Math.cos(this.facing), 0, -Math.sin(this.facing)); // hacia su izquierda
+    const tear = Math.max(0, Math.sin(t * 1.9)) ** 8; // tirón de vez en cuando
+    for (const [name, angle] of FEED.dobla) {
+      const bone = B[name];
+      if (!bone || this.lost.has(bone)) continue;
+      turn(bone);
+      turnWorld(bone, _axis, (angle + (name === 'Neck' ? 0.1 * Math.sin(t * 9) - 0.5 * tear : 0)) * k);
+    }
+    for (const [s, side] of [['L', 1], ['R', -1]]) {
+      const upper = B['UpperArm' + s], lower = B['LowerArm' + s], wrist = B['Wrist' + s];
+      if (!upper || this.lost.has(upper)) continue;
+      const eat = (0.5 + 0.5 * Math.sin(t * 2.3 + (side > 0 ? 0 : Math.PI))) ** 2; // 0 = en la carne, 1 = en la boca
+      turn(upper);
+      _to.copy(_fwd).multiplyScalar(0.6).addScaledVector(_axis, side * 0.22);
+      _to.y = -0.8 + 0.25 * eat;
+      aimBone(upper, lower, _to.normalize(), k);
+      if (!lower || this.lost.has(lower)) continue;
+      turn(lower);
+      _to.copy(_fwd).multiplyScalar(THREE.MathUtils.lerp(0.75, 0.3, eat)).addScaledVector(_axis, side * -0.2 * eat);
+      _to.y = THREE.MathUtils.lerp(-0.65, 0.9, eat);
+      aimBone(lower, wrist, _to.normalize(), k);
+    }
   }
 
   /**
@@ -1007,6 +1183,85 @@ Zombie.prototype.poseCrawl = function poseCrawl() {
   }
 };
 
+/**
+ * Persona que huye (modo juego, primeros días): mismo esqueleto, en azul. Corre alejándose de
+ * los zombis que tiene cerca hasta que se cansa; si la alcanzan y la muerden, muere y cae como
+ * un cuerpo articulado, y los zombis que la perseguían se ponen a comer de ella.
+ */
+class Civilian extends Zombie {
+  /** `dir`: rumbo con el que sale corriendo ({ x, z }, unitario). */
+  constructor(horde, x, z, dir) {
+    super(horde, x, z, AMBIENT_LIFT, 'civil');
+    this.civil = true;
+    this.state = 'flee';
+    this.hp = CIVIL.vida;
+    this.dir0 = dir;
+    this.facing = Math.atan2(dir.x, dir.z);
+    this.stamina = THREE.MathUtils.lerp(CIVIL.aguante[0], CIVIL.aguante[1], Math.random());
+    this.age = 0;
+    this.thinkT = 0;
+    this.play('Run', 0.05);
+  }
+
+  get dead() { return this.state === 'dead'; }
+  get headHeight() { return 1.6; }
+  get mood() { return MOODS.normal; }
+
+  /** Una mordida. `by`: el zombi que muerde (la tira hacia donde empuja). */
+  damage(amount, by = null) {
+    if (this.dead) return;
+    this.hp -= amount;
+    if (this.hp > 0) return;
+    const f = by ? by.facing : this.facing;
+    this.die(new THREE.Vector3(Math.sin(f) * 1.6, 0.4, Math.cos(f) * 1.6));
+  }
+
+  die(push = null) {
+    if (this.dead) return;
+    this.state = 'dead';
+    this.ragT = 0;
+    this.push = push;
+    this.removeBody = true;
+    this.horde.civilianDied(this);
+  }
+
+  update(dt) {
+    if (this.reap(dt)) return;
+    this.age += dt;
+    this.thinkT -= dt;
+    if (this.thinkT <= 0) {
+      // Rumbo: el que traía, más alejarse de cada zombi que tenga cerca.
+      this.thinkT = 0.35;
+      let ax = this.dir0.x * 0.8, az = this.dir0.z * 0.8;
+      for (const z of this.horde.zombies) {
+        if (!z.alive) continue;
+        const dx = this.position.x - z.position.x, dz = this.position.z - z.position.z, d = Math.hypot(dx, dz);
+        if (d < 14 && d > 0.01) { ax += (dx / d) * (14 - d) / 5; az += (dz / d) * (14 - d) / 5; }
+      }
+      const l = Math.hypot(ax, az) || 1, B = this.horde.bounds;
+      this.target.set(
+        THREE.MathUtils.clamp(this.position.x + (ax / l) * 16, B.x0, B.x1), 0,
+        THREE.MathUtils.clamp(this.position.z + (az / l) * 16, B.z0, B.z1),
+      );
+    }
+    const speed = this.age < this.stamina ? CIVIL.corre : CIVIL.cansado;
+    const want = Math.atan2(this.target.x - this.position.x, this.target.z - this.position.z) + this.sidestep;
+    this.facing = dampAngle(this.facing, want, 7, dt);
+    const t = this.step(dt, speed);
+    this.play('Run', 0.2);
+    this.current.timeScale = THREE.MathUtils.clamp(this.moveSpeed / 3.1, 0.7, 1.9);
+    if (t.y < -20) this.die();
+  }
+}
+
+// Cadáver del que comen: charco de sangre, trozos de carne y unas costillas.
+const meatGeo = new THREE.IcosahedronGeometry(0.15, 0);
+const ribGeo = new THREE.BoxGeometry(0.03, 0.03, 0.3);
+const poolGeo = new THREE.CircleGeometry(0.6, 14).rotateX(-Math.PI / 2);
+const meatMat = new THREE.MeshStandardMaterial({ color: 0x7c1f1a, roughness: 0.55, flatShading: true });
+const ribMat = new THREE.MeshStandardMaterial({ color: 0xd8d0b8, roughness: 0.7 });
+const poolMat = new THREE.MeshStandardMaterial({ color: 0x4a0c0c, roughness: 0.25, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+
 /** Horda por oleadas: la oleada N suelta N zombis y la siguiente llega al matarlos a todos. */
 export class Horde {
   constructor(scene, physics, assets) {
@@ -1026,6 +1281,10 @@ export class Horde {
     this.ambientT = 0;
     this.scentT = 0;
     this.attackers = 0;
+    this.buildings = []; // edificios de la ciudad en los que se entra (ver src/interior.js)
+    this.civilians = []; // personas que huyen (modo juego)
+    this.carcasses = []; // cadáveres de los que comen los zombis: { x, y, z, group, eaters, phase, gone }
+    this.eaten = 0; // personas muertas a manos de los zombis en esta partida
 
     // Plantilla del zombi: el mismo esqueleto del personaje (ya escalado y sin mallas).
     const template = assets.scene;
@@ -1064,9 +1323,129 @@ export class Horde {
   clear() {
     for (const z of this.zombies) z.dispose();
     this.zombies.length = 0;
+    for (const c of this.civilians) c.dispose();
+    this.civilians.length = 0;
+    while (this.carcasses.length) this.dropCarcass(this.carcasses[0]);
+    this.eaten = 0;
     while (this.debris.length) this.removeDebris(0);
     for (const g of this.remains) this.dropRemains(g);
     this.remains.length = 0;
+  }
+
+  /** Pone un cadáver en el suelo (charco, carne y huesos) para que los zombis coman de él. */
+  addCarcass(x, y, z, pool = true) {
+    const group = new THREE.Group();
+    if (pool) {
+      const blood = new THREE.Mesh(poolGeo, poolMat);
+      blood.position.y = 0.012;
+      blood.scale.setScalar(0.8 + Math.random() * 0.5);
+      group.add(blood);
+    }
+    for (let i = 0; i < 5; i++) {
+      const m = new THREE.Mesh(meatGeo, meatMat);
+      m.position.set((Math.random() - 0.5) * 0.5, 0.06 + Math.random() * 0.06, (Math.random() - 0.5) * 0.5);
+      m.scale.set(0.7 + Math.random(), 0.45 + Math.random() * 0.3, 0.7 + Math.random());
+      m.rotation.y = Math.random() * 6;
+      m.castShadow = true;
+      group.add(m);
+    }
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(ribGeo, ribMat);
+      m.position.set(-0.15 + i * 0.1, 0.16, (Math.random() - 0.5) * 0.1);
+      m.rotation.set(0.5 + Math.random() * 0.4, 0.2, 0);
+      group.add(m);
+    }
+    group.position.set(x, y, z);
+    this.scene.add(group);
+    const c = { x, y, z, group, eaters: 0, phase: Math.random() * 6, gone: false };
+    this.carcasses.push(c);
+    if (this.carcasses.length > FEED.maximo) this.dropCarcass(this.carcasses[0]);
+    return c;
+  }
+
+  dropCarcass(c) {
+    c.gone = true;
+    this.scene.remove(c.group);
+    const i = this.carcasses.indexOf(c);
+    if (i >= 0) this.carcasses.splice(i, 1);
+  }
+
+  /** El cadáver con sitio libre más cercano a `pos`, a menos de `range` m (o null). */
+  freeCarcass(pos, range) {
+    let best = null, bd = range;
+    for (const c of this.carcasses) {
+      if (c.eaters >= FEED.comensales) continue;
+      const d = Math.hypot(c.x - pos.x, c.z - pos.z);
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
+  }
+
+  /** Crea un zombi de la población del modo juego en `p`; a veces, ya comiendo de un cadáver. */
+  addAmbient(p) {
+    const z = new Zombie(this, p.x, p.z, AMBIENT_LIFT);
+    this.zombies.push(z);
+    if (Math.random() > FEED.probabilidad[this.mood === MOODS.dia ? 0 : 1]) return z;
+    // El cadáver va delante de él, donde haya sitio (ni dentro de un muro ni al otro lado).
+    const world = this.physics.world;
+    for (let i = 0; i < 4; i++) {
+      const a = Math.random() * Math.PI * 2, dir = { x: Math.sin(a), y: 0, z: Math.cos(a) };
+      if (world.castRay(new RAPIER.Ray({ x: p.x, y: 0.5, z: p.z }, dir), FEED.sitio + 0.7, true, RAPIER.QueryFilterFlags.ONLY_FIXED)) continue;
+      const cx = p.x + dir.x * FEED.sitio, cz = p.z + dir.z * FEED.sitio;
+      const down = world.castRay(new RAPIER.Ray({ x: cx, y: 1.2, z: cz }, { x: 0, y: -1, z: 0 }), 3, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+      if (!down || down.timeOfImpact < 0.9) continue; // hay algo encima del suelo
+      const c = this.addCarcass(cx, 1.2 - down.timeOfImpact, cz);
+      c.eaters = 1;
+      z.feedA = a + Math.PI;
+      z.facing = a;
+      z.startFeed(c);
+      z.feedK = 1;
+      break;
+    }
+    return z;
+  }
+
+  /**
+   * Una persona huyendo con `hunters` zombis detrás: aparece donde no se la ve y pasa corriendo
+   * cerca del jugador. Devuelve la persona, o null si no encontró dónde ponerla.
+   */
+  spawnChase(player, hunters = 2) {
+    const p = this.spawnPoint(player, 26, 44, true) ?? this.spawnPoint(player, 44, 60, true);
+    if (!p) return null;
+    const a = Math.random() * Math.PI * 2;
+    const gx = player.position.x + Math.sin(a) * 7 - p.x, gz = player.position.z + Math.cos(a) * 7 - p.z, l = Math.hypot(gx, gz) || 1;
+    const dir = { x: gx / l, z: gz / l };
+    const civ = new Civilian(this, p.x, p.z, dir);
+    this.civilians.push(civ);
+    const shape = new RAPIER.Capsule(HALF, RADIUS + 0.1), rot = { x: 0, y: 0, z: 0, w: 1 };
+    let placed = 0;
+    for (let i = 0; i < hunters * 4 && placed < hunters; i++) {
+      const back = 4.5 + placed * 2 + Math.random() * 2, side = (Math.random() - 0.5) * 3.5;
+      const x = p.x - dir.x * back + dir.z * side, z = p.z - dir.z * back - dir.x * side;
+      if (i < hunters * 4 - 1 && this.physics.world.intersectionWithShape({ x, y: FOOT + 0.3 + AMBIENT_LIFT, z }, rot, shape)) continue;
+      const zb = new Zombie(this, x, z, AMBIENT_LIFT);
+      zb.prey = civ;
+      zb.state = 'chase';
+      zb.facing = Math.atan2(dir.x, dir.z);
+      zb.target.copy(civ.position);
+      zb.memory = 30;
+      this.zombies.push(zb);
+      placed++;
+    }
+    return civ;
+  }
+
+  /** Una persona ha muerto: queda su cadáver y quienes la perseguían se ponen a comer de él. */
+  civilianDied(civ) {
+    this.eaten++;
+    const c = this.addCarcass(civ.position.x, civ.position.y, civ.position.z);
+    for (const z of this.zombies) {
+      if (z.prey !== civ || !z.alive) continue;
+      z.prey = null;
+      if (z.state === 'stagger' || z.crawler) continue;
+      z.reserve(c);
+      z.play('Walk', 0.3);
+    }
   }
 
   /** Deja en el escenario, como mallas fijas, lo que haya bajo `root` tal como está. */
@@ -1154,12 +1533,13 @@ export class Horde {
    * Con `hidden` solo valen los puntos que el jugador no ve (hay un muro de por medio) y, si no
    * encuentra ninguno, devuelve null.
    */
-  spawnPoint(player, min = SPAWN_MIN, max = SPAWN_MAX, hidden = false) {
+  spawnPoint(player, min = SPAWN_MIN, max = SPAWN_MAX, hidden = false, toward = null) {
     const shape = new RAPIER.Capsule(HALF, RADIUS + 0.15);
     const rot = { x: 0, y: 0, z: 0, w: 1 }, B = this.bounds, P = player.position;
     let x = 0, z = 0;
     for (let i = 0; i < 30; i++) {
-      const a = Math.random() * Math.PI * 2;
+      // (`toward`: rumbo preferido, { x, z }: salen por delante de ese lado.)
+      const a = toward ? Math.atan2(toward.x, toward.z) + (Math.random() - 0.5) * 2.4 : Math.random() * Math.PI * 2;
       const r = min + Math.random() * (max - min);
       x = THREE.MathUtils.clamp(P.x + Math.sin(a) * r, B.x0, B.x1);
       z = THREE.MathUtils.clamp(P.z + Math.cos(a) * r, B.z0, B.z1);
@@ -1175,6 +1555,24 @@ export class Horde {
       if (!seen) return { x, z };
     }
     return hidden ? null : { x, z };
+  }
+
+  /**
+   * Por dónde cruza un zombi el muro de un edificio en el que se entra (la casa del mundo de
+   * simulación o los de la ciudad, `buildings`) para llegar de `pos` a `target`: lo que
+   * devuelve `route` de ese edificio, con `house` para romper su cristal, o null.
+   */
+  route(pos, target, crawler) {
+    const r = this.house?.route(pos, target, crawler);
+    if (r) { r.house = this.house; return r; }
+    let enter = null;
+    for (const b of this.buildings) {
+      const a = b.inside(pos), t = b.inside(target);
+      if (a === t) continue;
+      if (a) return b.route(pos, target, crawler); // primero salir de donde está
+      enter ??= b;
+    }
+    return enter ? enter.route(pos, target, crawler) : null;
   }
 
   /** Cambia el carácter de los zombis (MOODS). Al amansarse olvidan lo que perseguían. */
@@ -1194,7 +1592,7 @@ export class Horde {
     if (!config || !fill || !player) return;
     for (let i = this.alive; i < config.count; i++) {
       const p = this.spawnPoint(player, config.min, config.far * 0.8, true) ?? this.spawnPoint(player, config.max, config.far * 0.8);
-      this.zombies.push(new Zombie(this, p.x, p.z, AMBIENT_LIFT));
+      this.addAmbient(p);
     }
   }
 
@@ -1222,20 +1620,31 @@ export class Horde {
     if (A && !player.dead) {
       this.ambientT -= dt;
       if (this.ambientT <= 0) {
-        this.ambientT = AMBIENT_EVERY;
+        this.ambientT = A.every ?? AMBIENT_EVERY;
         // Los que quedaron muy lejos se retiran (salvo que estén persiguiendo a la vista)...
         for (let i = this.zombies.length - 1; i >= 0; i--) {
           const z = this.zombies[i];
-          if (!z.alive || z.sees || z.state === 'window') continue;
+          if (!z.alive || z.sees || z.state === 'window' || z.prey) continue;
           if (Math.hypot(z.position.x - player.position.x, z.position.z - player.position.z) > A.far) {
             z.dispose();
             this.zombies.splice(i, 1);
           }
         }
         // ...y entra uno nuevo donde no se le vea, hasta completar la población.
+        // (`seen`: valen también los sitios a la vista; `toward`: por ese lado. Lo usa la horda del límite.)
         if (this.alive < A.count) {
-          const p = this.spawnPoint(player, A.min, A.max, true);
-          if (p) this.zombies.push(new Zombie(this, p.x, p.z, AMBIENT_LIFT));
+          const p = this.spawnPoint(player, A.min, A.max, !A.seen, A.toward);
+          if (p) this.addAmbient(p);
+        }
+        // Personas que huyen: se retiran si quedan lejos o llevan mucho corriendo.
+        for (let i = this.civilians.length - 1; i >= 0; i--) {
+          const c = this.civilians[i];
+          if (c.dead) continue;
+          if (c.age > CIVIL.dura || Math.hypot(c.position.x - player.position.x, c.position.z - player.position.z) > CIVIL.lejos) {
+            for (const z of this.zombies) if (z.prey === c) z.prey = null;
+            c.dispose();
+            this.civilians.splice(i, 1);
+          }
         }
       }
       // De noche te huelen: los que están cerca van a por ti aunque no te vean.
@@ -1276,24 +1685,28 @@ export class Horde {
         this.removeDebris(i);
       }
     }
-    for (let i = this.zombies.length - 1; i >= 0; i--) {
-      const z = this.zombies[i];
-      z.update(dt, player);
-      if (z.state === 'dead' && z.settled()) {
-        // El cadáver se queda donde cayó (salvo que haya caído al vacío).
-        z.skel.update();
-        if (z.ragdoll[0]?.body.translation().y > -15) this.keep(z.skel.group);
-        z.dispose();
-        this.zombies.splice(i, 1);
+    for (const list of [this.zombies, this.civilians]) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const z = list[i];
+        z.update(dt, player);
+        if (z.state === 'dead' && z.settled()) {
+          // El cadáver se queda donde cayó (salvo que haya caído al vacío).
+          z.skel.update();
+          if (z.ragdoll[0]?.body.translation().y > -15) this.keep(z.skel.group);
+          z.dispose();
+          list.splice(i, 1);
+        }
       }
     }
   }
 
   postPhysics() {
-    for (const z of this.zombies) {
-      z.postPhysics();
-      if (z.alive) z.skel.straightenFeet();
-      z.skel.update();
+    for (const list of [this.zombies, this.civilians]) {
+      for (const z of list) {
+        z.postPhysics();
+        if (z.alive) z.skel.straightenFeet();
+        z.skel.update();
+      }
     }
     for (const d of this.debris) {
       const t = d.body.translation(), q = d.body.rotation();

@@ -40,6 +40,7 @@ const headEdges = new THREE.EdgesGeometry(headGeo, 8);
 const PALETTES = {
   player: { bone: 0x9a9a9a, joint: 0xc4c4c4 },
   zombie: { bone: 0x6e8a4e, joint: 0xa3c27a },
+  civil: { bone: 0x4f7fc4, joint: 0xa9c8f0 }, // personas que huyen (modo juego)
 };
 const materials = {};
 function paletteMaterials(kind) {
@@ -72,7 +73,7 @@ const _f = new THREE.Vector3();
 const FOOT_YAW = { L: [0.08, 0.26], R: [-0.26, -0.08] };
 
 export class SkeletonView {
-  /** model: el modelo animado; kind: 'player' o 'zombie'. */
+  /** model: el modelo animado; kind: 'player', 'zombie' o 'civil'. */
   constructor(model, scene, kind = 'player') {
     this.model = model;
     this.scene = scene;

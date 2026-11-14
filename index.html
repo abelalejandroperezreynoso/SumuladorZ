@@ -173,6 +173,14 @@
       #t-sprint { width: 68px; height: 68px; right: calc(136px + env(safe-area-inset-right)); bottom: 204px; }
       #t-aim { width: 68px; height: 68px; right: calc(222px + env(safe-area-inset-right)); bottom: 78px; }
       #t-jump { width: 68px; height: 68px; right: calc(40px + env(safe-area-inset-right)); bottom: 178px; }
+      /* Subir a un coche patrulla: solo aparece junto a su puerta (body.can-use). */
+      #t-use { width: 68px; height: 68px; right: calc(222px + env(safe-area-inset-right)); bottom: 162px; display: none; border-color: #ffd479 !important; }
+      body.can-use #t-use { display: block; }
+      #prompt { position: fixed; left: 0; right: 0; bottom: 18%; text-align: center; font: 600 15px system-ui, sans-serif; text-shadow: 0 1px 3px #000, 0 0 6px #000; pointer-events: none; display: none; }
+      #prompt b { display: inline-block; padding: 1px 8px; margin-right: 6px; border-radius: 6px; background: rgba(255, 212, 121, 0.9); color: #1a1408; }
+      body.can-use #prompt { display: block; }
+      body.touch #prompt b, body.gamepad #prompt b { display: none; }
+      body.in-menu #prompt { display: none !important; }
       @media (orientation: portrait) {
         #t-aim { right: calc(40px + env(safe-area-inset-right)); bottom: 262px; } /* en vertical sobra altura: lejos del joystick */
         body.touch #rotate { display: block; position: fixed; left: 0; right: 0; top: 18%; text-align: center; font-size: 14px; opacity: 0.85; pointer-events: none; text-shadow: 0 1px 3px #000; }
@@ -187,6 +195,7 @@
     <div id="hud-status"></div>
     <button id="weapon-btn" aria-label="Cambiar de arma">Sin arma</button>
     <div id="toast"></div>
+    <div id="prompt"><b>E</b>Subir al coche patrulla y registrarlo</div>
     <div id="rotate">Gira el teléfono en horizontal para jugar mejor</div>
     <div id="overlay" class="mode-juego">
       <div class="menu-card" role="dialog" aria-labelledby="m-title">
@@ -220,7 +229,7 @@
             <dl class="m-keys">
               <dt>W A S D</dt><dd>Caminar</dd><dt>Shift</dt><dd>Correr</dd><dt>Q</dt><dd>Carrera rápida (un toque)</dd>
               <dt>Espacio</dt><dd>Saltar</dd><dt>Clic izquierdo</dt><dd>Disparar</dd><dt>Clic derecho</dt><dd>Apuntar</dd>
-              <dt>F</dt><dd>Golpear</dd><dt>C</dt><dd>Cubrirse / salir de la cobertura</dd><dt>Ratón · rueda</dt><dd>Cámara · zoom</dd>
+              <dt>F</dt><dd>Golpear</dd><dt>E</dt><dd>Subir a un coche patrulla (modo juego)</dd><dt>C</dt><dd>Cubrirse / salir de la cobertura</dd><dt>Ratón · rueda</dt><dd>Cámara · zoom</dd>
               <dt>1 · 2 · 3</dt><dd>Sin arma · bate · pistola</dd>
               <dt>Esc</dt><dd>Pausa</dd><dt>H</dt><dd>Iniciar o detener la horda (simulación)</dd><dt>R</dt><dd>Reiniciar la partida o el mundo</dd>
               <dt>P · G</dt><dd>Piloto automático · catálogo</dd>
@@ -231,7 +240,7 @@
               <dt>RT · LT</dt><dd>Disparar · apuntar</dd><dt>RB · X</dt><dd>Saltar · golpear</dd><dt>B · Y</dt><dd>Cubrirse · carrera rápida</dd>
               <dt>Cruceta ← →</dt><dd>Cambiar de arma</dd>
               <dt>En el menú</dt><dd>Cruceta o stick: moverse · A: elegir · B: volver</dd>
-              <dt>Menú</dt><dd>Pausa</dd><dt>LB</dt><dd>Horda</dd><dt>Vista</dt><dd>Reiniciar</dd>
+              <dt>Cruceta ↓</dt><dd>Subir a un coche patrulla</dd><dt>Menú</dt><dd>Pausa</dd><dt>LB</dt><dd>Horda</dd><dt>Vista</dt><dd>Reiniciar</dd>
             </dl>
             <h3>Táctil</h3>
             <dl class="m-keys">
@@ -241,7 +250,8 @@
           </div>
           <div data-panel="info">
             <h2>Información</h2>
-            <p>Juego 3D en tercera persona. En el <b>modo juego</b> sobrevives en una ciudad en cuarentena. El día y la noche duran 5 minutos cada uno (el reloj de arriba a la derecha lo marca): <b>de día</b> los zombis no atacan si no te acercas demasiado o les haces daño; <b>de noche</b> son muchos más, te huelen, corren y van a por ti. Los disparos hacen ruido y los atraen.</p>
+            <p>Juego 3D en tercera persona. En el <b>modo juego</b> sobrevives en una ciudad en cuarentena. El día y la noche duran 5 minutos cada uno (el reloj de arriba a la derecha lo marca): <b>de día</b> los zombis no atacan si no te acercas demasiado o les haces daño; <b>de noche</b> son muchos más, te huelen, corren y van a por ti. Cada día hay más. Los disparos hacen ruido y los atraen.</p>
+            <p>En tiendas y casas se entra <b>rompiendo el cristal</b> (un golpe o un balazo). En los <b>coches patrulla</b> hay pistola y balas: acércate a la puerta del conductor y sube. La ciudad no tiene muro, pero <b>si sales de ella</b> llega una horda que no te deja ir.</p>
             <p>La <b>simulación</b> es el mundo de pruebas de las mecánicas, con su horda por oleadas cada vez más numerosas.</p>
             <p>Empiezas sin armas. Pasa por encima de la <b>pistola</b>, del <b>bate</b> y de las <b>cajas de balas</b> para recogerlos; las cajas reaparecen al rato y los zombis a veces sueltan balas. Si mueres, las armas vuelven a su sitio.</p>
             <p>Con <b>C</b> te pegas a un muro u objeto cercano. Tras uno bajo te agachas, tras uno alto te asomas por el borde y tras uno muy bajo te recuestas. Al apuntar te incorporas para disparar.</p>

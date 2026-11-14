@@ -1,4 +1,5 @@
 import { mix } from './city-build.js';
+import { room } from './interior.js';
 import {
   pick, rr, lamp, post, tree, pine, bush, bench, bin, planter, barrier, sandbags, dumpster, crate, barrel, cone,
   chainFence, wallLine, picket, car, container, silo,
@@ -115,7 +116,7 @@ export function apartments(G, w, d, o = {}) {
   b.vquad(M.details, px, 0.16, d / 2 + 0.04, 1.9, 2.5, { rect: GLASS_DOOR });
   b.box(M.plain, px, 2.8, d / 2 + 0.7, 3, 0.14, 1.4, { color: mix(tint, 0x202020, 0.6), bottom: true });
   // Escalera de incendios en un costado (edificios de ladrillo).
-  if (kind === 'brick') {
+  if (kind === 'brick' && o.escape !== false) {
     b.push(0, 0, Math.PI / 2);
     for (let f = 1; f < floors; f++) {
       const y = f * fh - 0.1;
@@ -125,7 +126,7 @@ export function apartments(G, w, d, o = {}) {
     }
     b.pop();
   }
-  roofGear(G, w, d, h + 0.35, true);
+  if (w > 12) roofGear(G, w, d, h + 0.35, true);
   return h;
 }
 
@@ -137,22 +138,40 @@ export function shopRow(G, w, d = 9, names = null) {
     const x = -w / 2 + (i + 0.5) * sw, two = R() < 0.5;
     const kind = R() < 0.5 ? 'brick' : 'plaster', tint = pick(R, kind === 'brick' ? BRICK_TINTS : PLASTER_TINTS);
     const h = two ? gh + 3.1 : gh + rr(R, 0.3, 1.1);
-    b.box(M.concrete, x, 0, 0, sw, gh, d, { color: mix(tint, 0x8a8a8a, 0.35), uv: [3, 3], top: false });
-    if (two) b.box(M[kind], x, gh, 0, sw, 3.1, d, { cells: [sw / Math.max(2, Math.round(sw / 2.8)), 3.1], cu: Math.floor(R() * 4), cv: Math.floor(R() * 4), color: tint, top: M.roof });
-    else b.box(M.concrete, x, gh, 0, sw, h - gh, d, { color: tint, uv: [3, 3], top: M.roof });
-    b.box(M.concrete, x, h, 0, sw + 0.1, 0.3, d + 0.1, { color: 0xd8d2c4, uv: [3, 3], top: M.roof });
-    const bays = Math.max(2, Math.round((sw - 0.6) / 3)), row = Math.floor(R() * 4);
-    b.vquad(M.shop, x, 0, d / 2 + 0.03, sw - 0.5, 3.25, { rect: [0, row / 4, bays / 4, (row + 1) / 4] });
-    b.box(M.plain, x, 3.28, d / 2 + 0.1, sw - 0.4, 0.74, 0.2, { color: 0x1d2023 });
-    const name = names?.[i] ?? pick(R, signs.shops);
-    b.vquad(M.signs, x, 3.33, d / 2 + 0.215, Math.min(sw - 0.9, 4.4), 0.64, { rect: signs.uv(name) });
-    if (R() < 0.65) b.wedge(M.plain, x, 2.62, d / 2 + 0.8, sw - 0.9, 1.6, 0.62, { rot: Math.PI, color: pick(R, AWNINGS), bottom: true });
-    b.solid(x, 0, 0, sw, h, d);
-    if (R() < 0.7) { b.box(M.plain, x + rr(R, -1.5, 1.5), h + 0.3, rr(R, -2, 2), 1.6, 0.9, 1.2, { color: 0x9ea3a8 }); }
-    // Puerta de servicio detrás.
-    b.push(x, 0, Math.PI);
-    b.vquad(M.details, rr(R, -1.5, 1.5), 0, d / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: 0x6f7479 });
+    // Planta baja: un local en el que se entra rompiendo el escaparate (o por la puerta de atrás, si quedó abierta).
+    const bays = Math.max(1, Math.round((sw - 1.4) / 3.3)), fw = Math.min(2.6, sw / bays - 0.9);
+    const backDoor = R() < 0.35, backAt = rr(R, -1.2, 1.2);
+    b.push(x, 0, 0);
+    room(G, sw, d, {
+      h: gh - 0.2, color: mix(tint, 0xb0b0b0, 0.35), floorColor: pick(R, [0x9a8f80, 0x7d8a8f, 0xa89a7a, 0x8a8078]),
+      sides: {
+        front: Array.from({ length: bays }, (_, k) => ({ at: -sw / 2 + ((k + 0.5) * sw) / bays, kind: 'front', w: fw })),
+        back: backDoor ? [{ at: backAt, kind: 'door', leafColor: 0x6f7479 }] : [],
+      },
+    });
+    // Mostrador y estanterías a medio saquear.
+    const wood = pick(R, [0x7a5a3a, 0x5a4330, 0x8f959b, 0x9a7448]);
+    b.box(M.plain, sw * 0.14, 0, -d * 0.18, Math.min(2.2, sw * 0.3), 1.0, 0.6, { color: wood, solid: true });
+    for (const s of [-1, 1]) {
+      b.box(M.plain, s * (sw / 2 - 0.5), 0, -d * 0.1, 0.45, 1.9, d * 0.5, { color: 0x8f959b, solid: true });
+      for (let k = 0; k < 3; k++) b.box(M.plain, s * (sw / 2 - 0.52), 0.45 + k * 0.5, -d * 0.1, 0.5, 0.26, d * 0.46, { color: pick(R, [0xc8322b, 0x2a4d8f, 0xd6a21e, 0x3d6b4a, 0xe8e8e4]), top: false });
+    }
+    if (R() < 0.45) b.mark('balas', -sw * 0.16, 0, -d * 0.24);
     b.pop();
+    if (two) b.box(M[kind], x, gh, 0, sw, 3.1, d, { cells: [sw / Math.max(2, Math.round(sw / 2.8)), 3.1], cu: Math.floor(R() * 4), cv: Math.floor(R() * 4), color: tint, top: M.roof, solid: true });
+    else b.box(M.concrete, x, gh, 0, sw, h - gh, d, { color: tint, uv: [3, 3], top: M.roof, solid: true });
+    b.box(M.concrete, x, h, 0, sw + 0.1, 0.3, d + 0.1, { color: 0xd8d2c4, uv: [3, 3], top: M.roof });
+    b.box(M.plain, x, 2.9, d / 2 + 0.1, sw - 0.4, 0.74, 0.2, { color: 0x1d2023 });
+    const name = names?.[i] ?? pick(R, signs.shops);
+    b.vquad(M.signs, x, 2.95, d / 2 + 0.215, Math.min(sw - 0.9, 4.4), 0.64, { rect: signs.uv(name) });
+    if (R() < 0.65) b.wedge(M.plain, x, 2.3, d / 2 + 0.8, sw - 0.9, 1.6, 0.56, { rot: Math.PI, color: pick(R, AWNINGS), bottom: true });
+    if (R() < 0.7) { b.box(M.plain, x + rr(R, -1.5, 1.5), h + 0.3, rr(R, -2, 2), 1.6, 0.9, 1.2, { color: 0x9ea3a8 }); }
+    // Puerta de servicio detrás (cerrada, si no es la que quedó abierta).
+    if (!backDoor) {
+      b.push(x, 0, Math.PI);
+      b.vquad(M.details, rr(R, -1.5, 1.5), 0, d / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: 0x6f7479 });
+      b.pop();
+    }
   }
 }
 
@@ -160,31 +179,45 @@ export function shopRow(G, w, d = 9, names = null) {
 export function house(G, w, d) {
   const { b, M, R } = G;
   const wall = pick(R, HOUSE_WALLS), roof = pick(R, HOUSE_ROOFS), trim = 0xf4f1e8;
-  const floors = R() < 0.45 ? 2 : 1, h = floors * 2.9;
+  const floors = R() < 0.45 ? 2 : 1, h = floors === 2 ? 6 : 3.1;
   const bw = rr(R, 8.5, 10.5), bd = rr(R, 6.5, 7.8), gside = R() < 0.5 ? 1 : -1;
   const bx = -gside * 1.9, bz = -1.2; // la casa deja sitio al garaje a un lado
   b.hquad(M.grass, 0, 0.012, 0, w, d, { uv: 4 });
   // Cuerpo, zócalo y tejado.
-  b.box(M.concrete, bx, 0, bz, bw, h, bd, { color: wall, uv: [3, 3], top: false, solid: true });
-  b.box(M.concrete, bx, 0, bz, bw + 0.1, 0.35, bd + 0.1, { color: 0x8d8a84, uv: [3, 3], top: false });
+  // La planta baja es un recinto en el que se entra: por una ventana, rompiendo el cristal, o
+  // por la puerta si quedó abierta. La planta alta (si la hay) es maciza.
+  const open = R() < 0.3, doorColor = pick(R, [0x6b2f2f, 0x2f4a3a, 0x2a3d5a, 0x7a5a3a, 0xf0f0ec]);
+  const pair = [{ at: -bw * 0.3, kind: 'window' }, { at: bw * 0.3, kind: 'window' }], one = [{ at: 0, kind: 'window' }];
+  b.push(bx, bz, 0);
+  room(G, bw, bd, {
+    color: wall, floorColor: pick(R, [0x8a6a48, 0x9a7a55, 0x7a6048]),
+    sides: { front: open ? [...pair, { at: 0, kind: 'door', leafColor: doorColor }] : pair, back: pair, right: gside > 0 ? [] : one, left: gside > 0 ? one : [] },
+  });
+  // Muebles: sofá, mesa y armario.
+  b.box(M.plain, -bw * 0.28, 0, -bd * 0.08, 0.9, 0.45, 1.9, { color: pick(R, [0x6b4a5a, 0x4a5a6b, 0x6b6248]), solid: true });
+  b.box(M.plain, -bw * 0.28 - 0.35, 0.45, -bd * 0.08, 0.2, 0.4, 1.9, { color: 0x4a4048 });
+  b.box(M.plain, bw * 0.12, 0, bd * 0.12, 1.3, 0.74, 0.8, { color: 0x7a5a3a, solid: true });
+  b.box(M.plain, gside * (bw / 2 - 0.5), 0, -bd * 0.2, 0.5, 1.9, 1.4, { color: 0x5a4330, solid: true });
+  if (R() < 0.4) b.mark('balas', bw * 0.12, 0, -bd * 0.2);
+  b.pop();
+  if (floors === 2) b.box(M.concrete, bx, 3.1, bz, bw, 2.9, bd, { color: wall, uv: [3, 3], top: false, solid: true });
   const rh = rr(R, 1.9, 2.6);
   b.prism(M.tiles, bx, h, bz, bw + 0.9, bd + 0.9, rh, { color: roof, gable: M.concrete, gableColor: wall });
   b.box(M.plain, bx, h - 0.06, bz, bw + 0.94, 0.07, bd + 0.94, { color: trim, bottom: true, top: false });
   b.box(M.concrete, bx + bw * 0.28, h + rh * 0.3, bz - bd * 0.15, 0.7, rh * 0.9 + 0.5, 0.7, { color: 0x8a5a48, uv: [1.5, 1.5] });
   // Ventanas y puerta (planta a planta, en las cuatro fachadas).
   const win = (x, y, z, rot, lit, ww = 1.25) => { b.push(bx, bz, rot); b.vquad(M.details, x, y, z + 0.025, ww, 1.25, { rect: lit ? WINDOW_LIT : WINDOW_DARK }); b.pop(); };
-  for (let f = 0; f < floors; f++) {
-    const y = f * 2.9 + 1.0;
-    for (const x of [-bw * 0.3, bw * 0.3]) { win(x, y, bd / 2, 0, R() < 0.5); win(x, y, bd / 2, Math.PI, R() < 0.4); }
-    if (f > 0) win(0, y, bd / 2, 0, R() < 0.5);
+  if (floors === 2) { // ventanas de la planta alta (pintadas)
+    const y = 4.1;
+    for (const x of [-bw * 0.3, 0, bw * 0.3]) win(x, y, bd / 2, 0, R() < 0.5);
+    for (const x of [-bw * 0.3, bw * 0.3]) win(x, y, bd / 2, Math.PI, R() < 0.4);
     for (const rot of [Math.PI / 2, -Math.PI / 2]) win(0, y, bw / 2, rot, R() < 0.4);
   }
-  const doorColor = pick(R, [0x6b2f2f, 0x2f4a3a, 0x2a3d5a, 0x7a5a3a, 0xf0f0ec]);
-  b.vquad(M.details, bx, 0.2, bz + bd / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: doorColor });
+  if (!open) b.vquad(M.details, bx, 0, bz + bd / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: doorColor });
   // Porche: losa, dos postes y tejadillo.
   const pz = bz + bd / 2;
-  b.box(M.concrete, bx, 0, pz + 0.8, 3.4, 0.2, 1.6, { color: 0xb5b0a6, uv: [2, 2], solid: true });
-  for (const s of [-1.5, 1.5]) b.box(M.plain, bx + s, 0.2, pz + 1.45, 0.12, 2.3, 0.12, { color: trim, solid: true });
+  b.box(M.concrete, bx, 0, pz + 0.85, 3.4, 0.06, 1.6, { color: 0xb5b0a6, uv: [2, 2] });
+  for (const s of [-1.5, 1.5]) b.box(M.plain, bx + s, 0, pz + 1.5, 0.12, 2.5, 0.12, { color: trim, solid: true });
   b.wedge(M.tiles, bx, 2.5, pz + 0.85, 3.8, 1.9, 0.6, { rot: Math.PI, color: roof, bottom: true, side: M.plain });
   b.hquad(M.pavers, bx, 0.02, (pz + 1.6 + d / 2) / 2, 1.3, d / 2 - pz - 1.6, { uv: 2 });
   // Garaje adosado y entrada de coches.
@@ -360,6 +393,47 @@ export const BLOCKS = {
     b.mark('balas', 0, 0, 0);
   },
 
+  /** Comisaría: vestíbulo en el que se entra, calabozos, coches patrulla y antena. */
+  comisaria(G) {
+    const { b, M, R, signs } = G;
+    b.hquad(M.asphalt, 0, 0.012, 0, 40, 40, { uv: 6 });
+    b.push(0, -10, 0);
+    room(G, 32, 15, { h: 3.5, color: 0xd6dde2, floorColor: 0x8a8f96, sides: {
+      front: [{ at: -11, kind: 'front' }, { at: -6.5, kind: 'front' }, { at: 0, kind: 'door', w: 1.7, leafColor: 0x1b2a4a }, { at: 6.5, kind: 'front' }, { at: 11, kind: 'front' }],
+      back: [{ at: -12, kind: 'door', leafColor: 0x6f7479 }], left: [{ at: 0, kind: 'window' }], right: [{ at: 2, kind: 'window' }],
+    } });
+    b.box(M.plain, 0, 0, 1.5, 6, 1.05, 0.7, { color: 0x1b2a4a, solid: true }); // mostrador
+    for (const x of [-12, 12]) b.box(M.plain, x, 0, 5.2, 3, 0.45, 0.6, { color: 0x7a5a3a, solid: true });
+    // Calabozos: barrotes.
+    for (let x = 6; x <= 14.5; x += 0.28) b.box(M.plain, x, 0, -2.5, 0.05, 3.5, 0.05, { color: 0x3a4046, top: false });
+    b.solid(10.2, 0, -2.5, 8.8, 3.5, 0.1);
+    b.box(M.plain, 10, 0, -2.5, 0.1, 3.5, 4.6, { color: 0x8f959b, solid: true });
+    // Armería: taquillas y lo que quedó.
+    for (const x of [-14, -12.5, -11]) b.box(M.plain, x, 0, -6.3, 1.3, 2.0, 0.6, { color: 0x4f5a6a, solid: true });
+    b.mark('balas', -12.5, 0, -4.6); b.mark('balas', -9, 0, -5.4); b.mark('pistola', -6, 0, -5);
+    b.box(M.office, 0, 3.7, 0, 32, 6.6, 15, { cells: [3.2, 3.3], color: 0xd6dde2, cu: 1, top: M.roof, solid: true });
+    b.box(M.concrete, 0, 10.3, 0, 32.5, 0.6, 15.5, { color: 0xa8a39a, uv: [3, 3], top: M.roof });
+    b.box(M.plain, 0, 3.75, 7.6, 7, 1.5, 0.25, { color: 0x1d2023 });
+    b.vquad(M.signs, 0, 3.85, 7.74, 6.6, 1.3, { rect: signs.uv('POLICÍA') });
+    b.box(M.plain, 0, 3.4, 8.6, 5, 0.2, 2.2, { color: 0x1b2a4a, bottom: true });
+    roofGear(G, 26, 11, 10.9);
+    // Antena de radio.
+    for (const [sx, sz] of [[-1, -1], [1, -1], [0, 1]]) b.box(M.plain, 11 + sx * 0.5, 10.9, sz * 0.5, 0.08, 14, 0.08, { color: 0xc8322b });
+    for (let y = 12; y < 25; y += 2) b.box(M.plain, 11, y, 0, 1.1, 0.05, 1.1, { color: 0xe8e8e4, top: false });
+    b.box(M.lamp, 11, 24.9, 0, 0.3, 0.3, 0.3);
+    b.pop();
+    // Aparcamiento con coches patrulla y un furgón.
+    for (let i = 0; i <= 6; i++) b.hquad(M.mark, -9 + i * 3, 0.02, 9, 0.12, 5, { color: 0xe8e8e0 });
+    car(G, -7.5, 9, Math.PI / 2 + 0.05, { kind: 'policia' }); car(G, -1.5, 9.2, -Math.PI / 2, { kind: 'policia' }); car(G, 4.5, 8.8, Math.PI / 2 - 0.08, { kind: 'policia' });
+    car(G, 14, 13, 0.3, { kind: 'van', color: 0x1b2a4a });
+    barrier(G, -14, 18.5, 0); barrier(G, -10.8, 18.6, 0.05); sandbags(G, 12, 18.4, 0, 4);
+    for (const [x, z] of [[-17, 3], [-16.2, 3.4]]) cone(G, x, z);
+    b.box(M.plain, 17.5, 0, 17.5, 0.12, 9, 0.12, { color: 0xb9bec4, solid: true });
+    b.box(M.plain, 18.25, 7.6, 17.5, 1.5, 1.0, 0.03, { color: 0x2a4d8f });
+    lamp(G, -18, 12, Math.PI / 2, 7, 0.3); lamp(G, 18, 4, -Math.PI / 2, 7, 0.3);
+    chainFence(G, -19.6, -2, -19.6, 19.6); chainFence(G, 19.6, -2, 19.6, 12);
+  },
+
   /** Fábrica: nave grande, silos, chimenea y patio de contenedores tras una valla. */
   industria(G) {
     const { b, M, R } = G;
@@ -460,15 +534,24 @@ export const BLOCKS = {
     const { b, M, R, signs } = G;
     b.hquad(M.asphalt, 0, 0.012, 0, 40, 40, { uv: 6 });
     b.push(0, -11, 0);
-    b.box(M.concrete, 0, 0, 0, 38, 7, 17, { color: 0xe4dfd2, uv: [4, 3.5], top: M.roof, solid: true });
+    // Una nave diáfana con pasillos de estanterías: se entra rompiendo las lunas de la fachada.
+    room(G, 38, 17, { h: 4.8, color: 0xe4dfd2, floorColor: 0xb9b6ae, sides: {
+      front: [-15, -11, -7, -3, 3, 7, 11, 15].map((at) => ({ at, kind: 'front', w: 2.8 })),
+      back: [{ at: 14, kind: 'door', leafColor: 0x6f7479 }],
+    } });
+    for (const x of [-13.5, -8.5, -3.5, 3.5, 8.5, 13.5]) {
+      b.box(M.plain, x, 0, -1.6, 0.9, 1.8, 8.5, { color: 0x9ea3a8, solid: true });
+      for (let k = 0; k < 3; k++) b.box(M.plain, x, 0.4 + k * 0.5, -1.6, 0.96, 0.28, 8.3, { color: pick(R, [0xc8322b, 0x2a4d8f, 0xd6a21e, 0x3d6b4a, 0xe8e8e4, 0xe8701e]), top: false });
+    }
+    for (const x of [-9, -3, 3, 9]) b.box(M.plain, x, 0, 6.1, 2.2, 0.95, 0.8, { color: 0x4a4f55, solid: true }); // cajas
+    b.mark('balas', -11, 0, -6.5); b.mark('balas', 6, 0, -6.8); b.mark('balas', 16.5, 0, 4);
+    b.box(M.concrete, 0, 5, 0, 38, 2, 17, { color: 0xe4dfd2, uv: [4, 3.5], top: M.roof, solid: true });
     b.box(M.plain, 0, 5.2, 0, 38.2, 1.0, 17.2, { color: 0xc8322b, top: false });
-    b.vquad(M.shop, 0, 0, 8.53, 30, 3.6, { rect: [0, 0.25, 9 / 4, 0.5] });
     b.box(M.plain, 0, 3.7, 9.6, 32, 0.25, 2.2, { color: 0xc8322b, bottom: true });
     for (let x = -15; x <= 15; x += 6) b.box(M.plain, x, 0, 10.5, 0.2, 3.7, 0.2, { color: 0xe4dfd2, solid: true });
     b.box(M.plain, 0, 7, 8.2, 12.4, 3.2, 0.3, { color: 0x1d2023 });
     b.vquad(M.signs, 0, 7.1, 8.36, 12, 3, { rect: signs.uv('SÚPER Z') });
     roofGear(G, 34, 14, 7);
-    b.push(0, 0, Math.PI); b.vquad(M.details, -8, 1.1, 8.53, 4.2, 4.2, { rect: SHUTTER }); b.pop();
     b.pop();
     parkingRow(G, 0, 3.5, 12); parkingRow(G, 0, 15, 12);
     for (const x of [-17, 17]) { lamp(G, x, 9.2, 0, 7, 0.2); }
@@ -504,9 +587,11 @@ export const BLOCKS = {
     b.pop();
     // Tienda.
     b.push(-4, -13, 0);
-    b.box(M.concrete, 0, 0, 0, 16, 4, 9, { color: 0xf0ece4, uv: [3, 3], top: M.roof, solid: true });
+    room(G, 16, 9, { h: 3.2, color: 0xf0ece4, sides: { front: [-5.6, -2.2, 2.2, 5.6].map((at) => ({ at, kind: 'front' })) } });
+    b.box(M.plain, 5, 0, -2.2, 3, 1.0, 0.7, { color: 0x4a4f55, solid: true });
+    for (const x of [-4.5, -1]) b.box(M.plain, x, 0, -0.5, 0.7, 1.5, 4.5, { color: 0x9ea3a8, solid: true });
+    b.box(M.concrete, 0, 3.4, 0, 16, 0.6, 9, { color: 0xf0ece4, uv: [3, 3], top: M.roof });
     b.box(M.plain, 0, 3.4, 0, 16.2, 0.7, 9.2, { color: 0xc8322b, top: false });
-    b.vquad(M.shop, 0, 0, 4.53, 14, 3.3, { rect: [0, 0.5, 1, 0.75] });
     b.vquad(M.signs, 0, 3.42, 4.62, 4.4, 0.66, { rect: signs.uv('24 H') });
     roofGear(G, 12, 6, 4);
     b.pop();
@@ -524,7 +609,7 @@ export const BLOCKS = {
     for (let i = 0; i < 4; i++) b.cyl(M.plain, -18, 0.3 + i * 0.22, -5, 0.34, 0.22, { sides: 12, color: 0x141517 });
     b.solid(-18, 0, -5, 0.7, 0.9, 0.7);
     car(G, 14, 3, 1.2, { kind: 'quemado' });
-    b.mark('balas', -4, 0, -7);
+    b.mark('balas', -1, 0, -15.5);
     b.mark('balas', 10, 0, -6.5);
   },
 
@@ -722,6 +807,7 @@ export const BLOCKS = {
     car(G, 13, -9.5, Math.PI / 2 + 0.2, { kind: 'militar' });
     for (const [x, z, s] of [[5.5, 9, 1.0], [6.7, 9.2, 0.9], [6, 9.1, 0.8]]) crate(G, x, z, s, s === 0.8 ? 1.0 : 0);
     crate(G, -5.6, 9, 1.0); barrel(G, -6.9, 9.3, 0x4f5a3a); barrel(G, -7.4, 8.6, 0x4f5a3a);
+    car(G, -3, -12.6, 0.25, { kind: 'policia' });
     for (const [x, z] of [[-2, 18.5], [0, 18.8], [2, 18.5]]) cone(G, x, z);
     // Focos del puesto.
     lamp(G, -15.5, 13.5, Math.PI * 0.75, 7.5, 0.4); lamp(G, 15.5, 13.5, -Math.PI * 0.75, 7.5, 0.4);

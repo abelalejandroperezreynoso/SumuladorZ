@@ -94,7 +94,7 @@ export class Batch {
   /**
    * Caja con la base centrada en (x, y, z) y medidas (sx, sy, sz). Opciones: `rot` (giro
    * propio), `color` y `topColor` (0xrrggbb), `top` (material de la cara de arriba; false la
-   * omite), `sides: false`, `bottom: true`, `solid: true` (choca) y la proyección de textura:
+   * omite), `sides: false`, `bottom: true` (`under`: su material), `solid: true` (choca) y la proyección de textura:
    * `uv: [m, m]` metros por repetición, `cells: [vano, planta]` para fachadas (reparte un
    * número entero de ventanas; `cu`, `cv` desplazan la rejilla) o `rect: [u0, v0, u1, v1]`.
    */
@@ -125,7 +125,7 @@ export class Batch {
     const m = o.topUV ?? 4;
     const tcol = o.topColor !== undefined ? lin(o.topColor) : o.top === undefined || o.top === mat ? col : lin(0xffffff);
     if (top) this.quad(top, P(-hx, y1, hz), P(hx, y1, hz), P(hx, y1, -hz), P(-hx, y1, -hz), [0, 1, 0], [0, 0, sx / m, sz / m], tcol);
-    if (o.bottom) this.quad(top || mat, P(-hx, y0, -hz), P(hx, y0, -hz), P(hx, y0, hz), P(-hx, y0, hz), [0, -1, 0], [0, 0, sx / m, sz / m], tcol);
+    if (o.bottom) this.quad(o.under ?? (top || mat), P(-hx, y0, -hz), P(hx, y0, -hz), P(hx, y0, hz), P(-hx, y0, hz), [0, -1, 0], [0, 0, sx / m, sz / m], o.under ? col : tcol);
     if (o.solid) this.solid(x, y, z, sx, sy, sz, o.rot || 0);
     return this;
   }
@@ -134,6 +134,26 @@ export class Batch {
   hquad(mat, x, y, z, sx, sz, o = {}) {
     this.box(null, x, y, z, sx, 0, sz, { rot: o.rot, sides: false, top: mat, topColor: o.color ?? 0xffffff, topUV: o.uv ?? 4 });
     if (o.rect) this.fixLast(mat, o.rect);
+    return this;
+  }
+
+  /**
+   * Cinta tendida en el suelo a lo largo de una línea de puntos [{ x, z }] (calles curvas,
+   * aceras, vías): `width` de ancho a la altura `y`. `offset` la desplaza hacia la izquierda
+   * de la marcha; `uv`: metros por repetición de la textura.
+   */
+  strip(mat, pts, width, y, o = {}) {
+    const m = o.uv ?? 4, col = lin(o.color ?? 0xffffff), off = o.offset ?? 0;
+    let prev = null, s = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)];
+      const tx = c.x - a.x, tz = c.z - a.z, l = Math.hypot(tx, tz) || 1, nx = -tz / l, nz = tx / l;
+      const px = pts[i].x + nx * off, pz = pts[i].z + nz * off;
+      const L = this.at(px + (nx * width) / 2, y, pz + (nz * width) / 2), R = this.at(px - (nx * width) / 2, y, pz - (nz * width) / 2);
+      if (i > 0) s += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+      if (prev) this.quad(mat, prev.R, prev.L, L, R, [0, 1, 0], [0, prev.s / m, width / m, s / m], col);
+      prev = { L, R, s };
+    }
     return this;
   }
 

@@ -16,9 +16,9 @@ const path = require('path');
 const OUT = process.argv[2] || 'city-out';
 const URL = process.env.GAME_URL || 'http://localhost:5199/';
 // Lugar: [nombre, x, z (respecto al centro de la ciudad), giro de la cámara (rad), cabeceo].
-const VIEWS = [
-  ['plaza', 0, 9, 0, 0.16], ['centro', 29, 24, 0.1, 0.02], ['casas', -87, 100, 1.2, 0.1], ['tiendas', 6, 145, 0.3, 0.05],
-  ['fabrica', -116, -86, 0, 0.02], ['iglesia', 100, 146, -0.3, -0.1], ['hospital', 58, 86, 0, 0], ['parque', 116, 22, 0, 0.12],
+const VIEWS_ALL = [
+  ['plaza', 0, 9, 0, 0.16], ['centro', 29, 24, 0.1, 0.02], ['tiendas', 6, 145, 0.3, 0.05], ['comisaria', 58, -87, 0, 0.05],
+  ['residencial', 40, 226, 1.3, 0.12], ['industrial', 40, -213, 1.4, 0.05], ['casco_antiguo', -190, -41, 0.85, 0.02], ['salida', 2, 300, 0, 0.1],
 ];
 const HOURS = [['dia', 120], ['atardecer', 285], ['noche', 420]];
 
@@ -36,7 +36,7 @@ const HOURS = [['dia', 120], ['atardecer', 285], ['noche', 420]];
     document.getElementById('m-play').click(); // empieza la partida
     window.__render = g.renderer.render.bind(g.renderer);
     window.__put = (body, x, z) => { const at = { x: g.city.center.x + x, y: 1.2, z: g.city.center.z + z }; body.setTranslation(at, true); body.setNextKinematicTranslation(at); };
-    return { construir_ms: Math.round(g.city.buildMs), triangulos: g.city.tris, choques: g.city.solids, farolas: g.city.lamps.length, objetos: g.city.pickups.length, mallas: g.city.group.children.length };
+    return { construir_ms: Math.round(g.city.buildMs), triangulos: g.city.tris, choques: g.city.solids, farolas: g.city.lamps.length, objetos: g.city.pickups.length, mallas: g.city.group.children.length, interiores: g.city.interiors.length, cristales: g.city.glass.panes.length, patrullas: g.city.patrols.cars.length };
   });
   console.log('ciudad', JSON.stringify(stats));
 
@@ -45,18 +45,20 @@ const HOURS = [['dia', 120], ['atardecer', 285], ['noche', 420]];
     const g = window.__game, c = g.camera, C = g.city.center;
     g.sky.time = 120; g.tick(1 / 60);
     const far = c.far, fog = [g.scene.fog.near, g.scene.fog.far];
-    c.far = 700; c.updateProjectionMatrix(); g.scene.fog.near = 300; g.scene.fog.far = 700; g.sky.sky.visible = false;
-    c.position.set(C.x, 250, C.z + 215); c.lookAt(C.x, 0, C.z + 10); c.updateMatrixWorld(true);
+    c.far = 1500; c.updateProjectionMatrix(); g.scene.fog.near = 600; g.scene.fog.far = 1500; g.sky.sky.visible = false;
+    c.position.set(C.x, 430, C.z + 330); c.lookAt(C.x, 0, C.z + 15); c.updateMatrixWorld(true);
     document.body.classList.add('in-menu');
     window.__render(g.scene, c);
     c.far = far; c.updateProjectionMatrix(); [g.scene.fog.near, g.scene.fog.far] = fog; g.sky.sky.visible = true;
   });
   await page.screenshot({ path: path.join(OUT, 'aerea.png') });
   await page.evaluate(() => document.body.classList.remove('in-menu'));
+  const VIEWS = process.env.FOTOS === "0" ? [] : VIEWS_ALL; // FOTOS=0: solo las medidas
   for (const [name, x, z, yaw, pitch] of VIEWS) {
     for (const [hour, t] of HOURS) {
       const calls = await page.evaluate(({ x, z, yaw, pitch, t }) => {
         const g = window.__game;
+        g.gameMode.civT = 1e9; // sin persecuciones en las fotos
         window.__put(g.player.body, x, z);
         g.player.health = 100;
         g.sky.time = t; g.cam.yaw = yaw; g.cam.pitch = pitch;
@@ -85,12 +87,13 @@ const HOURS = [['dia', 120], ['atardecer', 285], ['noche', 420]];
     }
     const [sx, sz] = spot;
     g.gameMode.restart(true);
+    g.gameMode.civT = 1e9; // sin personas huyendo durante las medidas
     H.setAmbient(null); // solo los zombis de la prueba
-    for (const z of H.zombies.slice(2)) z.dispose();
-    H.zombies.length = 2;
+    H.clear();
+    for (let i = 0; i < 2; i++) H.addAmbient({ x: g.city.center.x - 100, z: g.city.center.z - 100 + i * 3 });
     const approach = (z, facing) => {
       P.health = 100; window.__put(P.body, sx, sz);
-      z.state = 'wander'; z.memory = 0; z.rage = 0; window.__put(z.body, sx, sz - 16); run(0.3);
+      z.leaveFeed(); z.state = 'wander'; z.memory = 0; z.rage = 0; z.feedK = 0; window.__put(z.body, sx, sz - 16); run(0.3);
       let react = null;
       run(12, () => {
         z.wanderT = 60;
@@ -109,6 +112,7 @@ const HOURS = [['dia', 120], ['atardecer', 285], ['noche', 420]];
     still();
     // De noche, quieto en la plaza.
     g.gameMode.restart(true);
+    g.gameMode.civT = 1e9;
     g.sky.time = 299;
     let bite = null, dead = null, chasing = 0;
     t = 0;
