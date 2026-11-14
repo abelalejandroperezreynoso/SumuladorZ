@@ -145,8 +145,8 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   `worldUV` evita que se estiren), carpintería de ventanas (`windowTrim`), cristal con
   junquillos y picos que quedan al romperse (`glazing`, `w.remains`) y `decorate` (tejado a dos
   aguas solo visual sobre el techo raso que choca, zócalo, entrada, luces y muebles: cada
-  mueble es un bloque invisible fijo más sus piezas visibles). `mergeStatic` funde las piezas
-  fijas en una malla por material: añadir adornos con `box`/`at` antes de esa llamada. No poner
+  mueble es un bloque invisible fijo más sus piezas visibles; también cocina, cortinas,
+  jardín y árbol). `mergeStatic` funde las piezas fijas (con índice o sin él) en una malla por material: añadir adornos con `box`/`at` antes de esa llamada. No poner
   muebles delante de puerta o ventanas (los zombis caen ~1 m hacia dentro del hueco).
 - **Muerte de los zombis** — no hay clip de muerte: `Zombie.startRagdoll` (`src/horde.js`) crea
   un cuerpo físico por segmento (`RAGDOLL`, cápsulas en `GROUPS.debris`, unidos por rótulas)

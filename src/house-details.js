@@ -76,6 +76,21 @@ export function worldUV(geometry, [sx, sy, sz], per = 2) {
 const mat = (color, roughness = 0.8, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
 export const WOOD = mat(0x6b4a2f, 0.75), WOOD_DARK = mat(0x4a321f, 0.8), WOOD_LIGHT = mat(0x9a7448, 0.7);
 const METAL = mat(0xb9a15a, 0.35, { metalness: 0.8 });
+const CURTAIN = mat(0xd9cdb0, 0.95), CURTAIN_FOLD = mat(0xc4b693, 0.95);
+const STEEL = mat(0xc8ccd0, 0.3, { metalness: 0.7 }), WHITE = mat(0xeeeeea, 0.45), GRAY = mat(0x8f9296, 0.6);
+const LEAF = mat(0x4f7a3a, 0.9, { flatShading: true }), LEAF_DARK = mat(0x3d6230, 0.9, { flatShading: true });
+const BARK = mat(0x5a4330, 0.95);
+
+/** Mata de hojas: varios poliedros verdes alrededor de (x, y, z), de radio `size`. */
+function bush(root, x, y, z, size, r) {
+  for (let i = 0; i < 5; i++) {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(size * (0.55 + r() * 0.45), 0), i % 2 ? LEAF : LEAF_DARK);
+    m.position.set(x + (r() - 0.5) * size * 1.4, y + size * (0.5 + r() * 0.5), z + (r() - 0.5) * size * 1.4);
+    m.rotation.set(r() * 3, r() * 3, 0);
+    m.castShadow = m.receiveShadow = true;
+    root.add(m);
+  }
+}
 
 /**
  * Funde en una sola malla por material todas las piezas fijas de `group` (cientos de cajas
@@ -85,8 +100,9 @@ export function mergeStatic(group, scene) {
   group.updateMatrixWorld(true);
   const sets = new Map();
   group.traverse((o) => {
-    if (!o.isMesh || !o.geometry.index) return;
-    const key = o.material.uuid + (o.castShadow ? 's' : '');
+    if (!o.isMesh) return;
+    // Solo se funden geometrías del mismo tipo (con índice o sin él, como los poliedros).
+    const key = o.material.uuid + (o.castShadow ? 's' : '') + (o.geometry.index ? 'i' : 'n');
     if (!sets.has(key)) sets.set(key, { material: o.material, shadow: o.castShadow, geos: [], meshes: [] });
     const set = sets.get(key);
     set.geos.push(o.geometry.clone().applyMatrix4(o.matrixWorld));
@@ -123,6 +139,15 @@ export function windowTrim(g, V, muro, out) {
   box(g, [t, h, d], [-V.ancho / 2 - t / 2, yc, 0], WOOD);
   box(g, [t, h, d], [V.ancho / 2 + t / 2, yc, 0], WOOD);
   box(g, [V.ancho + 2 * t + 0.1, 0.05, muro + 0.2], [0, V.bajo - 0.025, out * 0.05], WOOD_LIGHT); // alféizar
+  // Por dentro: barra y dos cortinas recogidas a los lados.
+  const zi = -out * (muro / 2 + 0.06);
+  box(g, [V.ancho + 0.9, 0.025, 0.025], [0, V.alto + 0.14, zi], METAL, false);
+  for (const s of [-1, 1]) {
+    const x = s * (V.ancho / 2 + 0.24);
+    box(g, [0.34, h + 0.3, 0.045], [x, yc + 0.06, zi], CURTAIN, false);
+    for (let k = -1; k <= 1; k++) box(g, [0.035, h + 0.28, 0.06], [x + k * 0.11, yc + 0.06, zi - out * 0.008], CURTAIN_FOLD, false); // pliegues
+    box(g, [0.36, 0.04, 0.07], [x, V.bajo + 0.35, zi], CURTAIN_FOLD, false); // alzapaños
+  }
   for (const s of [-1, 1]) { // contraventanas, pegadas a la fachada
     const x = s * (V.ancho / 2 + t + 0.3), z = out * (muro / 2 + 0.02);
     box(g, [0.56, h + 0.04, 0.03], [x, yc, z], WOOD_DARK);
@@ -304,6 +329,112 @@ export function decorate(scene, physics, H, tex, doorZ) {
   // Fuera: barril y caja junto a la esquina.
   physics.add({ shape: 'cylinder', radius: 0.32, height: 0.9, pos: [H.x + hx + 0.45, 0.45, H.z - hz + 0.45], color: 0x6b4a2f });
   physics.add({ size: [0.7, 0.7, 0.7], pos: [H.x + hx + 0.5, 0.35, H.z - hz + 1.25], color: 0x9a7448 });
+  // --- Más interior: rodapié, cocina, planta y perchero ---
+  const base = mat(0x5a3f28, 0.8), bx0 = hx - H.muro, bz0 = hz - H.muro;
+  for (const s of [-1, 1]) at([H.ancho - 2 * H.muro, 0.09, 0.015], [0, 0.045, s * (bz0 - 0.008)], base, false);
+  at([0.015, 0.09, H.fondo - 2 * H.muro], [-(bx0 - 0.008), 0.045, 0], base, false);
+  const dIn0 = doorZ - H.z - H.puerta.ancho / 2, dIn1 = doorZ - H.z + H.puerta.ancho / 2;
+  at([0.015, 0.09, dIn0 + bz0], [bx0 - 0.008, 0.045, (dIn0 - bz0) / 2], base, false);
+  at([0.015, 0.09, bz0 - dIn1], [bx0 - 0.008, 0.045, (dIn1 + bz0) / 2], base, false);
+  // Cocina contra el muro oeste, entre la ventana y la esquina suroeste: encimera con
+  // fregadero y fogones, muebles altos y nevera en la esquina.
+  const kx = -bx0 + 0.3, k0 = 0.9, k1 = 2.08, kc = (k0 + k1) / 2, kl = k1 - k0;
+  solid([0.6, 0.9, kl], [kx, kc]);
+  at([0.56, 0.84, kl], [kx + 0.02, 0.42, kc], WHITE);
+  at([0.64, 0.05, kl + 0.02], [kx, 0.885, kc], mat(0x3b3b3e, 0.4)); // encimera
+  at([0.02, 0.1, kl - 0.04], [kx + 0.31, 0.05, kc], GRAY, false); // zócalo del mueble
+  for (let i = 0; i < 3; i++) { // puertas y tiradores
+    const z = k0 + (i + 0.5) * kl / 3;
+    at([0.012, 0.7, kl / 3 - 0.03], [kx + 0.306, 0.47, z], WHITE, false);
+    at([0.02, 0.12, 0.02], [kx + 0.32, 0.7, z + kl / 6 - 0.07], STEEL, false);
+  }
+  at([0.4, 0.03, 0.45], [kx + 0.02, 0.905, k0 + 0.32], STEEL, false); // fregadero
+  at([0.34, 0.035, 0.38], [kx + 0.02, 0.91, k0 + 0.32], mat(0x55595e, 0.3), false);
+  at([0.03, 0.22, 0.03], [kx - 0.22, 1.02, k0 + 0.32], STEEL, false); // grifo
+  at([0.2, 0.025, 0.025], [kx - 0.13, 1.12, k0 + 0.32], STEEL, false);
+  for (const [dx, dz] of [[-0.1, -0.13], [-0.1, 0.13], [0.12, -0.13], [0.12, 0.13]]) { // fogones
+    const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.012, 16), mat(0x1e1e20, 0.5));
+    burner.position.set(H.x + kx + dx, 0.916, H.z + k1 - 0.3 + dz);
+    root.add(burner);
+  }
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.13, 16), mat(0x7a2a22, 0.4, { metalness: 0.3 }));
+  pot.position.set(H.x + kx - 0.1, 0.99, H.z + k1 - 0.43);
+  root.add(pot);
+  at([0.34, 0.6, kl], [-bx0 + 0.17, 1.85, kc], WHITE); // muebles altos
+  for (let i = 0; i < 2; i++) at([0.012, 0.56, kl / 2 - 0.03], [-bx0 + 0.346, 1.85, k0 + (i + 0.5) * kl / 2], WHITE, false);
+  at([0.012, 0.42, 0.012], [-bx0 + 0.35, 1.9, kc - 0.06], STEEL, false);
+  at([0.012, 0.42, 0.012], [-bx0 + 0.35, 1.9, kc + 0.06], STEEL, false);
+  at([0.01, 0.55, kl], [-bx0 + 0.006, 1.2, kc], mat(0xdfe6e4, 0.3), false); // azulejos detrás
+  const fz = bz0 - 0.36;
+  solid([0.68, 1.85, 0.68], [kx + 0.04, fz]);
+  at([0.68, 1.85, 0.68], [kx + 0.04, 0.925, fz], WHITE);
+  at([0.01, 0.01, 0.66], [kx + 0.385, 1.2, fz], GRAY, false); // separación de las dos puertas
+  at([0.03, 0.4, 0.03], [kx + 0.4, 1.45, fz - 0.24], STEEL, false);
+  at([0.03, 0.25, 0.03], [kx + 0.4, 0.95, fz - 0.24], STEEL, false);
+  // Planta en la esquina noreste y perchero junto a la puerta (este, sureste).
+  const px = bx0 - 0.3, pz = -bz0 + 0.3;
+  solid([0.4, 0.45, 0.4], [px, pz]);
+  const potPlant = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.4, 14), mat(0xa0583a, 0.8));
+  potPlant.position.set(H.x + px, 0.2, H.z + pz);
+  potPlant.castShadow = true;
+  root.add(potPlant);
+  bush(root, H.x + px, 0.35, H.z + pz, 0.28, r);
+  bush(root, H.x + px, 0.75, H.z + pz, 0.2, r);
+  const cx = bx0 - 0.35, cz = bz0 - 0.35;
+  at([0.04, 1.75, 0.04], [cx, 0.875, cz], WOOD_DARK, false);
+  at([0.36, 0.03, 0.36], [cx, 0.015, cz], WOOD_DARK, false);
+  for (const a of [0, 1, 2, 3]) {
+    const peg = at([0.18, 0.025, 0.025], [cx + Math.cos(a * 1.57) * 0.08, 1.68, cz + Math.sin(a * 1.57) * 0.08], WOOD_DARK, false);
+    peg.rotation.y = -a * 1.57;
+  }
+  at([0.12, 0.7, 0.32], [cx + 0.05, 1.3, cz], mat(0x3a4a5e, 0.95)); // abrigo colgado
+
+  // --- Más exterior: canalones y bajantes, césped, arbustos, buzón y un árbol ---
+  for (const s of [-1, 1]) {
+    at([H.ancho + 2 * R.alero, 0.09, 0.11], [0, eaveY - 0.06, s * (half + 0.03)], GRAY);
+    for (const k of [-1, 1]) {
+      const sx = k * (hx - 0.25);
+      at([0.08, eaveY - 0.5, 0.08], [sx, (eaveY - 0.5) / 2 + 0.05, s * (hz + 0.07)], GRAY);
+      const elbow = at([0.08, 0.55, 0.08], [sx, eaveY - 0.32, s * (half + hz + 0.1) / 2], GRAY);
+      elbow.rotation.x = s * 0.75;
+      for (const y of [0.6, 1.5]) at([0.12, 0.03, 0.06], [sx, y, s * (hz + 0.04)], GRAY, false); // abrazaderas
+    }
+  }
+  const lawn = at([H.ancho + 6, 0.01, H.fondo + 6], [-0.5, 0.005, 0], mat(0x5f7d45, 1), false);
+  lawn.receiveShadow = true;
+  const earth = mat(0x5a4632, 1);
+  for (const s of [-1, 1]) at([H.ancho - 0.6, 0.012, 0.6], [0, 0.009, s * (hz + 0.36)], earth, false); // arriates
+  at([0.6, 0.012, H.fondo - 0.6], [-(hx + 0.36), 0.009, 0], earth, false);
+  for (const [x, z] of [[-2, hz + 0.38], [2, hz + 0.38], [-2, -hz - 0.38], [2, -hz - 0.38], [-hx - 0.38, 0]]) bush(root, H.x + x, 0, H.z + z, 0.32, r);
+  const flowers = [0xd8455a, 0xf0c445, 0xeeeeee, 0x8a5ad0].map((c) => mat(c, 0.7));
+  for (let i = 0; i < 40; i++) {
+    const side = i % 3, t = r() - 0.5;
+    const x = side === 2 ? -(hx + 0.36 + (r() - 0.5) * 0.4) : t * (H.ancho - 1);
+    const z = side === 2 ? t * (H.fondo - 1) : (side ? 1 : -1) * (hz + 0.36 + (r() - 0.5) * 0.4);
+    if (Math.abs(Math.abs(x) - 2) < 0.5 && side !== 2) continue; // ahí van los arbustos
+    const f = new THREE.Mesh(new THREE.IcosahedronGeometry(0.04, 0), flowers[i % 4]);
+    f.position.set(H.x + x, 0.12 + r() * 0.1, H.z + z);
+    root.add(f);
+    at([0.012, 0.13, 0.012], [x, 0.065, z], LEAF_DARK, false);
+  }
+  const mx = hx + 4.2, mz = dz + 0.75; // buzón al final del camino
+  at([0.08, 1.05, 0.08], [mx, 0.525, mz], WOOD_DARK);
+  at([0.42, 0.22, 0.26], [mx, 1.15, mz], mat(0x2f4f6b, 0.5, { metalness: 0.3 }));
+  at([0.03, 0.14, 0.03], [mx - 0.1, 1.33, mz + 0.14], mat(0xb8392e, 0.6), false);
+  // Árbol al suroeste de la casa: el tronco choca (y cubre); la copa es solo visual.
+  const tx = -hx - 2.6, tz = hz + 2.4;
+  physics.add({ shape: 'cylinder', radius: 0.22, height: 2.6, pos: [H.x + tx, 1.3, H.z + tz], material: BARK });
+  for (const [x, y, z, s] of [[0, 3.1, 0, 1.25], [0.6, 2.7, 0.3, 0.9], [-0.55, 2.8, -0.35, 0.95], [0.1, 3.7, -0.2, 0.85], [-0.3, 2.6, 0.6, 0.8]]) {
+    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), (x + z) > 0 ? LEAF : LEAF_DARK);
+    crown.position.set(H.x + tx + x, y, H.z + tz + z);
+    crown.castShadow = crown.receiveShadow = true;
+    root.add(crown);
+  }
+  for (const a of [0.4, 2.5, 4.4]) {
+    const branch = at([0.08, 1.0, 0.08], [tx + Math.cos(a) * 0.25, 2.3, tz + Math.sin(a) * 0.25], BARK);
+    branch.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6);
+  }
+
   mergeStatic(root, scene);
   return root;
 }
