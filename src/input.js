@@ -22,6 +22,9 @@ export class Input {
     this.aimToggle = false; // botón táctil «Apuntar» (se alterna con un toque)
     this.onPadStart = null; // lo asigna main.js: arrancar o continuar desde el menú
     this.onPadMenu = null; // ...y abrir la pausa con el botón Menú
+    this.onPadNav = null; // ...y moverse por el menú: 'up', 'down', 'left', 'right', 'ok', 'back' o 'start'
+    this.padNavDir = null; // dirección del stick en el menú y cuándo repite
+    this.padNavT = 0;
 
     addEventListener('keydown', (e) => {
       if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
@@ -101,7 +104,15 @@ export class Input {
       document.body.classList.add('gamepad');
     }
     if (!this.locked) {
-      if (now.some((v, i) => v && edge(i))) this.onPadStart?.();
+      // En el menú: cruceta o stick izquierdo para moverse, A elegir, B volver, Menú jugar.
+      if (!this.onPadNav) { if (now.some((v, i) => v && edge(i))) this.onPadStart?.(); return; }
+      const nav = { 12: 'up', 13: 'down', 14: 'left', 15: 'right', 0: 'ok', 1: 'back', 9: 'start' };
+      for (const i in nav) if (edge(+i)) this.onPadNav(nav[i]);
+      const sx = pad.axes[0] ?? 0, sy = pad.axes[1] ?? 0;
+      const dir = Math.hypot(sx, sy) < 0.6 ? null
+        : Math.abs(sx) > Math.abs(sy) ? (sx > 0 ? 'right' : 'left') : (sy > 0 ? 'down' : 'up');
+      if (dir !== this.padNavDir) { this.padNavDir = dir; this.padNavT = 0.4; if (dir) this.onPadNav(dir); }
+      else if (dir && (this.padNavT -= dt) <= 0) { this.padNavT = 0.12; this.onPadNav(dir); } // mantenido: repite
       return;
     }
 

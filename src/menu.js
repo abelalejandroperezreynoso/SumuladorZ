@@ -35,7 +35,7 @@ export class Menu {
     // al propio toque (además, el toque fija el modo táctil antes de bloquear el puntero).
     const tap = (el, fn) => {
       el.addEventListener('touchend', (e) => { e.preventDefault(); fn(e); el.blur(); }, { passive: false });
-      el.addEventListener('click', (e) => { fn(e); el.blur(); });
+      el.addEventListener('click', (e) => { fn(e); if (e.detail !== 0) el.blur(); }); // (detail 0: pulsado con el mando)
     };
     tap(this.play, (e) => actions.play(e));
     tap(this.horde, (e) => { actions.toggleHorde(); actions.play(e); });
@@ -70,6 +70,58 @@ export class Menu {
     actions.applySettings(this.settings);
   }
 
+  /**
+   * Manejo con el mando: las direcciones llevan el foco al control visible más cercano hacia
+   * ese lado (← → mueven el deslizador si está elegido), A lo pulsa, B cierra la sección
+   * abierta o vuelve al juego y Menú vuelve al juego.
+   */
+  nav(cmd) {
+    const items = [...this.root.querySelectorAll('button, input')]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+    let cur = document.activeElement;
+    if (!items.includes(cur)) cur = null;
+    if (cmd === 'start') return this.actions.play();
+    if (cmd === 'back') {
+      if (this.section) { const b = this.root.querySelector(`[data-sec="${this.section}"]`); this.show(this.section); this.focus(b); }
+      else if (this.started) this.actions.play();
+      return;
+    }
+    if (!cur) return this.focus(items.includes(this.play) ? this.play : items[0]);
+    if (cmd === 'ok') {
+      if (cur.type === 'range') return;
+      cur.click();
+      if (!this.root.classList.contains('hidden') && document.activeElement !== cur && cur.offsetParent) this.focus(cur);
+      return;
+    }
+    if (cur.type === 'range' && (cmd === 'left' || cmd === 'right')) {
+      cmd === 'right' ? cur.stepUp() : cur.stepDown();
+      cur.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    // El más cercano hacia ese lado (penaliza desviarse de la dirección).
+    const [dx, dy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[cmd];
+    const c = (el) => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+    const [x0, y0] = c(cur);
+    let best = null, bestScore = Infinity;
+    for (const el of items) {
+      if (el === cur) continue;
+      const [x, y] = c(el), along = (x - x0) * dx + (y - y0) * dy, side = Math.abs((x - x0) * dy) + Math.abs((y - y0) * dx);
+      if (along < 4) continue;
+      const score = along + side * 2.5;
+      if (score < bestScore) { bestScore = score; best = el; }
+    }
+    if (best) this.focus(best);
+    else if (this.section && dy) this.sec.scrollBy({ top: dy * 140, behavior: 'smooth' }); // texto largo sin controles
+  }
+
+  focus(el) {
+    if (!el) return;
+    for (const o of this.root.querySelectorAll('.pad-focus')) o.classList.remove('pad-focus');
+    el.classList.add('pad-focus');
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
   saveSettings() {
     save(this.settings);
     this.actions.applySettings(this.settings);
@@ -101,6 +153,7 @@ export class Menu {
     const paused = this.started;
     this.root.classList.toggle('paused', paused);
     this.msg.textContent = paused ? 'En pausa' : this.msg.textContent;
+    if (document.body.classList.contains('gamepad') && !this.play.disabled) this.focus(this.play);
     this.play.textContent = paused ? 'Continuar' : 'Jugar';
     const horde = this.actions.hordeActive();
     this.horde.textContent = paused ? (horde ? 'Detener la horda' : 'Iniciar la horda') : 'Jugar contra la horda';

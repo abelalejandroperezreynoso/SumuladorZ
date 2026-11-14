@@ -27,6 +27,7 @@
       /* --- HUD: pausa arriba a la izquierda, vida y estado arriba al centro --- */
       #pause-btn { position: fixed; z-index: 5; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.55); color: #fff; font: 700 14px system-ui, sans-serif; letter-spacing: -1px; cursor: pointer; touch-action: none; padding: 0; }
       #pause-btn:focus-visible, #overlay button:focus-visible, #overlay input:focus-visible { outline: 2px solid #ffd479; outline-offset: 2px; }
+      body.gamepad #overlay .pad-focus:focus { outline: 3px solid #ffd479; outline-offset: 3px; }
       #health { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 18px); width: 200px; height: 8px; margin-left: -100px; border-radius: 4px; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.25); overflow: hidden; pointer-events: none; }
       #hud-status { position: fixed; left: 0; right: 0; top: calc(max(10px, env(safe-area-inset-top)) + 34px); display: flex; justify-content: center; gap: 6px; pointer-events: none; }
       #weapon-btn { position: fixed; z-index: 5; right: max(12px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); min-height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 26, 34, 0.55); color: #fff; font: 600 14px system-ui, sans-serif; font-variant-numeric: tabular-nums; cursor: pointer; touch-action: none; }
@@ -212,6 +213,7 @@
               <dt>Stick izq.</dt><dd>Moverse (a fondo o pulsado: correr)</dd><dt>A (mantener)</dt><dd>Correr</dd><dt>Stick der.</dt><dd>Cámara</dd>
               <dt>RT · LT</dt><dd>Disparar · apuntar</dd><dt>RB · X</dt><dd>Saltar · golpear</dd><dt>B · Y</dt><dd>Cubrirse · carrera rápida</dd>
               <dt>Cruceta ← →</dt><dd>Cambiar de arma</dd>
+              <dt>En el menú</dt><dd>Cruceta o stick: moverse · A: elegir · B: volver</dd>
               <dt>Menú</dt><dd>Pausa</dd><dt>LB</dt><dd>Horda</dd><dt>Vista</dt><dd>Reiniciar</dd>
             </dl>
             <h3>Táctil</h3>

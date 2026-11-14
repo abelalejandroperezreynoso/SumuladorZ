@@ -79,6 +79,7 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Horda | LB |
 | Piloto automático | Cruceta arriba |
 | Pausa | Menú |
+| Moverse por el menú | Cruceta o stick izquierdo (A elegir, B volver, ← → deslizador) |
 | Reiniciar | Vista |
 
 ## Controles (teclado y ratón)
