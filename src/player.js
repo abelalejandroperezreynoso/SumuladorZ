@@ -172,6 +172,9 @@ const REGEN_RATE = 12; // vida por segundo // cuánto baja la cadera en la flexi
 const RADIUS = 0.35;
 const HALF = 0.5; // semialtura del tramo recto de la cápsula
 const FOOT = HALF + RADIUS; // del centro del cuerpo a los pies
+// Comprobación del recorrido de una barda: cuánto más delgada es la cápsula de prueba, cada
+// cuánto (fracción del paso) se prueba y cuánto más baja va la cabeza.
+const VAULT_CLEAR = { margen: 0.05, paso: 0.04, cabeza: 0.15 }; // `cabeza`: al pasar va encogido o ladeado, más bajo que la cápsula
 const PUNCH_TIME = 0.55; // duración del golpe (s)
 // Armas. Se empieza sin nada: la pistola, el bate y las balas se recogen del suelo (pickups.js).
 const SWING_TIME = 0.9; // duración del batazo (s)
@@ -857,10 +860,37 @@ export class Player {
     const speed = Math.max(this.speed, RUN_SPEED * 0.8);
     const dur = kind === 'escala' ? V.tiempo + V.porMetro * Math.max(0, h - V.apoyo)
       : THREE.MathUtils.clamp(sEnd / speed, kind === 'apoyo' ? 0.5 : 0.4, 0.8);
-    this.vault = { kind, h, s0, sEnd, endY, onTop, dx, dz, speed, dur, t: 0, from: { x: t.x, y: t.y, z: t.z } };
+    const vault = { kind, h, s0, sEnd, endY, onTop, dx, dz, speed, dur, t: 0, from: { x: t.x, y: t.y, z: t.z } };
+    if (!this.vaultClear(vault, far)) return false; // el cuerpo entero chocaría por el camino
+    this.vault = vault;
     this.vaultU = 0;
     this.cover = null;
     this.punchT = this.jumpT = -1;
+    return true;
+  }
+
+  /**
+   * ¿Cabe el cuerpo entero (la cápsula, algo más delgada) a lo largo de todo el recorrido?
+   * Mientras pasa la barda no hay choques, así que esto evita atravesar muros: el marco de una
+   * ventana si entra desviado, una pared justo detrás o a un lado, un techo bajo. Sobre la
+   * propia barda solo cuenta la parte del cuerpo que queda por encima de ella.
+   */
+  vaultClear(v, far) {
+    const world = this.physics.world, C = VAULT_CLEAR;
+    const r = RADIUS - C.margen, feet0 = v.from.y - FOOT, top = feet0 + v.h + C.margen;
+    const s1 = v.onTop ? Infinity : far + r, s0 = v.s0 - r; // tramo en que el cuerpo está sobre la barda
+    for (let u = 0; u <= 1.0001; u += C.paso) {
+      const p = this.vaultPath(v, u);
+      let lo = v.from.y + p.y - FOOT + C.margen, hi = v.from.y + p.y + FOOT - C.margen - (v.kind === 'escala' ? 0 : C.cabeza);
+      if (p.s > s0 && p.s < s1) lo = Math.max(lo, top);
+      if (hi - lo < 2 * r + 0.02) continue; // todo el cuerpo va por debajo del borde: es la barda
+      const shape = new RAPIER.Capsule((hi - lo) / 2 - r, r);
+      const hit = world.intersectionWithShape(
+        { x: v.from.x + v.dx * p.s, y: (lo + hi) / 2, z: v.from.z + v.dz * p.s }, { x: 0, y: 0, z: 0, w: 1 }, shape,
+        RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, GROUPS.cover, this.collider,
+      );
+      if (hit) return false;
+    }
     return true;
   }
 
