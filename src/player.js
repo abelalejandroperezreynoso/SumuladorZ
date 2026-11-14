@@ -963,6 +963,11 @@ export class Player {
     const punching = this.punchT >= 0;
     // Carrera rápida: se activa con un toque y dura mientras se siga avanzando.
     if (input.justPressed('KeyQ')) this.sprinting = !this.sprinting && moving && !this.cover;
+    // Con el mando, mantener A: carrera rápida solo mientras se mantiene.
+    const held = !!input.padSprint;
+    if (held) this.sprinting = moving && !this.cover && !punching;
+    else if (this.sprintHeld) this.sprinting = false;
+    this.sprintHeld = held;
     this.sprintIdle = moving ? 0 : this.sprintIdle + dt;
     if (this.sprintIdle > SPRINT_STOP_TIME || punching || this.cover) this.sprinting = false;
     let speed = moving ? (this.sprinting ? SPRINT_SPEED : running ? RUN_SPEED : WALK_SPEED) : 0;

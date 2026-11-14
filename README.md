@@ -67,7 +67,7 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Acción | Botón |
 |---|---|
 | Moverse / correr | Stick izquierdo (a fondo o pulsado = correr) |
-| Correr mientras se mantiene | A |
+| Carrera rápida mientras se mantiene | A |
 | Cámara | Stick derecho |
 | Disparar (con el bate o sin arma, golpear) | RT |
 | Cambiar de arma | Cruceta ← → |

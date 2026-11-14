@@ -84,14 +84,14 @@ export class Input {
 
   /**
    * Lee el mando (Xbox, PlayStation…) con la API Gamepad. Llamar al inicio de cada frame.
-   * Distribución estándar: A mantenido correr, RB saltar, X golpe, B cubrirse, Y correr rápido,
+   * Distribución estándar: A mantenido carrera rápida, RB saltar, X golpe, B cubrirse, Y correr rápido,
    * LT apuntar, RT disparar, cruceta ← → cambiar de arma, LB horda, Menú empezar, Vista reiniciar, stick izquierdo moverse (a fondo o pulsado
    * = correr), stick derecho cámara.
    */
   pollGamepad(dt) {
     const pads = navigator.getGamepads?.() ?? [];
     const pad = [...pads].find((p) => p && p.connected);
-    if (!pad) { this.padStick.x = this.padStick.y = 0; this.padAim = false; this.releasePadFire(); return; }
+    if (!pad) { this.padStick.x = this.padStick.y = 0; this.padSprint = false; this.padAim = false; this.releasePadFire(); return; }
     const btn = (i) => !!pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.4);
     const now = pad.buttons.map((_, i) => btn(i));
     const prev = this.padPrev;
@@ -104,6 +104,7 @@ export class Input {
       document.body.classList.add('gamepad');
     }
     if (!this.locked) {
+      this.padSprint = false;
       // En el menú: cruceta o stick izquierdo para moverse, A elegir, B volver, Menú jugar.
       if (!this.onPadNav) { if (now.some((v, i) => v && edge(i))) this.onPadStart?.(); return; }
       const nav = { 12: 'up', 13: 'down', 14: 'left', 15: 'right', 0: 'ok', 1: 'back', 9: 'start' };
@@ -120,7 +121,8 @@ export class Input {
     const ax = pad.axes;
     this.padStick.x = dz(ax[0] ?? 0);
     this.padStick.y = -dz(ax[1] ?? 0);
-    this.padRun = now[0] || now[10]; // A mantenido (o el stick pulsado): correr; al soltar, vuelve a andar
+    this.padRun = now[10]; // stick pulsado: correr
+    this.padSprint = now[0]; // A mantenido: carrera rápida; al soltar, vuelve a la normalidad
     // Stick derecho: equivale a mover el ratón (curva cuadrática para apuntar fino).
     const lx = dz(ax[2] ?? 0), ly = dz(ax[3] ?? 0);
     const LOOK = 1100 * dt;
