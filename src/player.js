@@ -173,8 +173,12 @@ const RADIUS = 0.35;
 const HALF = 0.5; // semialtura del tramo recto de la cápsula
 const FOOT = HALF + RADIUS; // del centro del cuerpo a los pies
 // Comprobación del recorrido de una barda: cuánto más delgada es la cápsula de prueba, cada
-// cuánto (fracción del paso) se prueba y cuánto más baja va la cabeza.
-const VAULT_CLEAR = { margen: 0.05, paso: 0.04, cabeza: 0.15 }; // `cabeza`: al pasar va encogido o ladeado, más bajo que la cápsula
+// cuánto (fracción del paso) se prueba, cuánto más baja va la cabeza y cuánto puede sobresalir la
+// barda por delante de su cara sin subir de su altura (un alféizar).
+const VAULT_CLEAR = { margen: 0.05, paso: 0.04, cabeza: 0.15, vuelo: 0.35 }; // `cabeza`: al pasar va encogido o ladeado, más bajo que la cápsula
+// Extremidades fuera de lo sólido al pasar una barda: margen tolerado (m), búsqueda del giro
+// (de `paso` en `paso` rad hasta `giro`) y rapidez al apartarse y al volver.
+const SOLID_CLEAR = { tolera: 0.015, paso: 0.08, giro: 2.4, apartar: 70, volver: 10 };
 const PUNCH_TIME = 0.55; // duración del golpe (s)
 // Armas. Se empieza sin nada: la pistola, el bate y las balas se recogen del suelo (pickups.js).
 const SWING_TIME = 0.9; // duración del batazo (s)
@@ -331,6 +335,15 @@ const _foot = new THREE.Vector3();
 const _axis = new THREE.Vector3();
 const _axis2 = new THREE.Vector3();
 const _fq = new THREE.Quaternion();
+/** Gira un hueso `angle` rad en torno a un eje del mundo. */
+function turnBone(bone, axis, angle) {
+  _qa.setFromAxisAngle(axis, angle);
+  bone.getWorldQuaternion(_qb);
+  _qa.multiply(_qb);
+  bone.parent.getWorldQuaternion(_pq);
+  bone.quaternion.copy(_qa.premultiply(_pq.invert()));
+  bone.updateMatrixWorld(true);
+}
 
 // Estado del juego -> clip del modelo. El catálogo lo lee para saber qué clips se usan.
 export const PLAYER_CLIPS = {
@@ -878,7 +891,7 @@ export class Player {
   vaultClear(v, far) {
     const world = this.physics.world, C = VAULT_CLEAR;
     const r = RADIUS - C.margen, feet0 = v.from.y - FOOT, top = feet0 + v.h + C.margen;
-    const s1 = v.onTop ? Infinity : far + r, s0 = v.s0 - r; // tramo en que el cuerpo está sobre la barda
+    const s1 = v.onTop ? Infinity : far + r, s0 = v.s0 - r - C.vuelo; // tramo en que el cuerpo está sobre la barda (con lo que sobresale de ella, como un alféizar)
     for (let u = 0; u <= 1.0001; u += C.paso) {
       const p = this.vaultPath(v, u);
       let lo = v.from.y + p.y - FOOT + C.margen, hi = v.from.y + p.y + FOOT - C.margen - (v.kind === 'escala' ? 0 : C.cabeza);
@@ -892,6 +905,84 @@ export class Player {
       if (hit) return false;
     }
     return true;
+  }
+
+  /**
+   * Brazos y piernas no se meten en nada sólido mientras pasa una barda (entonces la cápsula no
+   * choca): cada extremidad que entra en algo gira desde el hombro o la cadera, hacia delante
+   * o atrás del cuerpo, el ángulo más pequeño que la saca, y lo sigue suavizado. El pie no
+   * cuelga de la pierna en este esqueleto: gira con ella en torno a la cadera.
+   */
+  clearSolids(dt) {
+    const world = this.physics.world, C = SOLID_CLEAR;
+    this.savePose();
+    this.model.updateMatrixWorld(true);
+    const axis = new THREE.Vector3(1, 0, 0).applyQuaternion(this.model.quaternion); // su izquierda
+    const p = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3();
+    const inside = (q) => {
+      const pr = world.projectPoint(q, false, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, GROUPS.cover, this.collider);
+      return pr?.isInside ? Math.hypot(pr.point.x - q.x, pr.point.y - q.y, pr.point.z - q.z) : 0;
+    };
+    const limbs = [
+      // Los brazos giran sobre la línea hombro-mano: la mano se queda (agarrada al borde) y el
+      // codo se aparta. Las piernas giran hacia delante o atrás, en torno a la cadera.
+      { key: 'brazoI', root: this.upperArmL, chain: [this.upperArmL, this.lowerArmL, this.handL], hinge: true },
+      { key: 'brazoD', root: this.upperArm, chain: [this.upperArm, this.lowerArm, this.hand], hinge: true },
+      ...this.legs.map((l) => ({ key: 'pierna' + l.side, root: l.upper, chain: [l.upper, l.lower, l.foot], foot: l.foot })),
+    ];
+    this.solidTurn ??= {};
+    for (const L of limbs) {
+      if (L.chain.some((x) => !x)) continue;
+      const depth = () => {
+        let worst = 0;
+        for (let i = 0; i < L.chain.length - 1; i++) {
+          L.chain[i].getWorldPosition(a);
+          L.chain[i + 1].getWorldPosition(b);
+          for (let k = 1; k <= 5; k++) worst = Math.max(worst, inside(p.copy(a).lerp(b, k / 5)));
+        }
+        return worst;
+      };
+      const hip = L.root.getWorldPosition(new THREE.Vector3());
+      const ax = !L.hinge ? axis : L.chain[2].getWorldPosition(new THREE.Vector3()).sub(hip).normalize();
+      const start = L.root.quaternion.clone();
+      const footPos = L.foot?.getWorldPosition(new THREE.Vector3()), footQ = L.foot?.getWorldQuaternion(new THREE.Quaternion());
+      const turn = (angle) => {
+        L.root.quaternion.copy(start);
+        turnBone(L.root, ax, angle);
+        if (L.foot) { // el pie gira con la pierna en torno a la cadera
+          const q = _q.setFromAxisAngle(ax, angle);
+          const wp = footPos.clone().sub(hip).applyQuaternion(q).add(hip);
+          L.foot.parent.updateMatrixWorld(true);
+          L.foot.position.copy(L.foot.parent.worldToLocal(wp));
+          L.foot.parent.getWorldQuaternion(_pq);
+          L.foot.quaternion.copy(_pq.invert().multiply(q.clone().multiply(footQ)));
+          L.foot.updateMatrixWorld(true);
+        }
+      };
+      const prev = this.solidTurn[L.key] ?? 0;
+      let target = 0;
+      if (this.vault && depth() > C.tolera) {
+        // Ya girada hacia un lado, agota ese lado antes de probar el otro (cambiar de lado
+        // haría cruzar la extremidad por dentro de lo sólido); sin giro previo, alterna.
+        const order = Math.abs(prev) > 0.05 ? [[Math.sign(prev)], [-Math.sign(prev)]] : [[1, -1]];
+        let best = Infinity;
+        search: for (const sides of order) {
+          for (let ang = C.paso; ang <= C.giro + 1e-6; ang += C.paso) {
+            for (const s of sides) {
+              turn(s * ang);
+              const d = depth();
+              if (d < best - 0.002) { best = d; target = s * ang; }
+              if (d <= C.tolera) break search;
+            }
+          }
+        }
+      }
+      const rate = Math.abs(target) > Math.abs(prev) ? C.apartar : C.volver;
+      const angle = THREE.MathUtils.damp(prev, target, rate, dt || 1 / 60);
+      this.solidTurn[L.key] = angle;
+      turn(Math.abs(angle) < 1e-3 ? 0 : angle);
+    }
+    if (!this.vault && Object.values(this.solidTurn).every((x) => Math.abs(x) < 1e-3)) this.solidTurn = null;
   }
 
   /** Dónde va el cuerpo en la fracción `u` del paso de una barda: avance y altura (m). */
@@ -908,7 +999,8 @@ export class Player {
     if (u < a) { const k = u / a; return { s: near * sm(k, 0, 1), y: hang * (1 - (1 - k) ** 2) }; }
     if (u < b) return { s: near, y: hang };
     if (u < c) { const k = sm(u, b, c); return { s: lerp(near, v.s0 - 0.2, k), y: lerp(hang, up, k) }; }
-    if (u < d) { const k = sm(u, c, d); return { s: lerp(v.s0 - 0.2, v.s0 + 0.25, k), y: lerp(up, v.h, k) }; }
+    // Sobre el borde: la cadera sube antes de avanzar, para no rozar la esquina del muro.
+    if (u < d) { const k = sm(u, c, d); return { s: lerp(v.s0 - 0.2, v.s0 + 0.25, k * k), y: lerp(up, v.h, Math.min(1, k * 1.6)) }; }
     return { s: lerp(v.s0 + 0.25, v.sEnd, sm(u, d, 1)), y: v.h };
   }
 
@@ -960,7 +1052,8 @@ export class Player {
       const over = sm(u, b, c) * (1 - sm(u, d, 1));
       this.applyTorso(over, { giro: 0, lado: 0, frente: 0.75, cuello: 0, cabeza: -0.4 });
       this.vaultTuck = 0.42 * sm(u, (b + c) / 2, d) * (1 - sm(u, d, 1));
-      for (const side of [1, -1]) this.reachArm(side, edge(side, 0.07, 0.22), grip, true, true);
+      // Agarre en el canto, algo por encima: el antebrazo baja por la cara del muro sin atravesar la esquina.
+      for (const side of [1, -1]) this.reachArm(side, edge(side, 0.02, 0.22).setY(feet0 + v.h + 0.04), grip, true, true);
     }
   }
 
@@ -2268,6 +2361,7 @@ export class Player {
     const readyL = this.coverReady * (1 - this.aimWeight * this.coverGrip) * (1 - prone);
     if (readyL > 0.01) this.applyCoverArms(ready, gun, readyL);
     this.placeBat();
+    if (this.vault || this.solidTurn) this.clearSolids(dt); // (al terminar, vuelve suave a su postura)
     this.gun.visible = gun && (armed || prone > 0.5 || ready > 0.3);
     this.flash.intensity = Math.max(0, this.flash.intensity - dt * 220);
     if (!this.gun.visible) return;

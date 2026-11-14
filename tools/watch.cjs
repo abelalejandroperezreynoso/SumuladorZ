@@ -144,7 +144,7 @@ function install() {
       return {
         pngs: sheets.map((c) => c.toDataURL('image/png')),
         metrics: {
-          footSlide: slide, naturalStrideSpeed: stride, maxJointSpeed: +m.maxJoint.toFixed(1), pops: m.pops.slice(0, 12), popCount: m.pops.length,
+          footSlide: slide, naturalStrideSpeed: stride, maxJointSpeed: +m.maxJoint.toFixed(1), pops: m.pops.slice().sort((a, b) => b.v - a.v).slice(0, 12), popCount: m.pops.length,
           rootJerk: +m.rootJerk.toFixed(0), camJerk: +m.camJerk.toFixed(0), maxTurn: +m.turn.toFixed(1),
         },
       };

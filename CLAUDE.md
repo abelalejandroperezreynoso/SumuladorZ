@@ -129,7 +129,9 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   `player.vault` (`kind`: `salto` hasta `VAULT.salto`, `apoyo` hasta `VAULT.apoyo`, `escala`
   hasta `VAULT.escala`; `onTop` si arriba hay sitio y se queda encima). Antes de empezar,
   `vaultClear` prueba la cápsula entera (`VAULT_CLEAR`) a lo largo de todo `vaultPath`: si chocaría con
-  algo que no sea la propia barda (marco de ventana, poste, pared, techo), no salta. Mientras dura,
+  algo que no sea la propia barda (marco de ventana, poste, pared, techo), no salta. Durante el paso,
+  `clearSolids` saca brazos y piernas de cualquier cosa sólida (`SOLID_CLEAR`: piernas girando en la cadera,
+  con el pie; brazos sobre la línea hombro-mano). Medido: ≤4 cm dentro en las tres bardas. Mientras dura,
   `updateVault` mueve la cápsula por `vaultPath` sin mandos ni choques y `poseVault` arma la
   postura (cuerpo ladeado y mano con `reachArm`; en la escalada, manos al borde, tronco y
   piernas encogidas con `applyCrouch`). Al terminar sigue la física normal (si no hay suelo,
@@ -155,7 +157,10 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   junquillos y picos que quedan al romperse (`glazing`, `w.remains`) y `decorate` (tejado a dos
   aguas solo visual sobre el techo raso que choca, zócalo, entrada, luces y muebles: cada
   mueble es un bloque invisible fijo más sus piezas visibles; también cocina, cortinas,
-  jardín y árbol). `mergeStatic` funde las piezas fijas (con índice o sin él) en una malla por material: añadir adornos con `box`/`at` antes de esa llamada. No poner
+  jardín y árbol). `solidify` da a cada pieza fija visible su propio cuerpo de choque (cajas giradas o
+  envolvente convexa): tejado, aleros, chimenea, marcos, canalones, copa del árbol… Solo no chocan lo que
+  está a ras de suelo, lo diminuto (`SOLID`) y lo marcado `userData.ghost` (arbustos, barra de cortinas).
+  `mergeStatic` funde las piezas fijas (con índice o sin él) en una malla por material: añadir adornos con `box`/`at` antes de esas llamadas. No poner
   muebles delante de puerta o ventanas (los zombis caen ~1 m hacia dentro del hueco).
 - **Muerte de los zombis** — no hay clip de muerte: `Zombie.startRagdoll` (`src/horde.js`) crea
   un cuerpo físico por segmento (`RAGDOLL`, cápsulas en `GROUPS.debris`, unidos por rótulas)

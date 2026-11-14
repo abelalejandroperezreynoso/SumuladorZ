@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RAPIER } from './physics.js';
 
 // Acabados de la casa: texturas hechas a mano, carpintería, tejado a dos aguas, muebles y
 // adornos. Casi todo es solo visual; los muebles llevan además un bloque invisible que choca
@@ -81,15 +82,62 @@ const STEEL = mat(0xc8ccd0, 0.3, { metalness: 0.7 }), WHITE = mat(0xeeeeea, 0.45
 const LEAF = mat(0x4f7a3a, 0.9, { flatShading: true }), LEAF_DARK = mat(0x3d6230, 0.9, { flatShading: true });
 const BARK = mat(0x5a4330, 0.95);
 
-/** Mata de hojas: varios poliedros verdes alrededor de (x, y, z), de radio `size`. */
+/** Mata de hojas: varios poliedros verdes alrededor de (x, y, z), de radio `size`. No choca: se pasa apartando las ramas (y hay matas al pie de las ventanas). */
 function bush(root, x, y, z, size, r) {
   for (let i = 0; i < 5; i++) {
     const m = new THREE.Mesh(new THREE.IcosahedronGeometry(size * (0.55 + r() * 0.45), 0), i % 2 ? LEAF : LEAF_DARK);
     m.position.set(x + (r() - 0.5) * size * 1.4, y + size * (0.5 + r() * 0.5), z + (r() - 0.5) * size * 1.4);
     m.rotation.set(r() * 3, r() * 3, 0);
     m.castShadow = m.receiveShadow = true;
+    m.userData.ghost = true;
     root.add(m);
   }
+}
+
+// Choques de los adornos: no chocan las piezas a ras de suelo (más bajas que `suelo`), las
+// diminutas (ninguna medida mayor que `minimo`) ni las marcadas con `userData.ghost`.
+const SOLID = { suelo: 0.06, minimo: 0.1, grosor: 0.02 };
+
+/**
+ * Da a cada pieza fija visible de `group` su propio cuerpo de choque, con su forma y su sitio
+ * en el mundo: cajas (giradas o no) como cajas y el resto como su envolvente convexa. Así no se
+ * atraviesa nada de lo que se ve: tejado, aleros, chimenea, marcos, contraventanas, canalones,
+ * respaldos, copas de árbol… Va antes de `mergeStatic` (que funde las mallas).
+ */
+export function solidify(group, physics) {
+  group.updateMatrixWorld(true);
+  const world = physics.world, pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scale = new THREE.Vector3();
+  const box3 = new THREE.Box3(), size = new THREE.Vector3();
+  let count = 0;
+  group.traverse((o) => {
+    if (!o.isMesh || o.userData.ghost || !o.visible) return;
+    box3.setFromObject(o);
+    box3.getSize(size);
+    if (box3.max.y < SOLID.suelo || Math.max(size.x, size.y, size.z) < SOLID.minimo) return;
+    o.matrixWorld.decompose(pos, quat, scale);
+    const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    let desc;
+    const p = o.geometry.parameters;
+    if (o.geometry.type === 'BoxGeometry') {
+      desc = RAPIER.ColliderDesc.cuboid(p.width * scale.x / 2, p.height * scale.y / 2, p.depth * scale.z / 2)
+        .setTranslation(pos.x, pos.y, pos.z).setRotation(quat);
+    } else {
+      const a = o.geometry.attributes.position, v = new THREE.Vector3(), pts = [];
+      for (let i = 0; i < a.count; i++) { v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld); pts.push(v.x, v.y, v.z); }
+      desc = RAPIER.ColliderDesc.convexHull(new Float32Array(pts));
+      if (!desc && a.count >= 3) {
+        // Plana (un hastial): se le da algo de grosor a lo largo de su normal.
+        const t = new THREE.Triangle(...[0, 1, 2].map((i) => new THREE.Vector3(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2])));
+        const n = t.getNormal(new THREE.Vector3()).multiplyScalar(SOLID.grosor / 2), more = [];
+        for (let i = 0; i < pts.length; i += 3) more.push(pts[i] + n.x, pts[i + 1] + n.y, pts[i + 2] + n.z, pts[i] - n.x, pts[i + 1] - n.y, pts[i + 2] - n.z);
+        desc = RAPIER.ColliderDesc.convexHull(new Float32Array(more));
+      }
+    }
+    if (!desc) return world.removeRigidBody(body);
+    world.createCollider(desc, body);
+    count++;
+  });
+  return count;
 }
 
 /**
@@ -147,7 +195,7 @@ export function windowTrim(g, V, muro, out) {
   box(g, [V.ancho + 2 * t + 0.1, 0.05, muro + 0.2], [0, V.bajo - 0.025, out * 0.05], WOOD_LIGHT); // alféizar
   // Por dentro: barra y dos cortinas recogidas a los lados.
   const zi = -out * (muro / 2 + 0.06);
-  box(g, [V.ancho + 0.9, 0.025, 0.025], [0, V.alto + 0.14, zi], METAL, false);
+  box(g, [V.ancho + 0.9, 0.025, 0.025], [0, V.alto + 0.14, zi], METAL, false).userData.ghost = true; // cruza el hueco por encima: no choca
   for (const s of [-1, 1]) {
     const x = s * (V.ancho / 2 + 0.24);
     box(g, [0.34, h + 0.3, 0.045], [x, yc + 0.06, zi], CURTAIN, false);
@@ -441,6 +489,7 @@ export function decorate(scene, physics, H, tex, doorZ) {
     branch.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6);
   }
 
+  solidify(root, physics);
   mergeStatic(root, scene);
   return root;
 }
