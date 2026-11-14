@@ -563,9 +563,11 @@ export class Player {
   }
 
   respawn() {
-    this.body.setTranslation({ x: 0, y: FOOT + 0.05, z: 0 }, true);
-    this.body.setNextKinematicTranslation({ x: 0, y: FOOT + 0.05, z: 0 });
-    this.position.set(0, 0, 0); // ya, para no recoger lo que haya donde murió
+    const S = this.spawn ?? { x: 0, y: 0, z: 0 }; // dónde aparece (el modo juego lo lleva a la ciudad)
+    const at = { x: S.x, y: S.y + FOOT + 0.05, z: S.z };
+    this.body.setTranslation(at, true);
+    this.body.setNextKinematicTranslation(at);
+    this.position.set(S.x, S.y, S.z); // ya, para no recoger lo que haya donde murió
     this.velocity.set(0, 0, 0);
     this.jumpT = -1;
     this.jumpBuffer = this.landT = this.crouch = 0;

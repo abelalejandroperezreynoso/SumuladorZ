@@ -10,6 +10,7 @@ import { PICKUP_TUNING as K2 } from './pickups.js';
 import { CAMERA_TUNING as K } from './camera.js';
 import { GAIT_TUNING as G } from './gait.js';
 import { HOUSE_TUNING as HT } from './house.js';
+import { DAY_TUNING as DAY } from './daynight.js';
 
 // Pone un zombi sin piernas delante del jugador, arrastrándose hacia él.
 function crawlerAhead(g) {
@@ -38,8 +39,10 @@ const all = (...fns) => (g) => { for (const f of fns) f(g); };
 export function place(g, x, z, yaw = 0) {
   // El piloto de la escena «piloto» seguiría jugando (y matando al zombi) en las siguientes.
   if (g.autopilot.active) g.autopilot.toggle();
+  g.setMode?.('sim'); // las escenas son del mundo de simulación (el juego arranca en la ciudad)
   g.player.preview(null);
   g.horde.stop(); g.physics.reset(); g.house?.reset(); g.player.respawn();
+  g.horde.setMood(Z.MOODS.normal); // (las fichas de día y de noche lo cambian)
   // Las escenas empiezan con la pistola cargada y sin objetos por el suelo.
   g.pickups?.clear();
   g.player.pickUp('pistola', 99);
@@ -210,6 +213,42 @@ export const SCENES = [
     subject: (g) => g.horde.zombies[0],
     steps: [[0, null, 'Persecución'], [5.2, (g) => g.horde.zombies[0]?.damage(1, g.player), 'Recibe un impacto'],
       [6.0, (g) => g.horde.zombies[0]?.damage(5, g.player), 'Muere']],
+    keepAlive: true },
+
+  { id: 'zombi_dia', group: 'enemigos', title: 'Modo juego, de día: manso hasta que te acercas',
+    how: 'Modo juego (la ciudad), mientras el reloj marca día o atardecer',
+    desc: `De día los zombis no buscan pelea: deambulan a ${n(Z.MOODS.dia.wander)} m/s sin ir hacia ti y no oyen un disparo a más de ${n(Z.MOODS.dia.noise)} m. Solo te notan si te acercas a menos de ${n(Z.MOODS.dia.view)} m por delante (o ${n(Z.MOODS.dia.sense)} m por la espalda). Entonces te siguen a ${n(Z.MOODS.dia.chase)} m/s, más despacio que tu paso (${n(T.WALK_SPEED)} m/s), y te olvidan ${n(Z.MOODS.dia.memory)} s después de perderte. Si le haces daño a uno, ese se comporta como un zombi normal durante ${n(Z.PROVOKED)} s. El día dura ${n(DAY.CYCLE.dia / 60)} minutos; el último tramo (${n(DAY.CYCLE.atardecer)} s) es el atardecer.`,
+    place: [20, 30, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2, dist: 4.2,
+    before: (g) => {
+      g.horde.start();
+      for (let i = 0; i < 40; i++) g.tick(1 / 60);
+      g.horde.setMood(Z.MOODS.dia);
+      const z = g.horde.zombies[0];
+      z.body.setTranslation({ x: 20, y: 0.9, z: 20 }, true);
+      z.body.setNextKinematicTranslation({ x: 20, y: 0.9, z: 20 });
+      z.state = 'wander'; z.memory = 0; z.facing = 0; z.wanderT = 30; z.target.set(20, 0, 34); // deambula despacio hacia este lado
+      g.tick(1 / 60);
+    },
+    subject: (g) => g.horde.zombies[0],
+    steps: [[0, null, 'Deambula sin hacerte caso'], [1.5, key('KeyW'), 'Te acercas caminando'], [3.6, key('KeyW', false), `A ${n(Z.MOODS.dia.view)} m te nota`], [5.6, null, 'Muerde']],
+    keepAlive: true },
+
+  { id: 'zombi_noche', group: 'enemigos', title: 'Modo juego, de noche: van a por ti',
+    how: 'Modo juego (la ciudad), cuando el reloj entra en la noche',
+    desc: `De noche hay casi el doble de zombis y son muy agresivos: te ven a ${n(Z.MOODS.noche.view)} m mires adonde mires, cada ${n(Z.SCENT_EVERY)} s te huelen todos los que estén a menos de ${n(Z.MOODS.noche.scent)} m aunque haya edificios de por medio, oyen un disparo a ${n(Z.MOODS.noche.noise)} m y te recuerdan ${n(Z.MOODS.noche.memory)} s. Corren a ${n(Z.MOODS.noche.chase)} m/s (de día, ${n(Z.MOODS.dia.chase)}; tú caminas a ${n(T.WALK_SPEED)} y corres a ${n(T.RUN_SPEED)}) y cada mordida dura ${n(Z.MOODS.noche.attack)} s y quita ${n(Z.MOODS.noche.bite)} de vida. Como mucho ${Z.MOODS.noche.gang} muerden a la vez: los demás empujan alrededor. Brillan en rojo para que se les vea venir. La noche dura ${n(DAY.CYCLE.noche / 60)} minutos; al amanecer se amansan y olvidan lo que perseguían.`,
+    place: [20, 26, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2, dist: 4.2,
+    before: (g) => {
+      g.horde.start();
+      for (let i = 0; i < 40; i++) g.tick(1 / 60);
+      g.horde.setMood(Z.MOODS.noche);
+      const z = g.horde.zombies[0];
+      z.body.setTranslation({ x: 20, y: 0.9, z: 2 }, true);
+      z.body.setNextKinematicTranslation({ x: 20, y: 0.9, z: 2 });
+      z.state = 'wander'; z.memory = 0; z.facing = Math.PI; // de espaldas, a 24 m
+      g.tick(1 / 60);
+    },
+    subject: (g) => g.horde.zombies[0],
+    steps: [[0, null, 'Te nota desde 24 m, de espaldas'], [1, null, 'Corre hacia ti'], [6.2, null, 'Muerde']],
     keepAlive: true },
 
   { id: 'zombi_ventana', group: 'enemigos', title: 'Zombi: entra por una ventana',

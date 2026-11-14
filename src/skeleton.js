@@ -53,6 +53,13 @@ function paletteMaterials(kind) {
   return materials[kind];
 }
 
+/** Brillo rojizo de los zombis (0-1). El modo juego lo sube de noche: se les ve venir. */
+export function zombieGlow(k) {
+  const m = paletteMaterials('zombie');
+  m.bone.emissive.setRGB(0.3 * k, 0.03 * k, 0.02 * k);
+  m.joint.emissive.setRGB(0.7 * k, 0.1 * k, 0.06 * k);
+}
+
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);

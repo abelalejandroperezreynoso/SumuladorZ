@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { House } from './house.js';
+import { City } from './city.js';
 
 function gridTexture() {
   const c = document.createElement('canvas');
@@ -28,7 +29,8 @@ export function buildWorld(scene, physics) {
   // --- Iluminación y cielo ---
   scene.background = new THREE.Color(0x9cc4e8);
   scene.fog = new THREE.Fog(0x9cc4e8, 45, 130);
-  scene.add(new THREE.HemisphereLight(0xdfeeff, 0x4a4f48, 1.1));
+  const hemi = new THREE.HemisphereLight(0xdfeeff, 0x4a4f48, 1.1);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff2dd, 2.4);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -115,5 +117,7 @@ export function buildWorld(scene, physics) {
   fillUnder(run, (len, h) => [len, h, 4], (s) => [3 + run - s, 16], { color: 0xa8842e });
   // --- Casa de una planta (al oeste del inicio) ---
   const house = new House(scene, physics);
-  return { sun, house };
+  // --- Ciudad del modo juego (lejos de aquí: ver src/city.js) ---
+  const city = new City(scene, physics);
+  return { sun, hemi, house, city };
 }

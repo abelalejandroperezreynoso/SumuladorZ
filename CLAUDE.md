@@ -3,6 +3,13 @@
 Juego 3D en tercera persona (Three.js + Rapier, Vite). Código en `src/`, comentarios y textos
 en español. El `README.md` describe controles, mecánicas y estructura.
 
+Hay dos modos (`window.__game.mode`, `setMode('juego' | 'sim')`): el **modo juego** (la ciudad
+con día y noche; es donde arranca) y la **simulación** (el mundo de pruebas, en el origen, con
+la horda por oleadas). Los dos mundos existen a la vez en la misma física: la ciudad está
+centrada en x = 600 (`CITY` en `src/city.js`) y se oculta en la simulación. El catálogo, sus
+escenas, `tools/watch.cjs` y `tools/gameplay.cjs` trabajan en la simulación (`place` y el
+catálogo cambian de modo solos; al cerrar el catálogo, el modo juego empieza otra partida).
+
 ## Cómo trabajar en este repositorio
 
 - Responder al usuario en español.
@@ -52,6 +59,34 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   anteriores; en una partida real se empieza sin armas y las balas se recogen (`src/pickups.js`).
   Apuntar (botón 2) y disparar (botón 0) son mandos separados: el piloto y `gameplay.cjs`
   pulsan los dos para disparar apuntando; solo el 0 es disparo sin apuntar (a ciegas a cubierto).
+- **Modo juego** — `node tools/city.cjs <carpeta>` fotografía la ciudad (aérea y ocho lugares, de
+  día, al atardecer y de noche), dice lo que pesa y mide el carácter de los zombis (distancia a
+  la que te notan de día, segundos hasta el primer mordisco y la muerte de noche, quieto).
+  Para probar a mano: `g.sky.time = <segundo del ciclo>` (0 amanece, 300 anochece),
+  `g.gameMode.restart()`.
+  - **Ciudad**: `City` (`src/city.js`) reparte 5 × 5 manzanas según `LAYOUT`; cada tipo es una
+    función de `BLOCKS` (`src/city-blocks.js`) que llena un solar de 40 × 40 m mirando a +Z.
+    Todo se dibuja con `Batch` (`src/city-build.js`: `box`, `prism`, `wedge`, `cyl`, `blob`,
+    `hquad`, `vquad` dentro de marcos `push`/`pop`), que escribe una malla por material y
+    manzana; `solid: true` añade el bloque de choque. Mobiliario y vehículos, en
+    `src/city-props.js`; texturas y materiales (fachadas en rejilla de 4 × 4 ventanas, con su
+    textura de luces para la noche), en `src/city-textures.js`. Los generadores anotan puntos
+    con `b.mark` (`lamp`, `balas`, `pistola`, `bate`, `spawn`). El azar parte de semillas fijas:
+    la ciudad sale siempre igual. Para añadir un tipo de manzana: función en `BLOCKS` y su
+    nombre en `LAYOUT`.
+  - **Día y noche**: `DayNight` (`src/daynight.js`, `g.sky`): `CYCLE` (día y noche de 300 s; el
+    usuario pidió 5 minutos cada uno), luz, niebla, bóveda, sol, luna y estrellas, y el reloj
+    (`Clock`, SVG de 16 tramos al estilo que pidió el usuario). `sky.light` va de 1 (día) a 0.
+    De noche `City.setNight` enciende ventanas, rótulos y farolas: todas brillan y pintan su
+    charco de luz, pero solo las `LIGHTS.cuantas` más cercanas alumbran de verdad.
+  - **Zombis según la hora** (pedido por el usuario: de día no son agresivos salvo que te
+    acerques demasiado; de noche, muy agresivos): `MOODS` en `src/horde.js` (`normal`, `dia`,
+    `noche`) fija vista, oído, memoria, velocidades, mordida, olfato (`scent`) y cuántos muerden
+    a la vez (`gang`); `horde.setMood`. Un zombi herido de día pasa `PROVOKED` s furioso
+    (`rage`, carácter normal). `horde.setAmbient` mantiene la población alrededor del jugador
+    (`GAME` en `src/gamemode.js`: 14 de día, 24 de noche) en vez de oleadas; `horde.bounds` es la
+    zona por la que se mueven. `GameMode` (`g.gameMode`) cambia todo eso con las fases del reloj,
+    lleva la linterna y reinicia la partida al morir. Escenas `zombi_dia` y `zombi_noche`.
 - **Piloto automático** — tecla `P` en el juego (`src/autopilot.js`). Su registro está en
   `window.__game.autopilot.log` y `.stats`. Busca cobertura de forma activa y va rotando
   entre alta, baja y muy baja (`stats.coverTypes`). La escena `piloto` de `tools/watch.cjs`
@@ -185,3 +220,12 @@ Con las balas contra el esqueleto y la muerte solo por la cabeza, los bots (punt
 la cabeza) llegan igual de lejos: `stand` a la oleada 15 en 2 min sin morir; falta medir a un jugador humano.
 Desde entonces: se empieza sin armas y la munición es limitada (pistola, bate y cajas de balas
 que se recogen); `gameplay.cjs` aún no mide cómo cambia eso la dificultad.
+
+Modo juego (ciudad, día y noche): medido con `tools/city.cjs`, de día un zombi te nota a 4,4 m
+de frente y 2,2 m por la espalda y te deja a los ~9 s de alejarte caminando; de noche, quieto
+en la plaza, el primer mordisco llega a los ~8 s y la muerte a los ~10 s. Sin medir: una noche
+entera con un jugador humano (correr, esconderse, pelear), y el rendimiento en un móvil real
+(cada zombi son ~45 llamadas de dibujo; de noche se ven 600–1700 por fotograma). Sin probar
+tampoco: por cómo se calcula la mordida (menos de 1,2 m de desnivel y 1,15 m de distancia),
+subido a algo alto (una furgoneta, un contenedor) los zombis no deberían alcanzarte, lo que
+puede hacer la noche demasiado fácil.

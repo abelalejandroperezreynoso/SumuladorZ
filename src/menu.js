@@ -1,6 +1,7 @@
 // Menú del juego: la misma ventana sirve de pantalla de inicio y de pausa. Desde ella se
-// juega o se continúa, se inicia la horda, se reinicia el mundo y se abren los ajustes, los
-// controles, el catálogo y la información. Los ajustes se recuerdan en este navegador.
+// juega o se continúa, se cambia entre el modo juego (la ciudad) y la simulación (el mundo de
+// pruebas, con su horda por oleadas), se reinicia y se abren los ajustes, los controles, el
+// catálogo y la información. Los ajustes se recuerdan en este navegador.
 
 const STORE = 'sumuladorz.ajustes';
 const $ = (id) => document.getElementById(id);
@@ -16,7 +17,7 @@ function save(settings) {
 export class Menu {
   /**
    * actions: { play(evento), pause(), toggleHorde(), reset(), catalog(), toggleAuto(),
-   * hordeActive(), autoActive(), applySettings(settings) }
+   * hordeActive(), autoActive(), applySettings(settings), mode() ('juego' o 'sim'), switchMode() }
    */
   constructor(actions) {
     this.actions = actions;
@@ -24,6 +25,7 @@ export class Menu {
     this.msg = $('overlay-msg');
     this.play = $('m-play');
     this.horde = $('m-horde');
+    this.modeBtn = $('m-mode');
     this.pauseBtn = $('pause-btn');
     this.sec = $('m-sec');
     this.started = false; // ya se pulsó «Jugar» alguna vez
@@ -40,6 +42,7 @@ export class Menu {
     tap(this.play, (e) => actions.play(e));
     tap(this.horde, (e) => { actions.toggleHorde(); actions.play(e); });
     tap($('m-reset'), (e) => { actions.reset(); actions.play(e); });
+    tap(this.modeBtn, (e) => { actions.switchMode(); actions.play(e); });
     tap($('overlay-cat'), () => actions.catalog());
     for (const b of this.root.querySelectorAll('[data-sec]')) tap(b, () => this.show(b.dataset.sec));
 
@@ -129,8 +132,19 @@ export class Menu {
 
   /** Juego cargado: se puede pulsar «Jugar». */
   ready() {
-    this.play.disabled = this.horde.disabled = false;
+    this.play.disabled = this.horde.disabled = this.modeBtn.disabled = false;
     this.msg.textContent = '';
+    this.labels();
+  }
+
+  /** Textos de los botones según el modo y si la partida ya empezó. */
+  labels() {
+    const paused = this.started, game = this.actions.mode() === 'juego';
+    this.root.classList.toggle('mode-juego', game);
+    this.play.textContent = paused ? 'Continuar' : 'Jugar';
+    this.horde.textContent = this.actions.hordeActive() ? 'Detener la horda' : 'Iniciar la horda';
+    $('m-reset').textContent = game ? 'Reiniciar la partida' : 'Reiniciar el mundo';
+    this.modeBtn.textContent = !paused ? 'Simulación (mundo de pruebas)' : game ? 'Ir a la simulación' : 'Ir al modo juego';
   }
 
   /** Abre una sección (o la cierra si ya estaba abierta). */
@@ -154,9 +168,7 @@ export class Menu {
     this.root.classList.toggle('paused', paused);
     this.msg.textContent = paused ? 'En pausa' : this.msg.textContent;
     if (document.body.classList.contains('gamepad') && !this.play.disabled) this.focus(this.play);
-    this.play.textContent = paused ? 'Continuar' : 'Jugar';
-    const horde = this.actions.hordeActive();
-    this.horde.textContent = paused ? (horde ? 'Detener la horda' : 'Iniciar la horda') : 'Jugar contra la horda';
+    this.labels();
     $('m-auto').checked = this.actions.autoActive();
   }
 
