@@ -95,6 +95,10 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   mantener la dirección hacia ese lado continúa el paso lateral sin pausa (`PEEK_LOOK`, a la
   velocidad de caminar), inclina el tronco y gira cabeza y tronco hacia detrás del muro
   (`PEEK_HEAD`, `cover.look`; empieza a girar al acercarse); disparando da el paso entero, como al apuntar.
+  Asomado por el borde izquierdo la postura de apuntar se refleja: `player.gunHand` = +1 (arma en la
+  izquierda, `GUN_RIGHT` para la mano de apoyo, `solveTwoHanded` y `reachArm` con ese lado) y la
+  cámara pasa al hombro izquierdo (`view.side`). Tras un muro alto sin borde cerca, apuntar es el
+  modo `step`: se separa `COVER_STEP` del muro y apunta de pie.
 - **Disparos a las articulaciones de los zombis** — las balas no chocan con la cápsula del
   zombi (`GROUPS.enemy`): `Combat.update` comprueba el tramo que recorre cada bala contra el
   esqueleto con `Zombie.trace` (`src/horde.js`), que devuelve el corte de `CUTS` de la primera

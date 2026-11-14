@@ -27,6 +27,7 @@ export class ThirdPersonCamera {
     this.distance = 4.2;
     this.current = this.distance;
     this.aim = 0; // 0-1: cuánto se ha cerrado sobre el hombro
+    this.side = 1; // hombro: +1 derecho, -1 izquierdo
     this.height = STAND_HEIGHT; // altura actual del pivote sobre los pies
     this.low = 0;
     this.sensitivity = 1; // ajustes del menú
@@ -53,6 +54,7 @@ export class ThirdPersonCamera {
       this[key] = THREE.MathUtils.damp(this[key], this[raw], lambda, dt);
     };
     ease('aim', view.aim ? 1 : 0, 17);
+    ease('side', -(view.side ?? -1), 10); // +1 hombro derecho, -1 izquierdo
     ease('height', view.height ?? STAND_HEIGHT, 16);
     ease('low', view.low ?? 0, 12);
     const sens = SENS * this.sensitivity * THREE.MathUtils.lerp(1, AIM_SENS, this.aim);
@@ -64,8 +66,9 @@ export class ThirdPersonCamera {
     _back.set(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
     this.forward.copy(_back).negate();
 
-    // Pivote: a la altura de la cabeza, desplazado hacia el hombro derecho.
-    const shoulder = THREE.MathUtils.lerp(SHOULDER, AIM_SHOULDER, this.aim);
+    // Pivote: a la altura de la cabeza, desplazado hacia el hombro derecho (o el izquierdo, si
+    // el arma va en esa mano al asomarse por la izquierda).
+    const shoulder = THREE.MathUtils.lerp(SHOULDER, AIM_SHOULDER, this.aim) * this.side;
     _pivot.set(
       playerPos.x + Math.cos(this.yaw) * shoulder,
       playerPos.y + this.height,
