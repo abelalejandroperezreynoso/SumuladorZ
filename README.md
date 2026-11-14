@@ -67,7 +67,7 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 | Acción | Botón |
 |---|---|
 | Moverse / correr | Stick izquierdo (a fondo o pulsado = correr) |
-| Carrera rápida mientras se mantiene | A |
+| Saltar (toque) · carrera rápida (mantener) | A |
 | Cámara | Stick derecho |
 | Disparar (con el bate o sin arma, golpear) | RT |
 | Cambiar de arma | Cruceta ← → |
@@ -104,7 +104,7 @@ o continuar, y **Menú** para pausar. Mientras se usa el mando se ocultan los co
 
 ## Bardas
 
-Corriendo de frente contra un muro (o pulsando saltar junto a él), el personaje lo pasa solo,
+En carrera rápida de frente contra un muro (o pulsando saltar junto a él), el personaje lo pasa solo,
 según su altura:
 
 - **Muy baja** (hasta 0,62 m): la salta sin tocarla y sigue corriendo.
@@ -257,7 +257,7 @@ Ambas necesitan Playwright con Chromium instalado en el entorno; no son dependen
   sirven de cobertura). Fuera: canalones, césped, arriates con flores, arbustos, buzón y un
   árbol cuyo tronco también cubre. La puerta se abre sola al acercarse (también a los zombis) y se cierra al
   alejarse. El cristal no deja pasar: se rompe de un puñetazo, un batazo o un balazo, y con
-  él roto se entra corriendo de frente (o saltando junto a la ventana), como por una barda
+  él roto se entra en carrera rápida de frente (o saltando junto a la ventana), como por una barda
   media. Los zombis también entran por las ventanas: revientan el cristal de un cabezazo, se
   echan por el hueco, se deslizan de cabeza y se levantan dentro. Los cristales vuelven al
   reiniciar el mundo (`R`).
