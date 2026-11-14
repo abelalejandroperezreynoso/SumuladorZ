@@ -45,6 +45,8 @@ const COVER_RANGE = 2.4; // distancia máxima desde la que se desliza a cubierto
 const COVER_GAP = 0.05; // separación entre la cápsula y el muro
 const COVER_HUG = 0.27; // cuánto se arrima el cuerpo al muro, hasta apoyar la espalda (m)
 const COVER_HUG_AIM = 0.12; // ...y al levantarse de cara al muro para apuntar por encima
+const AIM_RISE_LEFT = 9; // rapidez con que sube el arma al asomarse por la izquierda (cambia de mano)
+const COVER_STEP = 0.3; // tras un muro alto sin borde cerca, al apuntar se separa esto del muro (m)
 const LIMIT_RANGE = 0.55; // a menos de esto del final del muro, está en su límite (m)
 const COVER_SLIDE_SPEED = 5.5; // velocidad del deslizamiento de entrada (m/s)
 const COVER_BRAKE = 6; // frenado al llegar: velocidad por metro que falta (1/s)
@@ -65,8 +67,7 @@ const COVER_SIT = { frente: 0.24, abierto: 0.05, adelantado: 0.08, rodillaArriba
 const COVER_NEAR = 1.5; // radio en el que se busca cobertura en cualquier dirección (m)
 const COVER_FAN = 32; // rayos de esa búsqueda alrededor del personaje
 const PEEK_REACH = 0.8; // distancia máxima al borde para poder asomarse por él (m)
-const PEEK_CLEAR_GUN = 0.28; // cuánto sobrepasa el borde al asomarse por el lado del arma (m)
-const PEEK_CLEAR_OFF = 0.46; // ...y por el lado contrario, para que el arma libre el muro
+const PEEK_CLEAR_GUN = 0.28; // cuánto sobrepasa el borde al asomarse (el arma va en la mano de ese lado) (m)
 const PEEK_LEAN = 0.3; // inclinación lateral del tronco al asomarse (rad)
 // Asomarse con el mando: en un límite del muro, mantener la dirección hacia ese lado.
 const PEEK_HOLD = 0; // tiempo empujando contra el final del muro hasta asomarse (s): 0 = sin pausa
@@ -281,6 +282,7 @@ const SWING = curves(SWING_KEYS), SLAM = curves(SLAM_KEYS);
 // derecha; y la empuñadura de la pistola, envolviendo la derecha por su lado y algo más abajo.
 const BAT_LEFT = new THREE.Vector3(0, 0, -0.075);
 const GUN_LEFT = new THREE.Vector3(0.045, -0.025, 0);
+const GUN_RIGHT = new THREE.Vector3(-0.045, -0.025, 0); // la derecha de apoyo, con el arma en la izquierda
 const GRIP_SHIFT = 0.25; // cuánto puede acercarse el arma a la mano izquierda si esta no llega (m)
 const GRIP_SLACK = 0.004; // separación admitida entre la mano y su agarre (m)
 // Brazo derecho a cubierto con la pistola (m, desde el pecho): el codo recogido junto al
@@ -337,7 +339,7 @@ export const PLAYER_CLIPS = {
 export const TUNING = {
   WALK_SPEED, RUN_SPEED, SPRINT_SPEED, MAX_TURN, AIM_TURN, STATE_DWELL, GRAVITY, JUMP_SPEED, CROUCH_TIME,
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, LOW_RANGE, SLAM_BODY, VAULT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
-  COVER_RANGE, COVER_SLIDE_SPEED, COVER_ARRIVE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, PEEK_HOLD, PEEK_LOOK,
+  COVER_RANGE, COVER_SLIDE_SPEED, COVER_ARRIVE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, COVER_STEP, PEEK_HOLD, PEEK_LOOK,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
   HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
 };
@@ -388,6 +390,7 @@ export class Player {
     this.landAmount = 0;
     this.sprinting = false;
     this.sprintIdle = 0;
+    this.gunHand = -1; // mano del arma: -1 derecha, +1 izquierda (asomado por la izquierda)
     this.health = MAX_HEALTH;
     this.hurtT = 0; // tiempo desde el último daño
     this.dead = false;
@@ -610,9 +613,10 @@ export class Player {
 
   /** Postura que la cámara debe seguir (ver ThirdPersonCamera.update). */
   get view() {
-    this._view ??= { aim: false, height: 1.55, low: 0 };
+    this._view ??= { aim: false, height: 1.55, low: 0, side: -1 };
     const v = this._view;
     v.aim = this.aiming;
+    v.side = this.aiming ? this.gunHand : -1; // hombro de la cámara: el de la mano del arma
     v.low = this.cover?.attached && this.cover.veryLow ? 1 : this.prone;
     // Apuntando, a la altura de la cabeza (de pie queda como siempre); recostado, casi a ras
     // del objeto que lo cubre.
@@ -655,7 +659,7 @@ export class Player {
     if (!best) return false;
     this.cover = {
       nx: best.nx, nz: best.nz, high: false, veryLow: false, proneDir: 1, attached: false, away: 0,
-      mode: null, // al apuntar: 'over' (por encima), 'side' (por el borde) o 'blocked'
+      mode: null, // al apuntar: 'over' (por encima), 'side' (por el borde) o 'step' (muro alto sin borde: se separa y apunta)
       peek: 0, peekDir: 0, peekGoal: 0,
       // Límites del muro: distancia a cada final (Infinity si queda lejos) y en cuál está:
       // -1 el derecho del personaje (de espaldas al muro), +1 el izquierdo, 0 ninguno.
@@ -758,9 +762,11 @@ export class Player {
       else if (right < Infinity && aimSide > 0.3) dir = 1;
       else if (left < Infinity && aimSide < -0.3) dir = -1;
       c.peekDir = dir;
-      // El arma va en la mano derecha (lado +tangente al encarar el muro).
-      c.peekGoal = dir > 0 ? right + PEEK_CLEAR_GUN : dir < 0 ? left + PEEK_CLEAR_OFF : 0;
-      c.mode = dir ? 'side' : c.high ? 'blocked' : 'over';
+      // El arma va en la mano del lado por el que se asoma (por la izquierda pasa a la
+      // izquierda), así que el paso es el mismo por los dos lados.
+      c.peekGoal = dir > 0 ? right + PEEK_CLEAR_GUN : dir < 0 ? left + PEEK_CLEAR_GUN : 0;
+      // Muro alto sin borde cerca: se separa un paso del muro y apunta de pie, libre.
+      c.mode = dir ? 'side' : c.high ? 'step' : 'over';
     }
     if (!aiming && !c.stickPeek && c.peek < 0.02) c.mode = null;
     // A ciegas: en un límite del muro saca el arma por ese lado; si no, por encima (muro bajo)
@@ -1004,6 +1010,8 @@ export class Player {
     // (Asomado con el mando, disparar también lo saca del todo.)
     const coverAim = aimHeld || (!!this.cover?.stickPeek && this.aimT > 0);
     if (this.cover) this.coverMove(dt, _v, moving, coverAim, cam);
+    // Asomado por el borde izquierdo, el arma pasa a la mano izquierda (postura reflejada).
+    this.gunHand = this.cover?.mode === 'side' && this.cover.peekDir < 0 ? 1 : -1;
 
     if (!this.cover) {
       // Aceleración suave en el plano horizontal. En el aire se conserva la inercia:
@@ -1054,6 +1062,7 @@ export class Player {
     this.canFire = !cover || (cover.attached && (
       cover.mode === 'side' ? cover.peek > cover.peekGoal * 0.8
         : cover.mode === 'over' ? (cover.veryLow ? this.prone < 0.25 : this.coverCrouch < 0.45)
+          : cover.mode === 'step' ? this.coverHug < 0
           : this.blindW > 0.7
     ));
 
@@ -1155,7 +1164,8 @@ export class Player {
     if (aimHeld || !gun) this.blindT = 0;
     const aiming = (this.aimT > 0 && (!cover || aimHeld || cover.stickPeek)) || (aimHeld && this.punchT < 0);
     this.aiming = aimHeld && this.punchT < 0;
-    this.aimWeight = THREE.MathUtils.damp(this.aimWeight, aiming ? 1 : 0, aiming ? 25 : 10, dt);
+    // Con el arma pasando a la mano izquierda sube más despacio: el cambio de mano no da tirones.
+    this.aimWeight = THREE.MathUtils.damp(this.aimWeight, aiming ? 1 : 0, aiming ? (this.gunHand > 0 ? AIM_RISE_LEFT : 25) : 10, dt);
     // Quieto de pie: la postura relajada sustituye a la guardia del clip de reposo.
     const still = this.state === 'Idle' && !cover && this.prone < 0.01 && this.punchT < 0 && this.grounded
       && this.crouch < 0.02 && this.speed < 0.3;
@@ -1815,7 +1825,9 @@ export class Player {
   }
 
   solveTwoHanded(weapon, right, wR, place, leftGrip, wL, straight, posed) {
-    const arms = [this.upperArm, this.lowerArm, this.upperArmL, this.lowerArmL];
+    const m = this.gunHand ?? -1; // mano que lleva el arma (-1 derecha); la otra es la de apoyo
+    const arms = m > 0 ? [this.upperArmL, this.lowerArmL, this.upperArm, this.lowerArm] : [this.upperArm, this.lowerArm, this.upperArmL, this.lowerArmL];
+    const support = m > 0 ? this.hand : this.handL;
     const saved = arms.map((b) => b.quaternion.clone());
     const restore = (from) => {
       for (let i = from; i < 4; i++) arms[i].quaternion.copy(saved[i]);
@@ -1826,13 +1838,13 @@ export class Player {
     const firm = THREE.MathUtils.smoothstep(Math.min(wL, right ? wR : 1), 0.9, 1);
     for (let i = 0; i < 4; i++) {
       if (i) restore(right ? 0 : 2);
-      if (right && wR > 0.002 && (i || !posed)) this.reachArm(-1, right.clone().add(shift), wR, straight);
+      if (right && wR > 0.002 && (i || !posed)) this.reachArm(m, right.clone().add(shift), wR, straight);
       place();
       weapon.updateMatrixWorld(true);
-      if (wL < 0.01 || !this.handL || this.handL === this.lowerArmL) return;
+      if (wL < 0.01 || !support || support === arms[3]) return;
       L.copy(leftGrip).applyMatrix4(weapon.matrixWorld);
-      this.reachArm(1, L, wL, straight, true);
-      const gap = this.palm(P, 1).distanceTo(L);
+      this.reachArm(-m, L, wL, straight, true);
+      const gap = this.palm(P, -m).distanceTo(L);
       if (firm > 0.99) this.gripGap = gap; // para medirlo desde fuera
       if (!firm || !right || gap < GRIP_SLACK) return;
       shift.addScaledVector(P.sub(L), 0.8 * firm).clampLength(0, GRIP_SHIFT); // el arma va hacia donde sí llega la izquierda
@@ -2118,7 +2130,7 @@ export class Player {
     // lejos); menos al levantarse de cara al muro, y nada al asomarse más allá del borde.
     const cv = this.cover;
     const out = cv?.peekGoal ? THREE.MathUtils.clamp(cv.peek / cv.peekGoal, 0, 1) : 0;
-    const hug = !cv?.attached || cv.veryLow ? 0 : (cv.mode === 'over' || cv.mode === 'blocked' || (cv.blindLocked && cv.blindMode === 'side') ? COVER_HUG_AIM : COVER_HUG) * (1 - out);
+    const hug = !cv?.attached || cv.veryLow ? 0 : (cv.mode === 'step' ? -COVER_STEP : cv.mode === 'over' || (cv.blindLocked && cv.blindMode === 'side') ? COVER_HUG_AIM : COVER_HUG) * (1 - out);
     this.coverHug = THREE.MathUtils.damp(this.coverHug, hug, 9, dt);
     if (cv) { this.hugN.x = cv.nx; this.hugN.z = cv.nz; }
     this.model.position.x -= this.hugN.x * this.coverHug;
@@ -2276,16 +2288,17 @@ export class Player {
     // Retroceso: el brazo y el arma suben un instante con cada disparo.
     this.recoil = Math.max(0, this.recoil - dt * 9);
     const kick = RECOIL_KICK * this.recoil * this.recoil;
+    const g = this.gunHand; // -1 derecha, +1 izquierda
     if (aimW > 0.002) {
       this.savePose();
-      const S = this.upperArm.getWorldPosition(new THREE.Vector3());
+      const S = (g > 0 ? this.upperArmL : this.upperArm).getWorldPosition(new THREE.Vector3());
       const want = this.aimPoint.clone().sub(S).normalize();
       want.y += kick;
-      this.reachArm(-1, want.normalize().multiplyScalar(AIM_REACH).add(S), aimW, this.coverReady > 0.5);
+      this.reachArm(g, want.normalize().multiplyScalar(AIM_REACH).add(S), aimW, this.coverReady > 0.5);
     }
 
     const aimGun = () => {
-      this.palm(this.gun.position);
+      this.palm(this.gun.position, g);
       this.gun.lookAt(_knee.copy(this.aimPoint).setY(
         this.aimPoint.y + kick * 1.6 * this.gun.position.distanceTo(this.aimPoint),
       ));
@@ -2295,7 +2308,7 @@ export class Player {
     if (grip > 0.02) {
       // La izquierda envuelve la empuñadura por debajo de la derecha, anclada al arma: si no
       // llega, la pistola se acerca (el brazo derecho ya está colocado y se recoloca con ella).
-      this.holdTwoHanded(this.gun, this.hand.getWorldPosition(new THREE.Vector3()), 1, aimGun, GUN_LEFT, grip, this.coverReady > 0.5, true);
+      this.holdTwoHanded(this.gun, (g > 0 ? this.handL : this.hand).getWorldPosition(new THREE.Vector3()), 1, aimGun, g > 0 ? GUN_RIGHT : GUN_LEFT, grip, this.coverReady > 0.5, true);
     } else aimGun();
     this.gun.updateMatrixWorld(true);
     this.muzzle.copy(GUN_MUZZLE).applyMatrix4(this.gun.matrixWorld);
