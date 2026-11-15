@@ -57,14 +57,34 @@ const SEPARATION_SPEED = 1.5; // velocidad máxima del empuje que los separa (m/
 // del clip de correr; `gang`: cuántos pueden morder a la vez (los demás empujan alrededor
 // esperando su turno: sin ese tope, una noche con veinte encima mataba en un segundo).
 export const MOODS = {
-  normal: { view: VIEW_RANGE, cos: VIEW_COS, sense: SENSE_RANGE, noise: NOISE_RANGE, memory: MEMORY, wander: WANDER_SPEED, chase: CHASE_SPEED, attack: ATTACK_TIME, bite: BITE_DAMAGE, seek: 0.5, scent: 0, run: 1.2, gang: Infinity },
-  dia: { view: 4.5, cos: Math.cos(THREE.MathUtils.degToRad(75)), sense: 2.2, noise: 9, memory: 2.5, wander: 0.55, chase: 1.9, attack: 1.15, bite: 12, seek: 0, scent: 0, run: 1.2, gang: Infinity },
-  noche: { view: 40, cos: -2, sense: 10, noise: 60, memory: 20, wander: 1.2, chase: 3.9, attack: 0.85, bite: 15, seek: 1, scent: 45, run: 1.5, gang: 3 },
+  normal: { spot: 1.6, hear: 1.2, view: VIEW_RANGE, cos: VIEW_COS, sense: SENSE_RANGE, noise: NOISE_RANGE, memory: MEMORY, wander: WANDER_SPEED, chase: CHASE_SPEED, attack: ATTACK_TIME, bite: BITE_DAMAGE, seek: 0.5, scent: 0, run: 1.2, gang: Infinity },
+  dia: { spot: 1, hear: 1, view: 8, cos: Math.cos(THREE.MathUtils.degToRad(75)), sense: 2.2, noise: 9, memory: 4, wander: 0.55, chase: 1.9, attack: 1.15, bite: 12, seek: 0, scent: 0, run: 1.2, gang: Infinity },
+  noche: { spot: 2.4, hear: 1.6, view: 40, cos: Math.cos(THREE.MathUtils.degToRad(100)), sense: 4, noise: 60, memory: 20, wander: 1.2, chase: 3.9, attack: 0.85, bite: 15, seek: 1, scent: 45, run: 1.5, gang: 3 },
   // Cazando a una persona (los primeros días): no la pierden de vista y la alcanzan cuando se cansa.
-  caza: { view: 70, cos: -2, sense: 70, noise: 0, memory: 30, wander: 1.2, chase: 5.3, attack: 0.7, bite: 55, seek: 0, scent: 0, run: 1.8, gang: Infinity },
+  caza: { spot: Infinity, hear: 0, view: 70, cos: -2, sense: 70, noise: 0, memory: 30, wander: 1.2, chase: 5.3, attack: 0.7, bite: 55, seek: 0, scent: 0, run: 1.8, gang: Infinity },
   // Horda del límite de la ciudad: más rápidos que la carrera rápida del jugador (8 m/s) y sin tope de mordidas.
-  horda: { view: 95, cos: -2, sense: 95, noise: 150, memory: 60, wander: 2, chase: 8.8, attack: 0.6, bite: 25, seek: 1, scent: 150, run: 2.9, gang: Infinity },
+  horda: { spot: Infinity, hear: 0, view: 95, cos: -2, sense: 95, noise: 150, memory: 60, wander: 2, chase: 8.8, attack: 0.6, bite: 25, seek: 1, scent: 150, run: 2.9, gang: Infinity },
 };
+// --- Vista, oído y sigilo ---
+// La detección no es de todo o nada. Cada zombi lleva un medidor (`aware`, de 0 a 1) que sube
+// mientras te tiene en su campo de visión (un cono de `cos` alrededor de adonde mira la cabeza,
+// hasta `view` m) sin nada que te tape, y baja cuando te pierde. Se comprueba la línea de
+// visión a tu cabeza y a tu pecho: si solo asoma una de las dos, sube a la mitad. Sube más
+// deprisa cuanto más cerca estés (de `lejos` s en el límite de su vista a `cerca` s pegado a
+// él, por `spot` de su carácter) y cuanto más se te vea (`Player.exposure`: agachado a cubierto
+// o tumbado, mucho menos; corriendo, más). A menos de `sense` m te nota aunque esté de espaldas,
+// si no hay nada de por medio. Los ojos lo cuentan: apagados si no sabe nada, en ámbar desde
+// `sospecha` (se para y vuelve la cara hacia ti) y en rojo cuando el medidor se llena y corre
+// a por ti. Si deja de verte, a los `espera` s el medidor baja `baja` por segundo y, por debajo
+// de `calma`, vuelve a lo suyo. Los ruidos (pasos al correr, cristales, disparos, tu olor de
+// noche) lo llenan a golpes y le dicen adónde ir a mirar. Donde te pierde, se queda `busca` s
+// buscando: gira el cuerpo y barre con la cabeza (`barrido` rad a cada lado).
+// `tacto`: el radio en que te nota de espaldas se mide con lo que se te ve y se te oye (de
+// `sense` × `tacto[0]` quieto o agachado a × `tacto[1]` corriendo): caminando se llega por
+// detrás hasta un golpe de distancia. `sorpresa`: un golpe a uno que aún no te ha detectado
+// hace ese múltiplo de daño (un puñetazo por la espalda lo mata).
+const SIGHT = { cerca: 0.35, lejos: 2.6, sospecha: 0.3, calma: 0.12, baja: 0.3, espera: 0.6, comiendo: 0.55, busca: 4.5, barrido: 1.15, pecho: 0.62, pasos: 0.3, cada: 0.35, olor: 5, tacto: [0.45, 1.1], sorpresa: 2 };
+
 // --- Alerta, reposo y civiles ---
 // Al detectarte, un zombi no arranca a correr sin más: se queda `NOTICE` s parado volviendo la
 // cara hacia ti (la cabeza gira hasta `LOOK_MAX` rad respecto al cuerpo) y después te persigue.
@@ -143,7 +163,7 @@ export const ZOMBIE_TUNING = {
   VIEW_RANGE, SENSE_RANGE, NOISE_RANGE, WANDER_SPEED, CHASE_SPEED, ATTACK_RANGE, ATTACK_TIME, ATTACK_HIT,
   BITE_DAMAGE, HEALTH, STAGGER, RAGDOLL_MAX, REMAINS_MAX, SPAWN_MIN, SPAWN_MAX, WAVE_DELAY,
   WINDOW, JOINT_ZONE, HEAD_ZONE, STOMACH_ZONE, CRAWL_SPEED, CRAWL_SPEEDS, LIMP, CRAWL_FALL, DEBRIS_TIME,
-  MOODS, PROVOKED, SCENT_EVERY, NOTICE, NOTICE_FEED, LOOK_MAX, FEED, CIVIL,
+  MOODS, PROVOKED, SCENT_EVERY, NOTICE, NOTICE_FEED, LOOK_MAX, FEED, CIVIL, SIGHT,
 };
 
 const _to = new THREE.Vector3();
@@ -246,13 +266,19 @@ class Zombie {
     this.rage = 0; // segundos que le quedan de furia tras recibir un golpe o un disparo de día
     this.prey = null; // a quién persigue si no es al jugador (una persona que huye)
     this.look = 0; // giro de la cabeza respecto al cuerpo (rad): mira a lo que ha detectado
+    this.aware = 0; // medidor de detección (ver SIGHT): 0 = no sabe nada, 1 = te ha detectado
+    this.calmT = 0; // segundos que el medidor aguanta antes de empezar a bajar
+    this.found = false; // el medidor llegó a llenarse: aunque después baje, va a por ello
+    this.focus = new THREE.Vector3(x, 0, z); // dónde está lo que le ha llamado la atención
+    this.resume = 'wander'; // a qué vuelve si resulta una falsa alarma
+    this.eyes = 0; // luces de los ojos: 0 apagadas, 1 ámbar (sospecha o busca), 2 rojo (detectado)
     this.feed = null; // cadáver del que está comiendo (estado `feed`)
     this.goFeed = null; // ...o al que va a ponerse a comer
     this.feedK = 0; // 0 = de pie, 1 = acuclillado comiendo
     this.feedT = Math.random() * 10;
     this.feedA = 0; // en qué lado del cadáver se pone (rad)
     this.hp = HEALTH;
-    this.state = 'wander'; // wander | feed | notice | chase | attack | stagger | window | dead (y flee, los civiles)
+    this.state = 'wander'; // wander | feed | notice | chase | search | attack | stagger | window | dead (y flee, los civiles)
     this.win = null; // ventana por la que está entrando: { w, side, t, from, smash }
     this.winPose = null; // postura de ese paso: { s, y, pitch, u }
     this.facing = Math.random() * Math.PI * 2;
@@ -422,26 +448,47 @@ class Zombie {
     this.current = next;
   }
 
-  /** ¿Ve al jugador? Dentro del cono de visión, a su alcance y sin muros de por medio. */
-  canSee(player) {
-    const dx = player.position.x - this.position.x, dz = player.position.z - this.position.z;
-    const dist = Math.hypot(dx, dz), M = this.mood;
-    if (dist > M.view) return false;
-    if (dist > M.sense) {
-      const facingDot = (dx * Math.sin(this.facing) + dz * Math.cos(this.facing)) / dist;
-      if (facingDot < M.cos) return false;
+  /**
+   * Cuánto ve de `prey` (0, 0,5 o 1): dentro del cono de visión de la cabeza, a su alcance y
+   * con la línea de visión libre hasta su cabeza y hasta su pecho (cuenta cada una la mitad).
+   */
+  sight(prey, M = this.mood) {
+    const dx = prey.position.x - this.position.x, dz = prey.position.z - this.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > M.view * (this.state === 'feed' ? SIGHT.comiendo : 1)) return 0;
+    if (dist > this.touch(prey, M)) {
+      const a = this.facing + this.look;
+      if ((dx * Math.sin(a) + dz * Math.cos(a)) / dist < M.cos) return 0;
     }
-    // Línea de visión de los ojos a la cabeza del jugador (más baja si está agachado o tumbado a cubierto).
-    const eye = { x: this.position.x, y: this.position.y + (this.crawler ? AIM_CRAWL : EYE), z: this.position.z };
-    const headY = player.position.y + player.headHeight;
-    _to.set(dx, headY - eye.y, dz);
-    const len = _to.length();
-    _to.divideScalar(len);
-    const hit = this.horde.physics.world.castRay(
-      new RAPIER.Ray(eye, _to), len, true, RAPIER.QueryFilterFlags.ONLY_FIXED, undefined, undefined, undefined,
-      (c) => !this.horde.physics.meta.get(c.handle)?.glass, // a través del cristal se ve
-    );
-    return !hit;
+    const eye = { x: this.position.x, y: this.position.y + (this.crawler ? AIM_CRAWL : EYE - FEED.baja * this.feedK), z: this.position.z };
+    const world = this.horde.physics.world, meta = this.horde.physics.meta, head = prey.headHeight ?? 1.6;
+    let seen = 0;
+    for (const h of [head, head * SIGHT.pecho]) {
+      _to.set(dx, prey.position.y + h - eye.y, dz);
+      const len = _to.length();
+      _to.divideScalar(len);
+      const hit = world.castRay(
+        new RAPIER.Ray(eye, _to), len, true, RAPIER.QueryFilterFlags.ONLY_FIXED, undefined, undefined, undefined,
+        (c) => !meta.get(c.handle)?.glass, // a través del cristal se ve
+      );
+      if (!hit) seen += 0.5;
+    }
+    return seen;
+  }
+
+  /** A qué distancia nota a `prey` aunque esté de espaldas: menos si va despacio o agachada, más si corre. */
+  touch(prey, M = this.mood) {
+    return M.sense * THREE.MathUtils.clamp(0.6 * (prey.exposure ?? 1), SIGHT.tacto[0], SIGHT.tacto[1]);
+  }
+
+  /** ¿Ve algo de `prey`? */
+  canSee(prey) {
+    return this.sight(prey) > 0;
+  }
+
+  /** ¿Va ya a por su presa? (Persigue, muerde, está aturdido o trepando.) */
+  get hostile() {
+    return this.state === 'chase' || this.state === 'attack' || this.state === 'stagger' || this.state === 'window';
   }
 
   /** ¿Está libre el tramo inmediato hacia su objetivo? Sondea a la altura de las piernas y de la cabeza. */
@@ -466,21 +513,42 @@ class Zombie {
   alert(point, memory = this.mood.memory) {
     if (!this.alive) return;
     this.target.copy(point);
+    this.focus.copy(point);
     this.memory = Math.max(this.memory, memory);
+    this.aware = 1;
+    this.found = true;
     this.notice();
   }
 
   /**
-   * Ha detectado algo: antes de correr se queda un momento parado (se levanta, si comía)
-   * y vuelve la cara hacia ello. Persiguiendo a una persona no se detiene.
+   * Oye (o huele) algo en `point`: el medidor sube `amount` de golpe. Si llega a la sospecha se
+   * para y mira hacia allí; si se llena, va a ver qué es. Persiguiendo sin ver a su presa,
+   * corrige el rumbo.
+   */
+  hear(point, amount = 1) {
+    if (!this.alive || this.prey || this.mood.hear <= 0) return;
+    if (this.hostile) {
+      if (!this.sees && this.state === 'chase') { this.target.copy(point); this.memory = Math.max(this.memory, this.mood.memory); }
+      return;
+    }
+    this.focus.copy(point);
+    this.aware = Math.min(1, this.aware + amount);
+    this.calmT = SIGHT.espera * 2;
+    if (this.aware >= 1) { this.found = true; this.target.copy(point); this.memory = Math.max(this.memory, this.mood.memory, 4); }
+    if (this.state === 'search') { if (this.aware >= 1) this.state = 'chase'; } else if (this.aware >= SIGHT.sospecha) this.notice();
+  }
+
+  /**
+   * Algo le llama la atención: antes de nada se queda parado (se levanta, si comía) y vuelve la
+   * cara hacia ello. Si el medidor se llena, después corre a por ello; si baja, vuelve a lo suyo.
+   * Persiguiendo a una persona no se detiene.
    */
   notice() {
     if (this.state !== 'wander' && this.state !== 'feed') return;
-    const fed = this.state === 'feed';
-    this.leaveFeed();
-    if (this.prey) { this.state = 'chase'; return; }
+    if (this.prey || this.mood.spot === Infinity) { this.leaveFeed(); this.state = 'chase'; return; }
+    this.resume = this.state;
+    this.timer = this.state === 'feed' ? NOTICE_FEED : NOTICE;
     this.state = 'notice';
-    this.timer = fed ? NOTICE_FEED : NOTICE;
     this.play('Idle', 0.2);
   }
 
@@ -518,6 +586,7 @@ class Zombie {
   /** `power`: multiplica lo lejos que sale despedido al morir de pie. `slam`: golpe de arriba abajo; si lo mata a rastras, rebota contra el suelo a esa velocidad (m/s). */
   damage(amount, player, slam = 0, power = 1) {
     if (!this.alive) return;
+    if (amount > 0 && this.eyes < 2 && !this.prey) amount *= SIGHT.sorpresa; // por sorpresa: aún no había detectado a nadie
     this.hp -= amount;
     this.provoke(player);
     if (this.hp <= 0) {
@@ -542,6 +611,8 @@ class Zombie {
   /** Muere: en el próximo fotograma se desploma como un cuerpo articulado. `push`: empujón (m/s). */
   die(push = null) {
     this.leaveFeed();
+    this.skel.setEyes(0);
+    this.eyes = 0;
     this.state = 'dead';
     this.ragT = 0;
     this.push = push;
@@ -637,11 +708,29 @@ class Zombie {
     const dist = Math.hypot(dx, dz);
     this.rage = Math.max(0, this.rage - dt);
     const M = this.mood;
-    this.sees = !prey.dead && this.canSee(prey);
+    // Vista: lo que ve de su presa llena el medidor; lleno, la ha detectado (ver SIGHT).
+    const vis = prey.dead ? 0 : this.sight(prey, M);
+    if (this.hostile || this.prey || M.spot === Infinity) {
+      this.sees = vis > 0; // ya va a por ella: la ve o no la ve
+      if (this.sees) { this.aware = 1; this.notice(); }
+    } else {
+      if (vis > 0) {
+        const near = this.touch(prey, M), k = THREE.MathUtils.clamp((dist - near) / Math.max(0.1, M.view - near), 0, 1);
+        const rate = M.spot * vis * (prey.exposure ?? 1) * (this.state === 'feed' ? SIGHT.comiendo : this.state === 'search' ? 2 : 1)
+          / THREE.MathUtils.lerp(SIGHT.cerca, SIGHT.lejos, k);
+        this.aware = dist < near ? 1 : Math.min(1, this.aware + rate * dt);
+        if (this.aware >= 1) this.found = true;
+        this.calmT = SIGHT.espera;
+        this.focus.copy(prey.position);
+        if (this.aware >= SIGHT.sospecha) this.notice();
+      } else if ((this.calmT -= dt) <= 0) {
+        this.aware = Math.max(0, this.aware - SIGHT.baja * dt);
+      }
+      this.sees = vis > 0 && this.aware >= 1;
+    }
     if (this.sees) {
       this.target.copy(prey.position);
       this.memory = Math.max(this.memory, M.memory);
-      this.notice();
     } else {
       this.memory -= dt;
     }
@@ -653,9 +742,23 @@ class Zombie {
       this.timer -= dt;
       if (this.timer <= 0) this.state = 'chase';
     } else if (this.state === 'notice') {
-      // Parado, volviendo la cara: el cuerpo aún no gira.
+      // Parado, volviendo la cara: el cuerpo aún no gira. Con el medidor lleno, corre; si baja, falsa alarma.
       this.timer -= dt;
-      if (this.timer <= 0) this.state = 'chase';
+      if (this.found && this.timer <= 0) {
+        this.found = false;
+        this.leaveFeed();
+        this.state = 'chase';
+        this.memory = Math.max(this.memory, M.memory);
+      } else if (!this.found && this.aware < SIGHT.calma) {
+        if (this.resume === 'feed' && this.feed && !this.feed.gone) this.startFeed(this.feed);
+        else { this.state = 'wander'; this.wanderT = Math.min(this.wanderT, 1); }
+      }
+    } else if (this.state === 'search') {
+      // Donde perdió a su presa: gira despacio y barre con la cabeza. Si la ve, vuelve a por ella.
+      this.timer -= dt;
+      if (this.sees) this.state = 'chase';
+      else if (this.timer <= 0) { this.state = 'wander'; this.wanderT = 0; this.aware = 0; this.found = false; }
+      else wantFacing = this.searchA + Math.sin((SIGHT.busca - this.timer) * 0.9) * 1.3;
     } else if (this.state === 'feed') {
       const c = this.feed;
       if (!c || c.gone || this.crawler) { this.leaveFeed(); this.state = 'wander'; this.wanderT = 0; }
@@ -698,8 +801,12 @@ class Zombie {
         this.bit = false;
         this.play('Idle', 0.15); // la mordida va por código (ver lunge)
       } else if (!this.sees && (td < 0.7 || this.memory <= 0)) {
-        this.state = 'wander'; // llegó al último lugar donde te vio y ya no estás
-        this.wanderT = 0;
+        // Llegó al último lugar donde la vio (o la oyó) y ya no está: busca por allí.
+        this.state = 'search';
+        this.timer = SIGHT.busca;
+        this.searchA = this.facing;
+        this.aware = Math.max(this.aware * 0.6, 0.5);
+        this.play('Idle', 0.25);
       } else {
         speed = this.crawler ? CRAWL_SPEEDS[this.limbs] : M.chase * this.limp;
         wantFacing = Math.atan2(tx, tz) + this.sidestep;
@@ -721,10 +828,13 @@ class Zombie {
     // Cabeza: al detectar algo mira hacia ello antes de que el cuerpo se vuelva.
     let look = 0;
     if (this.state === 'notice') {
-      const a = Math.atan2(this.target.x - this.position.x, this.target.z - this.position.z) - this.facing;
+      const a = Math.atan2(this.focus.x - this.position.x, this.focus.z - this.position.z) - this.facing;
       look = THREE.MathUtils.clamp(Math.atan2(Math.sin(a), Math.cos(a)), -LOOK_MAX, LOOK_MAX);
-    }
+    } else if (this.state === 'search') look = Math.sin((SIGHT.busca - this.timer) * 2.3) * SIGHT.barrido;
     this.look = THREE.MathUtils.damp(this.look, look, this.state === 'notice' ? 10 : 5, dt);
+    // Ojos: rojo si va a por su presa, ámbar si sospecha o busca, apagados si no sabe nada.
+    this.eyes = this.hostile ? 2 : this.state === 'notice' || this.state === 'search' || this.aware > 0.06 ? 1 : 0;
+    this.skel.setEyes(this.eyes, this.eyes === 1 ? Math.max(0.4, this.aware) : 1);
     this.feedK = THREE.MathUtils.damp(this.feedK, this.state === 'feed' ? 1 : 0, this.state === 'feed' ? 4 : 6, dt);
     this.feedT += dt;
     // Brazos al frente al perseguir; al morder bajan para que mande la animación de ataque.
@@ -1280,6 +1390,7 @@ export class Horde {
     this.ambient = null; // población del modo juego: { count, min, max, far }
     this.ambientT = 0;
     this.scentT = 0;
+    this.stepT = 0;
     this.attackers = 0;
     this.buildings = []; // edificios de la ciudad en los que se entra (ver src/interior.js)
     this.civilians = []; // personas que huyen (modo juego)
@@ -1596,6 +1707,31 @@ export class Horde {
     }
   }
 
+  /**
+   * Un ruido suave en `point` (pasos, un cristal): cada zombi que lo oye (a `range` m por el
+   * oído de su carácter) sube su medidor `amount`. No delata del todo: van a mirar.
+   */
+  sound(point, range, amount) {
+    const reach = range * this.mood.hear;
+    for (const z of this.zombies) {
+      if (z.alive && z.position.distanceTo(point) < reach) z.hear(point, amount);
+    }
+  }
+
+  /**
+   * Lo alerta que está la horda respecto al jugador, para el indicador de pantalla:
+   * { level: 0 nadie sabe nada, 1 alguno sospecha o busca, 2 detectado; k: el medidor más lleno }.
+   */
+  awareness(player) {
+    let level = 0, k = 0;
+    for (const z of this.zombies) {
+      if (!z.alive || z.prey || z.position.distanceTo(player.position) > 70) continue;
+      if (z.eyes === 2) return { level: 2, k: 1 };
+      if (z.eyes === 1) { level = 1; k = Math.max(k, z.aware); }
+    }
+    return { level, k };
+  }
+
   /** El ruido (un disparo) atrae a los zombis cercanos. */
   noise(point, range = this.mood.noise) {
     for (const z of this.zombies) {
@@ -1651,10 +1787,20 @@ export class Horde {
       this.scentT -= dt;
       if (this.mood.scent > 0 && this.scentT <= 0) {
         this.scentT = SCENT_EVERY;
+        // (A cubierto o tumbado se le huele desde la mitad de lejos; el rastro no da su sitio exacto.)
+        const reach = this.mood.scent * ((player.exposure ?? 1) < 0.6 ? 0.5 : 1);
         for (const z of this.zombies) {
-          if (z.alive && z.position.distanceTo(player.position) < this.mood.scent) z.alert(player.position);
+          if (!z.alive || z.position.distanceTo(player.position) > reach) continue;
+          z.hear(_e.set(player.position.x + (Math.random() - 0.5) * 2 * SIGHT.olor, player.position.y, player.position.z + (Math.random() - 0.5) * 2 * SIGHT.olor), 1);
         }
       }
+    }
+    // Pasos: corriendo se le oye (ver Player.noise); cada poco, los que están a tiro lo notan un poco más.
+    this.stepT -= dt;
+    if (this.stepT <= 0) {
+      this.stepT = SIGHT.cada;
+      const loud = player.dead ? 0 : player.noise ?? 0;
+      if (loud > 0) this.sound(player.position, loud, SIGHT.pasos);
     }
     // Los zombis no chocan entre sí: un empuje suave evita que se amontonen.
     const zs = this.zombies;

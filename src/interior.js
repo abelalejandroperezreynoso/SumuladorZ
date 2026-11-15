@@ -67,6 +67,7 @@ export class Glass {
     if (pane.broken) return false;
     pane.broken = true;
     this.broken++;
+    this.onBreak?.(pane); // hace ruido: lo oyen los zombis cercanos
     pane.collider.setEnabled(false);
     const a = this.mesh.geometry.attributes.position, i = pane.index * 4;
     for (let k = 0; k < 4; k++) a.setXYZ(i + k, pane.x, pane.y0, pane.z); // sin área: no se dibuja

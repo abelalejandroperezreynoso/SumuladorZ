@@ -32,6 +32,31 @@ alcantarillas y manchas. Todo choca y sirve de cobertura; coches, barreras y val
 como bardas. Las cajas de balas están repartidas (muchas, dentro de tiendas y casas) y
 reaparecen a los 2 minutos.
 
+**Vista y sigilo**: cada zombi lleva un medidor de detección que sube mientras te tiene en su
+campo de visión, sin nada que te tape, y baja cuando te pierde.
+
+- **Sus ojos son luces**: apagados si no sabe nada; en **ámbar** cuando sospecha (se para y
+  vuelve la cara hacia ti) o cuando te busca; en **rojo** cuando te ha detectado y corre a por
+  ti. De noche se ven desde lejos.
+- **A cubierto no te ven**: agachado tras un muro (`C`) quedas fuera de su línea de visión por
+  ese lado. Se comprueba la vista a tu cabeza y a tu pecho: si solo asoma una, el medidor sube
+  a la mitad. Al asomarte o apuntar, te ven.
+- **Cuenta cómo te mueves**: el medidor sube más despacio agachado a cubierto (×0,5), tumbado
+  (×0,3) o quieto (×0,7), y más deprisa corriendo (×1,5) o en carrera rápida (×1,8). Cuanto más
+  lejos, más tarda: de 2,6 s en el límite de su vista a 0,35 s pegado a él.
+- **Te oyen**: los pasos al correr (7 m; en carrera rápida, 11 m), un cristal al romperse
+  (14 m) y los disparos. Caminando apenas se te oye (1,6 m) y a cubierto, nada. El ruido no te
+  delata del todo: van a mirar.
+- **Te buscan**: donde te pierden se quedan 4,5 s girando y barriendo con la cabeza antes de
+  rendirse.
+- **Por la espalda**: caminando se llega hasta un golpe de distancia sin que te noten. Un golpe
+  a un zombi que aún no te ha detectado hace el doble de daño: un puñetazo por la espalda lo mata.
+- **El ojo junto a la barra de vida** resume cómo estás: cerrado (nadie sabe nada), ámbar con
+  su medidor (alguno sospecha o te busca) o rojo (detectado).
+
+De día, caminando de frente hacia un zombi, empieza a sospechar a unos 7,5 m y te detecta a
+unos 4 m. Todo esto vale también en la simulación.
+
 **Entrar en los edificios** (`src/interior.js`): en las tiendas, las casas, el supermercado, la
 tienda de la gasolinera y la comisaría se puede entrar. Los escaparates se rompen de un golpe
 (`F`) o de un balazo y se entra andando; las ventanas de las casas, rotas, se pasan como una
@@ -62,12 +87,14 @@ ves y se retiran al quedar lejos), y cada día hay más.
 | | De día | De noche |
 |---|---|---|
 | Cuántos | 12 el día 1 y 3 más cada día, hasta 28 | 20 la noche 1 y 4 más cada noche, hasta 38 |
-| Te notan | a 4,5 m de frente o 2,2 m por la espalda | a 40 m, mires adonde mires; además te huelen a 45 m aunque no te vean |
+| Ven | a 8 m, en un cono de 150° | a 40 m, en un cono de 200°, y te detectan 2,4 veces más deprisa |
+| Te huelen | no | a 45 m (la mitad si estás a cubierto): van hacia allí a buscarte |
 | Velocidad | 1,9 m/s (tú caminas a 2,2) | 3,9 m/s (corres a 6) |
-| Te olvidan | a los 2,5 s | a los 20 s |
+| Te olvidan | a los 4 s (y después te buscan 4,5 s) | a los 20 s |
 | Oyen un disparo | a 9 m | a 60 m |
 | Mordida | 12 de vida cada 1,15 s | 15 cada 0,85 s; muerden 3 a la vez como mucho |
 
+- **Sigilo** (ver abajo): no te detectan de golpe; sus ojos dicen lo que saben.
 - **En reposo comen**: más de la mitad están acuclillados sobre un cadáver, llevándose la carne
   a la boca; los que deambulan van a comer si encuentran uno cerca.
 - **Al detectarte** no echan a correr sin más: se quedan un momento parados (se levantan, si

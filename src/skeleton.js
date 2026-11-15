@@ -61,6 +61,29 @@ export function zombieGlow(k) {
   m.joint.emissive.setRGB(0.7 * k, 0.1 * k, 0.06 * k);
 }
 
+// Ojos de los zombis: dos luces en la cara que dicen lo que saben. Apagadas, no ha notado
+// nada; en ámbar, sospecha o busca; en rojo, ha detectado a su presa. Con un halo que se ve de
+// lejos y de noche. Los materiales se comparten entre todos.
+const eyeGeo = new THREE.SphereGeometry(HEAD_RADIUS * 0.17, 8, 6);
+const eyeMats = [
+  new THREE.MeshStandardMaterial({ color: 0x14170f, roughness: 0.5 }),
+  new THREE.MeshBasicMaterial({ color: 0xffb020, toneMapped: false }),
+  new THREE.MeshBasicMaterial({ color: 0xff2412, toneMapped: false }),
+];
+let haloMats = null;
+function eyeHalos() {
+  if (haloMats) return haloMats;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d'), grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,0.9)'); grd.addColorStop(0.3, 'rgba(255,255,255,0.3)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+  const map = new THREE.CanvasTexture(c);
+  const halo = (color) => new THREE.SpriteMaterial({ map, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false });
+  return haloMats = [null, halo(0xffa51e), halo(0xff2a14)];
+}
+export const EYES = { tamaño: [0, 0.3, 0.46] }; // ancho del halo en cada estado (m)
+
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
@@ -108,6 +131,20 @@ export class SkeletonView {
         face.add(new THREE.LineSegments(headEdges, edgeMat));
         this.group.add(face);
         this.face = { bone: o, mesh: face, rest: null };
+        if (kind === 'zombie') {
+          // Los ojos van en la cara (se van con la cabeza si se la arrancan).
+          const eyes = [-1, 1].map((sx) => {
+            const eye = new THREE.Mesh(eyeGeo, eyeMats[0]);
+            eye.position.set(sx * 0.34 * HEAD_RADIUS, 0.14 * HEAD_RADIUS, 0.84 * HEAD_RADIUS);
+            face.add(eye);
+            return eye;
+          });
+          const halo = new THREE.Sprite(eyeHalos()[1]);
+          halo.position.set(0, 0.14 * HEAD_RADIUS, 0.95 * HEAD_RADIUS);
+          halo.visible = false;
+          face.add(halo);
+          this.eyes = { level: 0, eyes, halo };
+        }
       }
       if (o.parent?.isBone && !SKIP.test(o.parent.name)) addLink(o.parent, o);
     }
@@ -131,6 +168,19 @@ export class SkeletonView {
       const wrist = bones['Wrist' + side], tip = bones['Middle4' + side];
       if (wrist && tip) addLink(wrist, tip);
     }
+  }
+
+  /** Luces de los ojos: 0 apagadas, 1 ámbar, 2 rojo. `k` (0-1) regula el tamaño del halo en ámbar. */
+  setEyes(level, k = 1) {
+    const E = this.eyes;
+    if (!E) return;
+    if (level !== E.level) {
+      E.level = level;
+      for (const eye of E.eyes) eye.material = eyeMats[level];
+      E.halo.visible = level > 0;
+      if (level) E.halo.material = eyeHalos()[level];
+    }
+    if (level) E.halo.scale.setScalar(EYES.tamaño[level] * (level === 1 ? 0.6 + 0.4 * k : 1));
   }
 
   /**
