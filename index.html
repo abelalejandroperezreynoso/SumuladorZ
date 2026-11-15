@@ -37,6 +37,22 @@
       #hud-status .horde { background: rgba(150, 30, 30, 0.6); }
       #hud-status .auto { background: rgba(40, 110, 190, 0.6); }
       #hud-status .dusk { background: rgba(190, 95, 40, 0.65); }
+      /* --- Indicador de sigilo, a la izquierda de la vida: ojo cerrado (nadie sabe nada), ámbar con medidor (sospechan) o rojo (detectado) --- */
+      #stealth { position: fixed; left: calc(50% - 152px); top: calc(max(10px, env(safe-area-inset-top)) + 8px); width: 40px; pointer-events: none; opacity: 0.55; color: #cfd6de; filter: drop-shadow(0 1px 2px #000); }
+      #stealth svg { display: block; width: 40px; height: 24px; overflow: visible; }
+      #stealth .lid { fill: rgba(10, 14, 20, 0.6); stroke: currentColor; stroke-width: 2.4; display: none; }
+      #stealth .iris { fill: currentColor; display: none; }
+      #stealth .shut { fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
+      #stealth[data-level="1"], #stealth[data-level="2"] { opacity: 1; }
+      #stealth[data-level="1"] { color: #ffb020; }
+      #stealth[data-level="2"] { color: #ff3a2a; animation: stealth-pulse 0.5s ease-in-out infinite alternate; }
+      #stealth:not([data-level="0"]) .lid, #stealth:not([data-level="0"]) .iris { display: block; }
+      #stealth:not([data-level="0"]) .shut { display: none; }
+      #stealth i { display: block; height: 3px; margin-top: 3px; border-radius: 2px; background: rgba(10, 14, 20, 0.65); overflow: hidden; visibility: hidden; }
+      #stealth[data-level="1"] i { visibility: visible; }
+      #stealth u { display: block; height: 100%; background: #ffb020; transform-origin: left center; transform: scaleX(0); }
+      @keyframes stealth-pulse { from { transform: scale(1); } to { transform: scale(1.18); } }
+      body.in-menu #stealth { display: none !important; }
       /* --- Reloj del modo juego (src/daynight.js): arriba a la derecha; el arma se aparta a su izquierda --- */
       #clock { position: fixed; z-index: 5; right: max(10px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); width: 104px; text-align: center; pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
       #clock svg { display: block; width: 100%; height: auto; }
@@ -192,6 +208,10 @@
     <div id="hurt"></div>
     <button id="pause-btn" aria-label="Pausa y menú" hidden>❚❚</button>
     <div id="health"><div id="health-fill"></div></div>
+    <div id="stealth" data-level="0" aria-hidden="true">
+      <svg viewBox="0 0 48 28"><path class="lid" d="M3,14 Q24,-5 45,14 Q24,33 3,14 Z" /><circle class="iris" cx="24" cy="14" r="6.5" /><path class="shut" d="M5,13 Q24,25 43,13" /></svg>
+      <i><u id="stealth-fill"></u></i>
+    </div>
     <div id="hud-status"></div>
     <button id="weapon-btn" aria-label="Cambiar de arma">Sin arma</button>
     <div id="toast"></div>
@@ -251,6 +271,7 @@
           <div data-panel="info">
             <h2>Información</h2>
             <p>Juego 3D en tercera persona. En el <b>modo juego</b> sobrevives en una ciudad en cuarentena. El día y la noche duran 5 minutos cada uno (el reloj de arriba a la derecha lo marca): <b>de día</b> los zombis no atacan si no te acercas demasiado o les haces daño; <b>de noche</b> son muchos más, te huelen, corren y van a por ti. Cada día hay más. Los disparos hacen ruido y los atraen.</p>
+            <p><b>Sigilo</b>: los ojos de los zombis son luces. Apagados, no saben nada; en ámbar, sospechan o te buscan; en rojo, te han detectado. No te ven si estás <b>a cubierto</b> y fuera de su campo de visión; te ven antes si corres y te oyen los pasos al correr. El ojo junto a la vida resume cómo estás. Un golpe por la espalda a uno que no te ha visto lo mata.</p>
             <p>En tiendas y casas se entra <b>rompiendo el cristal</b> (un golpe o un balazo). En los <b>coches patrulla</b> hay pistola y balas: acércate a la puerta del conductor y sube. La ciudad no tiene muro, pero <b>si sales de ella</b> llega una horda que no te deja ir.</p>
             <p>La <b>simulación</b> es el mundo de pruebas de las mecánicas, con su horda por oleadas cada vez más numerosas.</p>
             <p>Empiezas sin armas. Pasa por encima de la <b>pistola</b>, del <b>bate</b> y de las <b>cajas de balas</b> para recogerlos; las cajas reaparecen al rato y los zombis a veces sueltan balas. Si mueres, las armas vuelven a su sitio.</p>

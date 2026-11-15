@@ -215,6 +215,26 @@ export const SCENES = [
       [6.0, (g) => g.horde.zombies[0]?.damage(5, g.player), 'Muere']],
     keepAlive: true },
 
+  { id: 'sigilo', group: 'enemigos', title: 'Sigilo: a cubierto no te ven; los ojos dicen lo que saben',
+    how: 'C para cubrirte; agachado tras un muro quedas fuera de su vista',
+    desc: `Los zombis no te detectan de golpe. Cada uno lleva un medidor que sube mientras te tiene en su campo de visión (un cono alrededor de adonde mira la cabeza, hasta ${n(Z.MOODS.dia.view)} m de día, ${n(Z.MOODS.normal.view)} m en la simulación y ${n(Z.MOODS.noche.view)} m de noche) sin nada que te tape: se comprueba la línea de visión a tu cabeza y a tu pecho, y si solo asoma una de las dos sube a la mitad. Tarda ${n(Z.SIGHT.lejos)} s en llenarse en el límite de su vista y ${n(Z.SIGHT.cerca)} s pegado a él (de noche, ${n(Z.MOODS.noche.spot)} veces más deprisa), y cuenta cuánto se te ve: agachado a cubierto, ×${n(T.STEALTH.agachado)}; tumbado, ×${n(T.STEALTH.tumbado)}; quieto, ×${n(T.STEALTH.quieto)}; corriendo, ×${n(T.STEALTH.corriendo)}; en carrera rápida, ×${n(T.STEALTH.rapido)}. Sus ojos lo cuentan: apagados si no sabe nada; en ámbar desde el ${n(Z.SIGHT.sospecha * 100, 0)} % (se para y vuelve la cara hacia ti); en rojo cuando se llena y corre a por ti. Si deja de verte, a los ${n(Z.SIGHT.espera)} s el medidor baja y vuelve a lo suyo. Te oyen: los pasos al correr (a ${n(T.STEALTH.pasos.corriendo)} m; en carrera rápida, ${n(T.STEALTH.pasos.rapido)} m; caminando, ${n(T.STEALTH.pasos.andando)} m; a cubierto, nada), un cristal roto y los disparos. Donde te pierden se quedan ${n(Z.SIGHT.busca)} s buscando, girando y barriendo con la cabeza. Un golpe a uno que aún no te ha detectado hace ${n(Z.SIGHT.sorpresa)} veces más daño: un puñetazo por la espalda lo mata. Arriba, junto a la vida, un ojo resume cómo estás: cerrado (nadie sabe nada), ámbar con su medidor (sospechan o buscan) o rojo (detectado).`,
+    place: [-2.8, -4.3, 0], seconds: 11, view: (s) => s.facing + 0.5, dist: 3.2,
+    before: (g) => {
+      g.horde.start();
+      for (let i = 0; i < 40; i++) g.tick(1 / 60);
+      g.horde.setMood(Z.MOODS.dia);
+      g.input.pressed.add('KeyC'); // se cubre tras el bloque bajo
+      for (let i = 0; i < 70; i++) g.tick(1 / 60);
+      const z = g.horde.zombies[0];
+      z.body.setTranslation({ x: -2.8, y: 0.9, z: -10 }, true);
+      z.body.setNextKinematicTranslation({ x: -2.8, y: 0.9, z: -10 });
+      z.state = 'wander'; z.memory = 0; z.aware = 0; z.found = false; z.facing = 0; z.wanderT = 30; z.target.set(-2.8, 0, -6.6); // viene despacio hacia el muro
+      g.tick(1 / 60);
+    },
+    subject: (g) => g.horde.zombies[0],
+    steps: [[0, null, 'A cubierto: se acerca sin verte (ojos apagados)'], [5.5, press('KeyC'), 'Te levantas'], [6.3, null, 'Sospecha: ojos en ámbar, vuelve la cara'], [8, null, 'Detectado: ojos en rojo, corre']],
+    keepAlive: true },
+
   { id: 'zombi_come', group: 'enemigos', title: 'Zombi en reposo: come, te detecta y vuelve la cara',
     how: 'Modo juego: los zombis que no persiguen a nadie',
     desc: `En reposo, muchos zombis del modo juego están acuclillados comiendo de un cadáver (el ${n(Z.FEED.probabilidad[0] * 100, 0)} % aparece así de día y el ${n(Z.FEED.probabilidad[1] * 100, 0)} % de noche; los demás deambulan y, si encuentran uno a menos de ${n(Z.FEED.cerca)} m, van a comer; caben ${Z.FEED.comensales} por cadáver). La postura va por código: la cadera baja ${n(Z.FEED.baja)} m con los pies en el suelo, el tronco se vuelca sobre la carne, las manos van de ella a la boca por turnos y la cabeza da tirones. Al detectarte no echa a correr sin más: primero se queda ${n(Z.NOTICE)} s parado (${n(Z.NOTICE_FEED)} s si comía, porque se levanta) volviendo la cara hacia ti, hasta ${n(Z.LOOK_MAX)} rad respecto al cuerpo, y después te persigue. Eso vale para cualquier zombi, también en la simulación.`,
@@ -239,7 +259,7 @@ export const SCENES = [
 
   { id: 'zombi_dia', group: 'enemigos', title: 'Modo juego, de día: manso hasta que te acercas',
     how: 'Modo juego (la ciudad), mientras el reloj marca día o atardecer',
-    desc: `De día los zombis no buscan pelea: deambulan a ${n(Z.MOODS.dia.wander)} m/s sin ir hacia ti y no oyen un disparo a más de ${n(Z.MOODS.dia.noise)} m. Solo te notan si te acercas a menos de ${n(Z.MOODS.dia.view)} m por delante (o ${n(Z.MOODS.dia.sense)} m por la espalda). Entonces, tras volver la cara hacia ti (${n(Z.NOTICE)} s), te siguen a ${n(Z.MOODS.dia.chase)} m/s, más despacio que tu paso (${n(T.WALK_SPEED)} m/s), y te olvidan ${n(Z.MOODS.dia.memory)} s después de perderte. Si le haces daño a uno, ese se comporta como un zombi normal durante ${n(Z.PROVOKED)} s. El día dura ${n(DAY.CYCLE.dia / 60)} minutos; el último tramo (${n(DAY.CYCLE.atardecer)} s) es el atardecer.`,
+    desc: `De día los zombis no buscan pelea: deambulan a ${n(Z.MOODS.dia.wander)} m/s sin ir hacia ti y no oyen un disparo a más de ${n(Z.MOODS.dia.noise)} m. Solo ven a ${n(Z.MOODS.dia.view)} m por delante, y tardan en fijarse (ver «Sigilo»): caminando hacia uno te detecta a unos 4 m; por la espalda, solo si casi lo tocas. Entonces, tras volver la cara hacia ti (${n(Z.NOTICE)} s), te siguen a ${n(Z.MOODS.dia.chase)} m/s, más despacio que tu paso (${n(T.WALK_SPEED)} m/s), y te olvidan ${n(Z.MOODS.dia.memory)} s después de perderte. Si le haces daño a uno, ese se comporta como un zombi normal durante ${n(Z.PROVOKED)} s. El día dura ${n(DAY.CYCLE.dia / 60)} minutos; el último tramo (${n(DAY.CYCLE.atardecer)} s) es el atardecer.`,
     place: [20, 30, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2, dist: 4.2,
     before: (g) => {
       g.horde.start();
@@ -252,12 +272,12 @@ export const SCENES = [
       g.tick(1 / 60);
     },
     subject: (g) => g.horde.zombies[0],
-    steps: [[0, null, 'Deambula sin hacerte caso'], [1.5, key('KeyW'), 'Te acercas caminando'], [3.6, key('KeyW', false), `A ${n(Z.MOODS.dia.view)} m te nota`], [5.6, null, 'Muerde']],
+    steps: [[0, null, 'Deambula sin hacerte caso'], [1.5, key('KeyW'), 'Te acercas caminando'], [3.6, key('KeyW', false), 'Te ha visto: vuelve la cara'], [5.6, null, 'Muerde']],
     keepAlive: true },
 
   { id: 'zombi_noche', group: 'enemigos', title: 'Modo juego, de noche: van a por ti',
     how: 'Modo juego (la ciudad), cuando el reloj entra en la noche',
-    desc: `De noche hay bastantes más zombis y son muy agresivos: te ven a ${n(Z.MOODS.noche.view)} m mires adonde mires, cada ${n(Z.SCENT_EVERY)} s te huelen todos los que estén a menos de ${n(Z.MOODS.noche.scent)} m aunque haya edificios de por medio, oyen un disparo a ${n(Z.MOODS.noche.noise)} m y te recuerdan ${n(Z.MOODS.noche.memory)} s. Corren a ${n(Z.MOODS.noche.chase)} m/s (de día, ${n(Z.MOODS.dia.chase)}; tú caminas a ${n(T.WALK_SPEED)} y corres a ${n(T.RUN_SPEED)}) y cada mordida dura ${n(Z.MOODS.noche.attack)} s y quita ${n(Z.MOODS.noche.bite)} de vida. Como mucho ${Z.MOODS.noche.gang} muerden a la vez: los demás empujan alrededor. Brillan en rojo para que se les vea venir. La noche dura ${n(DAY.CYCLE.noche / 60)} minutos; al amanecer se amansan y olvidan lo que perseguían.`,
+    desc: `De noche hay bastantes más zombis y son muy agresivos: ven a ${n(Z.MOODS.noche.view)} m en un campo de visión muy ancho y te detectan ${n(Z.MOODS.noche.spot)} veces más deprisa, y cada ${n(Z.SCENT_EVERY)} s te huelen todos los que estén a menos de ${n(Z.MOODS.noche.scent)} m (la mitad si estás a cubierto) aunque haya edificios de por medio: el rastro no les da tu sitio exacto, pero van hacia allí a buscarte, oyen un disparo a ${n(Z.MOODS.noche.noise)} m y te recuerdan ${n(Z.MOODS.noche.memory)} s. Corren a ${n(Z.MOODS.noche.chase)} m/s (de día, ${n(Z.MOODS.dia.chase)}; tú caminas a ${n(T.WALK_SPEED)} y corres a ${n(T.RUN_SPEED)}) y cada mordida dura ${n(Z.MOODS.noche.attack)} s y quita ${n(Z.MOODS.noche.bite)} de vida. Como mucho ${Z.MOODS.noche.gang} muerden a la vez: los demás empujan alrededor. Brillan en rojo para que se les vea venir. La noche dura ${n(DAY.CYCLE.noche / 60)} minutos; al amanecer se amansan y olvidan lo que perseguían.`,
     place: [20, 26, 0], seconds: 9, view: (s) => s.facing + Math.PI / 2, dist: 4.2,
     before: (g) => {
       g.horde.start();

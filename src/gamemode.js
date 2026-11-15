@@ -21,6 +21,7 @@ export const GAME = {
   // siguen furiosos `furia` s.
   limite: { base: 30, porMetro: 1.2, tope: 56, cada: 0.1, min: 10, max: 26, far: 85, vuelta: 5, furia: 20 },
   balas: 120, // segundos hasta que una caja de balas del escenario reaparece
+  cristal: 14, // a esta distancia se oye romperse un cristal (m): los zombis van a mirar
   // Linterna del jugador: se enciende sola al oscurecer y alumbra hacia donde mira la cámara.
   linterna: { fuerza: 85, alcance: 34, angulo: 0.6, borde: 0.6 },
 };
@@ -53,6 +54,7 @@ export class GameMode {
     this.torch.visible = true;
     horde.bounds = city.bounds;
     horde.buildings = city.interiors;
+    city.glass.onBreak = (pane) => horde.sound({ x: pane.x, y: pane.y0, z: pane.z }, GAME.cristal, 0.7);
     player.spawn = { x: city.spawn.x, y: CITY.bordillo + 0.06, z: city.spawn.z };
     pickups.layout = city.pickups;
     pickups.respawn = GAME.balas;

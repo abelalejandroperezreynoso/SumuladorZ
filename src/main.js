@@ -84,7 +84,8 @@ async function start() {
   combat.horde = horde;
   horde.house = house;
   horde.onWave = (n) => showToast(`Oleada ${n}`);
-  let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '', aimShown = false, useShown = false;
+  let shotsHeard = 0, hudKey = '', sprintShown = false, weaponKey = '', aimShown = false, useShown = false, stealthKey = '';
+  const stealthEl = document.getElementById('stealth'), stealthFill = document.getElementById('stealth-fill');
   const weaponBtn = document.getElementById('weapon-btn');
   // Tocar (o pulsar) el arma de la esquina cambia a la siguiente.
   weaponBtn.addEventListener('touchstart', (e) => {
@@ -276,6 +277,14 @@ async function start() {
       document.body.classList.toggle('no-gun', !gun);
       if (fireBtn) fireBtn.textContent = gun ? 'Disparo' : player.weapon === 'bate' ? 'Batazo' : 'Puño';
       if (!gun) input.aimToggle = false;
+    }
+    // Indicador de sigilo: ojo cerrado si nadie sabe nada, ámbar con su medidor si alguno
+    // sospecha o busca, rojo si te han detectado.
+    const st = horde.awareness(player), stKey = `${st.level}|${Math.round(st.k * 20)}`;
+    if (stKey !== stealthKey) {
+      stealthKey = stKey;
+      stealthEl.dataset.level = st.level;
+      stealthFill.style.transform = `scaleX(${st.level === 1 ? st.k : 0})`;
     }
     healthFill.style.transform = `scaleX(${player.healthFraction})`;
     hurt.style.opacity = Math.max(0, 0.75 - player.hurtT * 0.9) * (player.healthFraction < 1 ? 1 : 0);

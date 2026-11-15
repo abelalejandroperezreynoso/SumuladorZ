@@ -5,8 +5,11 @@
 // Guarda una vista aérea y, de cada lugar de VIEWS, una foto de día, al atardecer y de noche
 // (con el reloj y la interfaz). Imprime lo que pesa la ciudad (triángulos, bloques de choque,
 // farolas, llamadas de dibujo) y cuatro medidas del juego:
-//   de frente / por la espalda  distancia a la que un zombi te nota de día (m)
-//   lo deja                     segundos que tarda en olvidarte si te alejas caminando
+//   de frente / por la espalda  de día, caminando hacia un zombi: a qué distancia sospecha (ojos
+//                               en ámbar) y a cuál te detecta (ojos en rojo), en metros
+//   lo deja                     segundos que tarda en dejar de buscarte si te alejas caminando
+//   a cubierto                  agachado tras los sacos de la plaza con un zombi mirando a 5 m:
+//                               cuánto sube su medidor (0 = no te ve) y qué pasa al levantarte
 //   noche, quieto               segundos hasta el primer mordisco y hasta morir en la plaza
 // Requiere Playwright con Chromium disponible en el entorno.
 const { chromium } = require('playwright');
@@ -94,22 +97,42 @@ const HOURS = [['dia', 120], ['atardecer', 285], ['noche', 420]];
     const approach = (z, facing) => {
       P.health = 100; window.__put(P.body, sx, sz);
       z.leaveFeed(); z.state = 'wander'; z.memory = 0; z.rage = 0; z.feedK = 0; window.__put(z.body, sx, sz - 16); run(0.3);
-      let react = null;
+      z.aware = 0;
+      let sus = null, det = null;
       run(12, () => {
         z.wanderT = 60;
         if (z.state === 'wander') { z.target.copy(z.position); z.facing = facing; }
-        if (react !== null) return still();
+        const d = +z.position.distanceTo(P.position).toFixed(2);
+        if (sus === null && z.eyes === 1) sus = d;
+        if (det === null && z.eyes === 2) det = d;
+        if (det !== null || d < 1.2) return still();
         g.autopilot.moveWorld(0, -1, false);
-        if (z.state !== 'wander') react = +z.position.distanceTo(P.position).toFixed(2);
       });
-      return react;
+      return { sospecha_m: sus, detecta_m: det };
     };
-    out.dia_de_frente_m = approach(H.zombies[0], 0);
+    out.dia_de_frente = approach(H.zombies[0], 0);
     let t = 0, lost = null;
-    run(16, () => { t += dt; g.autopilot.moveWorld(0, 1, false); if (lost === null && H.zombies[0].state === 'wander') lost = +t.toFixed(1); });
+    run(50, () => { t += dt; g.autopilot.moveWorld(0, 1, false); if (lost === null && H.zombies[0].state === 'wander') lost = +t.toFixed(1); });
     out.dia_lo_deja_s = lost;
-    out.dia_por_la_espalda_m = approach(H.zombies[1], Math.PI);
+    out.dia_por_la_espalda = approach(H.zombies[1], Math.PI);
     still();
+    // A cubierto tras los sacos terreros de la plaza, con un zombi mirando desde 5 m.
+    {
+      const z = H.zombies[0];
+      z.state = 'wander'; z.memory = 0; z.rage = 0;
+      window.__put(P.body, 4.5, 15.5); g.cam.yaw = 0; run(0.3);
+      g.input.pressed.add('KeyC'); run(1.2);
+      window.__put(z.body, 4.5, 9.5); run(0.2); z.aware = 0;
+      const hold = () => { z.wanderT = 60; if (z.state === 'wander') { z.target.copy(z.position); z.facing = 0; } };
+      let peak = 0;
+      run(6, () => { hold(); peak = Math.max(peak, z.aware); });
+      const hidden = { a_cubierto: !!P.cover?.attached, medidor_max: +peak.toFixed(2), ojos: z.eyes };
+      g.input.pressed.add('KeyC'); // se levanta
+      let det = null;
+      t = 0;
+      run(8, () => { hold(); t += dt; if (det === null && z.eyes === 2) det = +t.toFixed(1); });
+      out.dia_a_cubierto = { ...hidden, al_levantarse_lo_detecta_s: det };
+    }
     // De noche, quieto en la plaza.
     g.gameMode.restart(true);
     g.gameMode.civT = 1e9;

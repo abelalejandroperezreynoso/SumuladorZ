@@ -115,6 +115,19 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
     **La densidad crece con los días** (pedido): `GAME.dia`/`noche` en `src/gamemode.js`
     (`base` + `crece` por día, hasta `tope`), `GameMode.population`. `GameMode` (`g.gameMode`)
     cambia todo eso con las fases del reloj, lleva la linterna y reinicia la partida al morir.
+  - **Vista y sigilo** (pedido: luces en los ojos que se encienden al detectarte; a cubierto
+    y fuera de su campo de visión no te detectan): `SIGHT` en `src/horde.js`. `Zombie.sight`
+    da cuánto ve (0, 0,5 o 1: cono `cos` de `facing + look`, alcance `view`, rayos a la cabeza
+    y al pecho) y llena el medidor `aware` según la distancia, `MOODS.spot` y
+    `Player.exposure` (`STEALTH` en `src/player.js`: postura y movimiento). Desde `sospecha`
+    pasa a `notice` (parado, vuelve la cara); lleno (`found`), a `chase`; si baja de `calma`,
+    vuelve a lo suyo (`resume`). `touch` es el radio en que nota de espaldas. `hear(point,
+    amount)` lo llena a golpes: pasos (`Player.noise`, `Horde.sound` cada `SIGHT.cada` s),
+    cristales (`Glass.onBreak`), el olor de noche (con error `SIGHT.olor`) y los disparos
+    (`alert`, del todo). Al perder a su presa: estado `search` (`busca` s). `z.eyes` (0, 1
+    ámbar, 2 rojo) y `SkeletonView.setEyes` (dos esferas y un halo en la cara, materiales
+    compartidos). `Horde.awareness` alimenta el ojo de pantalla (`#stealth`). Un golpe a uno
+    con `eyes < 2` hace `SIGHT.sorpresa` veces más daño. Escena `sigilo`.
   - **Reposo y alerta** (pedido: en reposo comen carne en el suelo; al detectarte primero
     vuelven la cara y después corren): estado `feed` (acuclillado junto a un cadáver de
     `horde.carcasses`: `FEED`, `poseFeed`, piernas con `Gait.place`) y estado `notice`
@@ -125,7 +138,7 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
     una persona con 1–3 zombis detrás (`z.prey`, carácter `caza`); cuando se cansa (`CIVIL`)
     la alcanzan, cae como muñeco de trapo y los cazadores comen de su cadáver. `GAME.civiles`
     fija los días y la frecuencia. Las balas no les afectan.
-  - Escenas `zombi_come`, `zombi_dia` y `zombi_noche`.
+  - Escenas `sigilo`, `zombi_come`, `zombi_dia` y `zombi_noche`.
 - **Piloto automático** — tecla `P` en el juego (`src/autopilot.js`). Su registro está en
   `window.__game.autopilot.log` y `.stats`. Busca cobertura de forma activa y va rotando
   entre alta, baja y muy baja (`stats.coverTypes`). La escena `piloto` de `tools/watch.cjs`
@@ -260,9 +273,11 @@ la cabeza) llegan igual de lejos: `stand` a la oleada 15 en 2 min sin morir; fal
 Desde entonces: se empieza sin armas y la munición es limitada (pistola, bate y cajas de balas
 que se recogen); `gameplay.cjs` aún no mide cómo cambia eso la dificultad.
 
-Modo juego (ciudad, día y noche): medido con `tools/city.cjs`, de día un zombi te nota a 4,4 m
-de frente y 2,1 m por la espalda y te deja a los ~11 s de alejarte caminando; de noche, quieto
-en la plaza, el primer mordisco llega a los ~10 s y la muerte a los ~12 s. Al salir del límite
+Modo juego (ciudad, día y noche): medido con `tools/city.cjs`, de día, caminando de frente
+hacia un zombi, sospecha a 7,6 m y te detecta a 3,9 m; por la espalda, a 1,3 m; agachado tras
+los sacos de la plaza con uno mirando a 5 m, su medidor se queda en 0 y al levantarte te
+detecta a los ~5 s. De noche, quieto en la plaza, el primer mordisco llega a los ~9 s y la
+muerte a los ~11 s. Al salir del límite
 corriendo, primer mordisco a los ~4 s y muerte a los ~11 s (llega a alejarse unos 80 m: hasta
 el tope). La ciudad pesa ~420 000 triángulos, ~5600 bloques de choque, 141 interiores y 492
 cristales, y se construye en ~0,4 s. Sin medir: una partida de varios días con un jugador

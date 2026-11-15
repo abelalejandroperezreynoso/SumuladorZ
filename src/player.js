@@ -25,6 +25,9 @@ const MAX_TURN = 13; // velocidad máxima de giro del cuerpo (rad/s)
 const AIM_TURN = 24; // al apuntar gira más rápido, pero sin latigazo (rad/s)
 const STATE_DWELL = 0.12; // tiempo mínimo en una animación de locomoción antes de cambiar (s)
 const SPRINT_SPEED = 8.0; // carrera rápida: no permite disparar, pero sí saltar
+// Sigilo: cuánto se le ve según la postura y el movimiento (1 = de pie y caminando) y a qué
+// distancia se oyen sus pasos (m). Lo usan los zombis para detectarlo (SIGHT en horde.js).
+const STEALTH = { agachado: 0.5, tumbado: 0.3, quieto: 0.7, corriendo: 1.5, rapido: 1.8, pasos: { andando: 1.6, corriendo: 7, rapido: 11 } };
 const SPRINT_STOP_TIME = 0.2; // tiempo sin moverse que cancela la carrera rápida (s)
 // Salto con medidas humanas: gravedad real y un despegue de ~3,3 m/s, que eleva el cuerpo
 // ~0,55 m parado y ~0,65 m en carrera (unos 4 m de longitud corriendo a 6 m/s).
@@ -357,7 +360,7 @@ export const TUNING = {
   SPRINT_CROUCH_TIME, LAND_TIME, LAND_SLOWDOWN, PUNCH_TIME, PUNCH_HIT, LOW_RANGE, SLAM_BODY, VAULT, SWING_TIME, SWING_LOAD, SWING_STRIKE, SWING_HIT, MELEE, MAX_AMMO, FIRE_INTERVAL, AIM_HOLD, RECOIL_KICK,
   COVER_RANGE, COVER_SLIDE_SPEED, COVER_ARRIVE, COVER_SPEED, COVER_CROUCH_SPEED, COVER_CROUCH, CROUCH_DEPTH, PEEK_REACH, PEEK_LEAN, COVER_STEP, PEEK_HOLD, PEEK_LOOK,
   PRONE_SPEED, CRAWL_STEP, STRIDE_CROUCHED, MAX_HEALTH, REGEN_DELAY, REGEN_RATE, AIM_HOLD, AIM_HOLD_COVER,
-  HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG,
+  HIP_SPREAD, BLIND_SPREAD, BLIND_HOLD, LIMIT_RANGE, COVER_HUG, STEALTH,
 };
 
 function dampAngle(a, b, lambda, dt) {
@@ -1115,6 +1118,23 @@ export class Player {
 
   get speed() {
     return Math.hypot(this.velocity.x, this.velocity.z);
+  }
+
+  /**
+   * Cuánto se le ve: multiplica la rapidez con que un zombi lo detecta (ver SIGHT en horde.js).
+   * Agachado a cubierto o tumbado, mucho menos; quieto, algo menos; corriendo, más.
+   */
+  get exposure() {
+    const S = STEALTH, v = this.speed;
+    const low = Math.max(this.coverCrouch * (1 - S.agachado), this.prone * (1 - S.tumbado), this.rideK * 0.8);
+    return (1 - low) * (this.sprinting ? S.rapido : v > 4 ? S.corriendo : v > 0.5 ? 1 : S.quieto);
+  }
+
+  /** A qué distancia se oyen sus pasos (m): nada a cubierto, tumbado o quieto. */
+  get noise() {
+    const S = STEALTH, v = this.speed;
+    if (this.cover?.attached || this.prone > 0.5 || this.ride || !this.grounded) return 0;
+    return this.sprinting ? S.pasos.rapido : v > 4 ? S.pasos.corriendo : v > 1 ? S.pasos.andando : 0;
   }
 
   /** Antes del paso de física: entrada → movimiento y acciones. */
