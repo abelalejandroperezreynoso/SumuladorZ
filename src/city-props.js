@@ -10,7 +10,7 @@ const GREENS = [0x4f7a3a, 0x3d6230, 0x5c8a3c, 0x47703a, 0x6a8f45];
 export const CAR_COLORS = [0xc8322b, 0x2a4d8f, 0xe8e8e4, 0x1c1c1f, 0x8a8f96, 0x3d6b4a, 0xd6a21e, 0x6b2f2f, 0x4f7fa8, 0xb9b3a4];
 
 /** Farola de brazo: poste en (x, z) y la luz `reach` m hacia +Z local. Anota la luz como `lamp`. */
-export function lamp(G, x, z, rot = 0, h = 6.2, reach = 1.5) {
+export function lamp(G, x, z, rot = 0, h = 6.2, reach = 1.5, pool = true) {
   const { b, M } = G;
   b.push(x, z, rot);
   b.box(M.plain, 0, 0, 0, 0.3, 0.6, 0.3, { color: DARK });
@@ -19,7 +19,7 @@ export function lamp(G, x, z, rot = 0, h = 6.2, reach = 1.5) {
   b.box(M.plain, 0, h - 0.1, reach / 2, 0.09, 0.09, reach + 0.2, { color: 0x3a4046 });
   b.box(M.plain, 0, h - 0.2, reach, 0.36, 0.14, 0.78, { color: DARK });
   b.box(M.lamp, 0, h - 0.25, reach, 0.28, 0.05, 0.66, { bottom: true, top: false });
-  b.hquad(M.pool, 0, 0.03, reach, 12, 12, { rect: [0, 0, 1, 1] });
+  if (pool) b.hquad(M.pool, 0, 0.03, reach, 12, 12, { rect: [0, 0, 1, 1] }); // (en cuesta lo tiende quien la pone)
   b.mark('lamp', 0, h - 0.5, reach);
   b.pop();
 }

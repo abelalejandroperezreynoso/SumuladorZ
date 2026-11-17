@@ -59,29 +59,53 @@ No se puede ver vídeo; se usan estas herramientas. Todas necesitan el servidor
   anteriores; en una partida real se empieza sin armas y las balas se recogen (`src/pickups.js`).
   Apuntar (botón 2) y disparar (botón 0) son mandos separados: el piloto y `gameplay.cjs`
   pulsan los dos para disparar apuntando; solo el 0 es disparo sin apuntar (a ciegas a cubierto).
-- **Modo juego** — `node tools/city.cjs <carpeta>` fotografía la ciudad (aérea y ocho lugares, de
-  día, al atardecer y de noche), dice lo que pesa y mide el carácter de los zombis (distancia a
-  la que te notan de día, segundos hasta el primer mordisco y la muerte de noche, quieto).
+- **Modo juego** — `node tools/city.cjs <carpeta>` fotografía la ciudad (aérea y doce lugares, de
+  día, al atardecer y de noche), dice lo que pesa, mide el relieve (lo que sube la cuesta y su
+  pendiente, si se cruzan los puentes, la pasarela y el río, y si un zombi te sigue por ellos) y
+  el carácter de los zombis (distancia a la que te notan de día, segundos hasta el primer
+  mordisco y la muerte de noche, quieto). `FOTOS=0` deja solo las medidas.
   Para probar a mano: `g.sky.time = <segundo del ciclo>` (0 amanece, 300 anochece),
   `g.gameMode.restart()`.
-  - **Ciudad**: `City` (`src/city.js`) reparte en el centro 5 × 5 manzanas según `LAYOUT`; cada
+  - **Ciudad** (el usuario pidió reducirla y, a cambio, más detalle en los edificios, calles
+    con pendiente y puentes): `City` (`src/city.js`) reparte en el centro, llano, 3 × 3 manzanas según `LAYOUT`; cada
     tipo es una función de `BLOCKS` (`src/city-blocks.js`) que llena un solar de 40 × 40 m
     mirando a +Z. Todo se dibuja con `Batch` (`src/city-build.js`: `box`, `prism`, `wedge`,
     `cyl`, `blob`, `hquad`, `vquad`, `strip` dentro de marcos `push`/`pop`), que escribe una
     malla por material y lote; `solid: true` añade el bloque de choque. Mobiliario y vehículos,
     en `src/city-props.js`; texturas y materiales (fachadas en rejilla de 4 × 4 ventanas, con su
     textura de luces para la noche), en `src/city-textures.js`. Los generadores anotan puntos
-    con `b.mark` (`lamp`, `balas`, `pistola`, `bate`, `spawn`, `patrulla`). El azar parte de
-    semillas fijas: la ciudad sale siempre igual.
+    con `b.mark` (`lamp`, `balas`, `pistola`, `bate`, `spawn`, `patrulla`, `subida`). El azar parte de
+    semillas fijas: la ciudad sale siempre igual. El relieve de las fachadas son piezas pequeñas
+    de `src/city-blocks.js` (`sill`, `acUnit`, `pipe`, `sconce`, `dish`, `stack`, `trimBlock`;
+    `WINDOWS` dice dónde cae la ventana pintada en cada celda de textura): al añadir un edificio, usarlas.
+  - **Relieve** (`src/city-terrain.js`, `city.terrain`, `TERRAIN`): rejilla de alturas cada 4 m,
+    en coordenadas respecto al centro; el centro es llano (y = 0, con su losa) y fuera hay un
+    cerro al este, el cauce del río al sur y lomas en el campo. De la rejilla salen la malla de
+    hierba y el choque del suelo (una malla de triángulos); `terrain.at(x, z)` y
+    `city.groundAt(x, z)` (mundo) dan la altura. Los edificios van siempre en llano: cada solar
+    pide su explanada con `terrain.pad` (aplana la rejilla; null si hay demasiada pendiente, y
+    ahí no se construye), todo antes de `bake()`. Las calles se ciñen al suelo con
+    `Batch.strip(…, { drape })` y lo que se deja en el suelo va con `put(G, x, z, giro, fn)`.
+    `Batch.slab` hace losas inclinadas que chocan (tableros, rampas, barandillas, diagonales).
+    Los zombis aparecen a la altura del suelo (`horde.ground`, `Horde.floor`).
+  - **Puentes** (`src/city-bridges.js`, `BRIDGES`): `archBridge` (piedra, tres arcos, tablero en
+    lomo), `trussBridge` (hierro, llano) y `footbridge` (pasarela sobre la vía con escaleras:
+    los peldaños se dibujan y choca una rampa invisible). Cada escalera anota una marca `subida`
+    (`city.climbs`, `horde.climbs`): con la presa a más de `CLIMB` m por encima, `Horde.route`
+    manda al zombi al pie de la escalera y luego arriba (sin eso se quedaba debajo).
   - **Afueras** (el usuario pidió calles que no sean todas rectas, callejones y zonas
     residenciales e industriales): `src/city-outskirts.js`. Cada calle es una curva
     (`curve([[x, z]…])`, por los puntos que se le dan, respecto al centro de la ciudad);
     `street` tiende calzada, aceras, línea y farolas con `Batch.strip`, y `lots` reparte solares
-    a sus lados mirando a la calzada (`lined` hace las dos cosas por lotes de mallas). Este y
-    sur: casas (`house`); norte: `INDUSTRY` (naves, depósitos, contenedores, subestación) y la
-    vía con el tren; oeste: casco antiguo de callejuelas (`shopRow` y `apartments` estrechos,
-    tendederos). Fuera del centro el suelo es llano (sin bordillo).
-  - **Sin muro y con límite** (pedido por el usuario): `CITY.limite` (262 m), `city.limit`.
+    a sus lados mirando a la calzada (`plan` los reparte y pide sus explanadas; `lined` construye
+    calle y solares por lotes de mallas). Todas las calles se declaran antes con `road` (los
+    solares no pisan otra calle: `clash`). Este: el cerro, con la calle en cuesta (quitamiedos
+    donde la pendiente pasa de `STEEP`), casas arriba, la iglesia (`BLOCKS.iglesia`) y el
+    depósito; sur: el río (`riverPath`), sus dos puentes y casas (`house`) al otro lado; norte:
+    la vía con el tren, pasos a nivel, pasarela e `INDUSTRY` (naves, depósitos, contenedores,
+    subestación); oeste: casco antiguo de callejuelas (`shopRow` y `apartments` estrechos,
+    tendederos). Fuera del centro no hay bordillo.
+  - **Sin muro y con límite** (pedido por el usuario): `CITY.limite` (210 m), `city.limit`.
     `GameMode.border` vigila si el jugador lo cruza: `MOODS.horda` (8,8 m/s, más que la carrera
     rápida) y una población que crece con los metros de más (`GAME.limite`), por delante de él
     (`ambient.toward`, `seen`). Hay un tope invisible `CITY.tope` m más allá.
@@ -277,14 +301,19 @@ Modo juego (ciudad, día y noche): medido con `tools/city.cjs`, de día, caminan
 hacia un zombi, sospecha a 7,6 m y te detecta a 3,9 m; por la espalda, a 1,3 m; agachado tras
 los sacos de la plaza con uno mirando a 5 m, su medidor se queda en 0 y al levantarte te
 detecta a los ~5 s. De noche, quieto en la plaza, el primer mordisco llega a los ~9 s y la
-muerte a los ~11 s. Al salir del límite
-corriendo, primer mordisco a los ~4 s y muerte a los ~11 s (llega a alejarse unos 80 m: hasta
-el tope). La ciudad pesa ~420 000 triángulos, ~5600 bloques de choque, 141 interiores y 492
-cristales, y se construye en ~0,4 s. Sin medir: una partida de varios días con un jugador
-humano (el equilibrio de la noche, de la densidad creciente y de los refugios está ajustado
-solo con bots) y el rendimiento en un móvil real (cada zombi son ~45 llamadas de dibujo; con
-la población del tope o la horda del límite se pasa de 2000 por fotograma). Sin probar
-tampoco: por cómo se calcula la mordida (menos de 1,2 m de desnivel y 1,15 m de distancia),
-subido a algo alto (una furgoneta, un contenedor) los zombis no deberían alcanzarte, y dentro
-de una tienda con el cristal entero solo entran si te persiguen: las dos cosas pueden hacer la
-noche demasiado fácil.
+muerte a los ~11 s. Relieve: la calle del cerro sube 6 m con ~20 % de pendiente máxima; el
+puente de piedra tiene un lomo de 1,2 m (13 %); corriendo se cruzan los dos puentes, la
+pasarela (5,3 m, subiendo y bajando) y el río a pie (3 m de hondo); un zombi que te persigue
+cruza el río (primer mordisco a los ~17 s desde 42 m) y sube a la pasarela (~10 s). La ciudad
+pesa ~350 000 triángulos (antes ~420 000, con el triple de manzanas), ~3200 bloques de choque,
+71 interiores y 244 cristales, y se construye en ~0,4 s. Sin medir tras reducirla: la horda del
+límite (ahora a 210 m) y lo que tarda en alcanzarte. Sin medir: una partida de varios días con
+un jugador humano (el equilibrio de la noche, de la densidad creciente y de los refugios está
+ajustado solo con bots) y el rendimiento en un móvil real (cada zombi son ~45 llamadas de
+dibujo; desde el río o el cerro, con media ciudad a la vista, ya se pasa de 1500 por
+fotograma sin la horda). Sin probar tampoco: por cómo se calcula la mordida (menos de 1,2 m
+de desnivel y 1,15 m de distancia), subido a algo alto sin escalera (una furgoneta, un
+contenedor, el pretil de un puente) los zombis no deberían alcanzarte, y dentro de una tienda
+con el cristal entero solo entran si te persiguen: las dos cosas pueden hacer la noche
+demasiado fácil. Los pies no se adaptan a la pendiente (`gait.js` los clava en un plano
+horizontal a la altura del cuerpo): en la cuesta se hunden o flotan unos centímetros.

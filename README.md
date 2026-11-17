@@ -11,21 +11,30 @@ Tiene dos modos:
 
 ## Modo juego
 
-**La ciudad** (`src/city.js`) no tiene muro. En el centro hay una cuadrícula de 5 × 5 manzanas
-(302 m de lado), cada una de un tipo: torres de cristal, oficinas, pisos de ladrillo con
-balcones y escalera de incendios, hileras de tiendas, casas con jardín, una fábrica, almacenes,
-una obra con su grúa, la comisaría, un supermercado, una gasolinera, un hospital, una escuela,
-una iglesia con cementerio, un parque y la plaza central, donde se empieza junto a un puesto de
-control militar abandonado (ahí están la pistola y el bate). Alrededor están las afueras
-(`src/city-outskirts.js`), donde las calles van en curva:
+**La ciudad** (`src/city.js`) no tiene muro. Es compacta: en el centro, llano, hay una
+cuadrícula de 3 × 3 manzanas (186 m de lado), cada una de un tipo: una torre de cristal,
+oficinas, pisos con balcones, hileras de tiendas, la comisaría, un supermercado, una gasolinera,
+un hospital y la plaza central, donde se empieza junto a un puesto de control militar abandonado
+(ahí están la pistola y el bate). Alrededor están las afueras (`src/city-outskirts.js`), sobre un
+suelo con relieve (`src/city-terrain.js`) y con calles en curva:
 
-- **Este y sur, zonas residenciales**: urbanizaciones de casas con jardín a lo largo de una
-  media luna y de una avenida que serpentea, con un estanque, un campo de fútbol y la carretera
-  de salida, atascada de coches y cortada por un control abandonado.
-- **Norte, zona industrial**: naves, depósitos, patio de contenedores con grúa pórtico,
-  subestación eléctrica, chimeneas y la vía del tren con un mercancías parado.
+- **Este, el cerro**: una calle sube en cuesta (unos 6 m, con pendiente de hasta el ~20 %, con
+  quitamiedos y un mirador), recorre lo alto entre casas con jardín y vuelve a bajar. Arriba
+  están la iglesia con su cementerio y el depósito de agua.
+- **Sur, el río**: un cauce de 3 m de hondo con poca agua (se vadea, y se pasa por debajo de los
+  puentes) y dos puentes: uno de piedra de tres arcos con el tablero en lomo y uno de hierro en
+  celosía. Al otro lado, una urbanización y la carretera de salida, atascada de coches y cortada
+  por un control abandonado.
+- **Norte, la vía y la zona industrial**: la vía del tren con un mercancías parado, dos pasos a
+  nivel y una pasarela peatonal de acero con escaleras (los zombis también las suben); detrás,
+  naves, depósitos, patio de contenedores con grúa pórtico, subestación y chimeneas.
 - **Oeste, casco antiguo**: callejuelas estrechas de adoquín entre casas de pisos y tiendas,
   con tendederos de lado a lado, contenedores y una plazuela con puestos de mercado.
+
+Los edificios tienen relieve en las fachadas: alféizares y jardineras, bajantes, aparatos de
+aire, ropa y toldos en los balcones, aletas y antepechos en las torres, pilastras entre los
+escaparates, banderolas, contraventanas, canalones y buhardillas en las casas, y apliques que se
+encienden de noche.
 
 En las calles hay farolas, semáforos, coches, autobuses, barricadas, un helicóptero estrellado,
 alcantarillas y manchas. Todo choca y sirve de cobertura; coches, barreras y vallas se pasan
@@ -69,7 +78,7 @@ en la plaza, en cortes de calle y en el control de la salida). Junto a la puerta
 aparece el aviso: con `E` (cruceta abajo en el mando, botón «Coche» en táctil) subes, lo
 registras y bajas con una pistola y entre 14 y 22 balas. Cada coche da su botín una vez.
 
-**El límite**: a 262 m del centro la ciudad se acaba, sin nada que lo marque. Si lo cruzas,
+**El límite**: a 210 m del centro la ciudad se acaba, sin nada que lo marque. Si lo cruzas,
 llega una horda por el lado hacia el que huyes: zombis más rápidos que tu carrera rápida y sin
 tope de mordidas, más cuanto más te alejas. Al volver dentro se calman.
 
@@ -382,7 +391,8 @@ Las tres necesitan Playwright con Chromium instalado en el entorno; no son depen
 | `src/physics.js` | Mundo de Rapier, creación de cuerpos y sincronización con las mallas |
 | `src/world.js` | Construcción del escenario de pruebas |
 | `src/city.js` | Ciudad del modo juego: trazado del centro, calles, límite y luces de las farolas |
-| `src/city-outskirts.js` | Afueras: calles en curva, urbanizaciones, zona industrial y casco antiguo |
+| `src/city-outskirts.js` | Afueras: calles en curva sobre el relieve, cerro, río, vía, zona industrial y casco antiguo |
+| `src/city-terrain.js`, `src/city-bridges.js` | Relieve (rejilla de alturas, explanadas de los solares, suelo); puentes y pasarela |
 | `src/interior.js`, `src/patrol.js` | Edificios en los que se entra y sus cristales; coches patrulla |
 | `src/city-blocks.js`, `src/city-props.js` | Edificios de cada tipo de manzana; mobiliario urbano y vehículos |
 | `src/city-build.js`, `src/city-textures.js` | Geometría agrupada por material; texturas pintadas en lienzo |

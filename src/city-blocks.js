@@ -1,5 +1,5 @@
 import { mix } from './city-build.js';
-import { room } from './interior.js';
+import { room, INTERIOR } from './interior.js';
 import {
   pick, rr, lamp, post, tree, pine, bush, bench, bin, planter, barrier, sandbags, dumpster, crate, barrel, cone,
   chainFence, wallLine, picket, car, container, silo,
@@ -25,6 +25,53 @@ const SHUTTER = cell(0, 1), GLASS_DOOR = cell(1, 1), VENT = cell(2, 1), STAINED 
 const WARNING = cell(1, 2), CROSS = cell(2, 2), BOARD = cell(3, 2);
 export const DETAIL = { WARNING, SHUTTER };
 
+// --- Relieve de las fachadas: piezas pequeñas que se repiten en todos los edificios ---
+// Dónde cae la ventana pintada en cada celda de las texturas de fachada: [ancho, base] en
+// fracción de la celda (ver src/city-textures.js).
+const WINDOWS = { brick: [0.46, 0.24], plaster: [0.4, 0.26] };
+
+/** Aparato de aire acondicionado colgado de una fachada que mira a +Z (en `z`). */
+function acUnit(G, x, y, z) {
+  const { b, M } = G;
+  b.box(M.plain, x, y, z + 0.2, 0.78, 0.5, 0.36, { color: 0xd4d6d2, bottom: true });
+  b.vquad(M.details, x, y + 0.04, z + 0.385, 0.6, 0.42, { rect: VENT });
+}
+
+/** Bajante de pluviales pegada a la fachada, de la acera a la cornisa. */
+function pipe(G, x, z, h, color = 0x4a4f55) {
+  G.b.box(G.M.plain, x, 0, z, 0.1, h, 0.1, { color, top: false });
+}
+
+/** Aplique de pared: se enciende de noche con las farolas. */
+function sconce(G, x, y, z) {
+  const { b, M } = G;
+  b.box(M.plain, x, y + 0.2, z + 0.04, 0.2, 0.05, 0.16, { color: DARK });
+  b.box(M.lamp, x, y, z + 0.05, 0.15, 0.2, 0.12, { bottom: true });
+}
+
+/** Alféizar bajo una ventana pintada y, a veces, una jardinera con flores. */
+function sill(G, x, y, z, w, flowers = 0) {
+  const { b, M, R } = G;
+  b.box(M.concrete, x, y - 0.09, z + 0.07, w, 0.09, 0.15, { color: 0xd8d2c4, uv: [2, 2], bottom: true });
+  if (R() >= flowers) return;
+  b.box(M.plain, x, y, z + 0.1, w * 0.8, 0.16, 0.18, { color: 0x7a4f38 });
+  for (const s of [-0.28, 0.28]) b.blob(M.flat, x + s * w, y + 0.24, z + 0.1, 0.17, { color: pick(R, [0xc8322b, 0xe8b0c0, 0xd6a21e, 0x5c8a3c, 0xb060c0]), seed: R() * 50, sy: 0.7 });
+}
+
+/** Antena parabólica en una fachada o una azotea. */
+function dish(G, x, y, z) {
+  const { b, M } = G;
+  b.box(M.plain, x, y, z, 0.05, 0.5, 0.05, { color: DARK, top: false });
+  b.cyl(M.plain, x, y + 0.5, z, 0.34, 0.14, { r2: 0.05, sides: 8, axis: 'z', color: 0xd8d8d4, both: true });
+}
+
+/** Chimenea de azotea con sombrerete. */
+function stack(G, x, y, z, h = 1.4) {
+  const { b, M } = G;
+  b.box(M.concrete, x, y, z, 0.7, h, 0.5, { color: 0x9a6a58, uv: [1.5, 1.5] });
+  b.box(M.plain, x, y + h, z, 0.86, 0.08, 0.66, { color: 0x3a3d40 });
+}
+
 /** Aparatos de azotea: climatización, caseta de la escalera y, a veces, antena o depósito. */
 function roofGear(G, w, d, y, tank = false) {
   const { b, M, R } = G;
@@ -48,6 +95,22 @@ function roofGear(G, w, d, y, tank = false) {
   }
 }
 
+/**
+ * Relieve de un bloque macizo de w × d entre las alturas y0 e y1 (centrado en el marco):
+ * pilastras en las esquinas, impostas cada `fh` m, bajantes y algún aparato de aire.
+ */
+function trimBlock(G, w, d, y0, y1, fh, color = 0xc4bfb4) {
+  const { b, M, R } = G;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(M.concrete, (sx * w) / 2, y0, (sz * d) / 2, 0.6, y1 - y0, 0.6, { color, uv: [2, 2], top: false });
+  for (let y = y0 + fh; y < y1 - 1; y += fh) b.box(M.concrete, 0, y - 0.1, 0, w + 0.24, 0.2, d + 0.24, { color, uv: [3, 3], bottom: true });
+  for (const [rot, len, dep] of [[0, w, d], [Math.PI, w, d]]) {
+    b.push(0, 0, rot);
+    pipe(G, len / 2 - 0.9, dep / 2 + 0.07, y1);
+    for (let i = 0; i < 3; i++) if (R() < 0.6) acUnit(G, rr(R, -len / 2 + 2, len / 2 - 2), y0 + fh * (1 + Math.floor(R() * Math.max(1, Math.floor((y1 - y0) / fh) - 1))) + 0.15, dep / 2);
+    b.pop();
+  }
+}
+
 /** Torre o bloque de oficinas: planta baja acristalada, fuste (con retranqueo si es alto) y azotea. */
 export function highrise(G, w, d, o = {}) {
   const { b, M, R } = G;
@@ -63,13 +126,44 @@ export function highrise(G, w, d, o = {}) {
   tiers.forEach((frac, i) => {
     const n = Math.max(2, Math.round(floors * frac));
     b.box(mat, 0, y, 0, ww, n * fh, dd, { cells: [3.2, fh], cu, cv, color: tint, top: M.roof });
+    if (kind === 'glass') { // aletas verticales entre los paños de vidrio
+      for (const [rot, len, dep] of [[0, ww, dd], [Math.PI / 2, dd, ww], [Math.PI, ww, dd], [-Math.PI / 2, dd, ww]]) {
+        const cols = Math.max(1, Math.round(len / 3.2));
+        b.push(0, 0, rot);
+        for (let k = 1; k < cols; k++) b.box(M.plain, -len / 2 + (k * len) / cols, y, dep / 2 + 0.1, 0.14, n * fh, 0.2, { color: 0x8f99a2, top: false });
+        b.pop();
+      }
+    } else { // antepechos corridos cada dos plantas
+      for (let f = 2; f < n; f += 2) b.box(M.concrete, 0, y + f * fh - 0.14, 0, ww + 0.34, 0.28, dd + 0.34, { color: 0xc4bfb4, uv: [3, 3], bottom: true });
+    }
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(M.concrete, (sx * ww) / 2, y, (sz * dd) / 2, 0.7, n * fh, 0.7, { color: 0xb5b0a6, uv: [3, 3], top: false });
     y += n * fh;
     b.box(M.concrete, 0, y, 0, ww + 0.5, 0.7, dd + 0.5, { color: 0xa8a39a, uv: [3, 3], top: M.roof, bottom: true });
     y += 0.7;
-    if (i < tiers.length - 1) { ww -= 5; dd -= 5; }
+    if (i < tiers.length - 1) { // terraza del retranqueo: barandilla
+      for (const [rot, len, dep] of [[0, ww, dd], [Math.PI / 2, dd, ww], [Math.PI, ww, dd], [-Math.PI / 2, dd, ww]]) {
+        b.push(0, 0, rot); b.box(M.plain, 0, y + 0.9, dep / 2 + 0.1, len + 0.3, 0.06, 0.06, { color: 0xb9bec4 }); b.box(M.plain, 0, y, dep / 2 + 0.1, len + 0.3, 0.9, 0.03, { color: 0x9fb8c8, top: false }); b.pop();
+      }
+      ww -= 5; dd -= 5;
+    }
   });
   roofGear(G, ww, dd, y);
+  // Coronación: peto, celosía que tapa las máquinas y, en algunos, un rótulo en la azotea.
+  for (const [rot, len, dep] of [[0, ww, dd], [Math.PI / 2, dd, ww], [Math.PI, ww, dd], [-Math.PI / 2, dd, ww]]) {
+    b.push(0, 0, rot); b.box(M.concrete, 0, y, dep / 2 + 0.12, len + 0.5, 0.9, 0.22, { color: 0xb5b0a6, uv: [3, 3] }); b.pop();
+  }
+  if (kind === 'office' && R() < 0.6) {
+    const name = pick(R, G.signs.shops), bw = Math.min(ww - 3, 9);
+    for (const sx of [-1, 1]) { b.box(M.plain, sx * (bw / 2 - 0.3), y, dd / 2 - 0.8, 0.14, 4.2, 0.14, { color: DARK }); b.slab(M.plain, sx * (bw / 2 - 0.3), y + 3.2, dd / 2 - 0.8, sx * (bw / 2 - 0.3), y, dd / 2 - 3.2, 0.1, 0.1, { color: DARK }); }
+    b.box(M.plain, 0, y + 1.6, dd / 2 - 0.7, bw, 2.6, 0.16, { color: 0x1d2023 });
+    b.vquad(M.signs, 0, y + 1.7, dd / 2 - 0.61, bw - 0.4, 2.4, { rect: G.signs.uv(name) });
+  }
+  if (kind === 'glass') { // góndola de limpiar cristales colgada de la fachada
+    const gx = rr(R, -w / 4, w / 4), gy = rr(R, gh + 6, y - 8);
+    b.box(M.plain, gx, gy, d / 2 - 0.1, 2.4, 1.0, 0.8, { color: 0xd6a21e, bottom: true });
+    for (const s of [-1.1, 1.1]) b.box(M.plain, gx + s, gy + 1, d / 2 - 0.2, 0.03, Math.max(0.5, y - gy - 1), 0.03, { color: 0x1c1c1f, top: false });
+    b.box(M.plain, gx, y + 0.9, d / 2 - 1.2, 2.6, 0.3, 2.6, { color: 0x6f7479 });
+  }
   if (floors > 16) { // aguja con baliza
     b.box(M.plain, 0, y, 0, 0.5, 14, 0.5, { color: 0x8f959b });
     b.box(M.lamp, 0, y + 14, 0, 0.6, 0.5, 0.6);
@@ -78,6 +172,15 @@ export function highrise(G, w, d, o = {}) {
   // Marquesina de la entrada.
   b.box(M.plain, 0, 3.3, d / 2 + 1.2, 6, 0.22, 2.4, { color: DARK, bottom: true });
   for (const s of [-2.7, 2.7]) b.box(M.plain, s, 0, d / 2 + 2.2, 0.16, 3.3, 0.16, { color: 0x3a4046, solid: true });
+  // Pilastras entre los escaparates del bajo, zócalo de piedra y focos bajo la marquesina.
+  for (const [rot, len, dep] of [[0, w, d], [Math.PI / 2, d, w], [Math.PI, w, d], [-Math.PI / 2, d, w]]) {
+    const cols = Math.max(1, Math.round(len / 6.8));
+    b.push(0, 0, rot);
+    for (let k = 0; k <= cols; k++) b.box(M.concrete, -len / 2 + (k * len) / cols, 0, dep / 2 + 0.1, 0.6, gh, 0.26, { color: 0xa39e94, uv: [2, 2], top: false });
+    b.pop();
+  }
+  for (const s of [-1.8, 1.8]) b.box(M.lamp, s, 3.24, d / 2 + 1.2, 0.5, 0.06, 0.5, { bottom: true, top: false });
+  b.box(M.plain, 0, 3.52, d / 2 + 2.36, 6, 0.3, 0.08, { color: 0x8f99a2 });
   if (o.sign) b.vquad(M.signs, 0, 3.55, d / 2 + 2.42, 4.4, 1.1, { rect: G.signs.uv(o.sign) });
   return y;
 }
@@ -112,6 +215,32 @@ export function apartments(G, w, d, o = {}) {
   // Portal con escalón y tejadillo.
   const dx = -w / 2 + (door + 0.5) * bw + (door % 2 ? 0 : bw);
   const px = Math.max(-w / 2 + 1.5, Math.min(w / 2 - 1.5, dx));
+  // Relieve de las dos fachadas largas: alféizares (con jardineras), imposta sobre el bajo,
+  // bajantes, aparatos de aire y lo que hay en los balcones (ropa, plantas, un toldo).
+  const [ww, wb] = WINDOWS[kind];
+  for (const side of [0, Math.PI]) {
+    b.push(0, 0, side);
+    for (let k = 0; k < nU; k++) for (let f = 0; f < floors; f++) {
+      const x = -w / 2 + (k + 0.5) * bw, y = f * fh + wb * fh;
+      if (f > 0 && k % 2 === (side ? 1 : 0)) { // celda con balcón
+        const t = R();
+        if (t < 0.22) for (let i = 0; i < 3; i++) b.vquad(M.plain, x - bw * 0.25 + i * bw * 0.25, f * fh + 0.25, d / 2 + 1.12, bw * 0.2, 0.6, { color: pick(R, [0xe8e8e4, 0xc8322b, 0x2a4d8f, 0xd6a21e, 0x8fb277]), both: true });
+        else if (t < 0.42) b.blob(M.flat, x + bw * 0.25, f * fh + 0.35, d / 2 + 0.7, 0.32, { color: pick(R, [0x4f7a3a, 0x5c8a3c, 0x3d6230]), seed: R() * 50 });
+        else if (t < 0.54) b.wedge(M.plain, x, f * fh + 2.2, d / 2 + 0.6, bw * 0.82, 1.2, 0.4, { rot: Math.PI, color: pick(R, AWNINGS), bottom: true });
+        continue;
+      }
+      if (!side && f === 0 && Math.abs(x - px) < bw * 0.6) continue; // el portal
+      sill(G, x, y, d / 2, bw * ww + 0.3, f > 0 ? 0.16 : 0);
+      if (f > 0 && R() < 0.13) acUnit(G, x, y - 0.66, d / 2);
+    }
+    b.box(M.concrete, 0, fh - 0.04, d / 2 + 0.06, w + 0.2, 0.16, 0.12, { color: 0xd8d2c4, uv: [3, 3], bottom: true });
+    for (const s of [-1, 1]) pipe(G, s * (w / 2 - 0.2), d / 2 + 0.07, h);
+    b.pop();
+  }
+  for (const s of [-1.75, 1.75]) sconce(G, px + s, 2.0, d / 2);
+  // Azotea: chimeneas y una parabólica.
+  stack(G, rr(R, -w / 3, w / 3), h + 0.35, -d / 4); if (R() < 0.6) stack(G, rr(R, -w / 3, w / 3), h + 0.35, d / 4, 1.0);
+  if (R() < 0.7) dish(G, rr(R, -w / 3, w / 3), h + 1.05, d / 2 - 0.3);
   b.box(M.concrete, px, 0, d / 2 + 0.6, 2.8, 0.16, 1.2, { color: 0xa8a39a, uv: [3, 3], solid: true });
   b.vquad(M.details, px, 0.16, d / 2 + 0.04, 1.9, 2.5, { rect: GLASS_DOOR });
   b.box(M.plain, px, 2.8, d / 2 + 0.7, 3, 0.14, 1.4, { color: mix(tint, 0x202020, 0.6), bottom: true });
@@ -166,6 +295,24 @@ export function shopRow(G, w, d = 9, names = null) {
     b.vquad(M.signs, x, 2.95, d / 2 + 0.215, Math.min(sw - 0.9, 4.4), 0.64, { rect: signs.uv(name) });
     if (R() < 0.65) b.wedge(M.plain, x, 2.3, d / 2 + 0.8, sw - 0.9, 1.6, 0.56, { rot: Math.PI, color: pick(R, AWNINGS), bottom: true });
     if (R() < 0.7) { b.box(M.plain, x + rr(R, -1.5, 1.5), h + 0.3, rr(R, -2, 2), 1.6, 0.9, 1.2, { color: 0x9ea3a8 }); }
+    // Relieve: pilastras entre locales, apliques junto al rótulo, banderola, bajante y, en la vivienda de arriba, alféizares.
+    const dark = mix(tint, 0x303030, 0.35);
+    for (const sx of [-1, 1]) b.box(M.concrete, x + sx * (sw / 2 - 0.16), 0, d / 2 + 0.07, 0.32, h, 0.14, { color: dark, uv: [2, 2], top: false });
+    for (const sx of [-1, 1]) sconce(G, x + sx * (sw / 2 - 0.55), 3.02, d / 2 + 0.1);
+    b.box(M.concrete, x, h - 0.5, d / 2 + 0.06, sw - 0.6, 0.14, 0.12, { color: 0xd8d2c4, uv: [2, 2], bottom: true });
+    if (R() < 0.5) { // banderola perpendicular a la fachada
+      const bx = x + (R() < 0.5 ? -1 : 1) * (sw / 2 - 0.5);
+      b.box(M.plain, bx, 3.95, d / 2 + 0.45, 0.04, 0.04, 0.9, { color: DARK });
+      b.box(M.plain, bx, 3.25, d / 2 + 0.55, 0.06, 0.66, 0.66, { color: pick(R, AWNINGS) });
+    }
+    pipe(G, x + sw / 2 - 0.42, d / 2 + 0.07, h);
+    if (two) {
+      const cols = Math.max(2, Math.round(sw / 2.8)), cw = sw / cols, [ww, wb] = WINDOWS[kind];
+      for (let k = 0; k < cols; k++) sill(G, x - sw / 2 + (k + 0.5) * cw, gh + wb * 3.1, d / 2, cw * ww + 0.26, 0.4);
+      if (R() < 0.5) acUnit(G, x - sw / 2 + cw, gh + 0.25, d / 2);
+      stack(G, x + rr(R, -1, 1), h + 0.3, -d / 4, 1.1);
+    }
+    if (R() < 0.3) { b.prism(M.plain, x + rr(R, -1.2, 1.2), 0, d / 2 + 1.5, 0.6, 0.5, 0.9, { color: pick(R, [0x1d2023, 0x2f6f4a, 0xc8322b]), gableColor: 0xe8e2d0 }); } // cartel de caballete en la acera
     // Puerta de servicio detrás (cerrada, si no es la que quedó abierta).
     if (!backDoor) {
       b.push(x, 0, Math.PI);
@@ -205,12 +352,37 @@ export function house(G, w, d) {
   b.prism(M.tiles, bx, h, bz, bw + 0.9, bd + 0.9, rh, { color: roof, gable: M.concrete, gableColor: wall });
   b.box(M.plain, bx, h - 0.06, bz, bw + 0.94, 0.07, bd + 0.94, { color: trim, bottom: true, top: false });
   b.box(M.concrete, bx + bw * 0.28, h + rh * 0.3, bz - bd * 0.15, 0.7, rh * 0.9 + 0.5, 0.7, { color: 0x8a5a48, uv: [1.5, 1.5] });
+  b.box(M.plain, bx + bw * 0.28, h + rh * 1.2 + 0.5, bz - bd * 0.15, 0.86, 0.08, 0.86, { color: 0x3a3d40 });
+  // Relieve: contraventanas en las ventanas de abajo, canalones con sus bajantes, zócalo,
+  // aplique del porche y, en el tejado, una buhardilla o una claraboya.
+  const shut = pick(R, [0x2f4a3a, 0x2a3d5a, 0x6b2f2f, 0x4a4f55, 0x7a5a3a]), V = INTERIOR.window;
+  const shutters = (x, y, z, rot, hh, ww) => {
+    b.push(bx, bz, rot);
+    for (const s of [-1, 1]) b.box(M.plain, x + s * (ww / 2 + 0.24), y, z + 0.02, 0.42, hh, 0.04, { color: shut, top: false });
+    b.pop();
+  };
+  for (const x of [-bw * 0.3, bw * 0.3]) { shutters(x, V.y0, bd / 2, 0, V.y1 - V.y0, V.w); shutters(x, V.y0, bd / 2, Math.PI, V.y1 - V.y0, V.w); }
+  for (const sz of [-1, 1]) {
+    b.box(M.plain, bx, h - 0.16, bz + sz * (bd / 2 + 0.5), bw + 1.0, 0.1, 0.12, { color: 0xe4e0d6, bottom: true });
+    b.box(M.plain, bx + sz * (bw / 2 - 0.1), 0, bz + sz * (bd / 2 + 0.06), 0.08, h - 0.16, 0.08, { color: 0xe4e0d6, top: false });
+  }
+  for (const [rot, len, dep] of [[Math.PI / 2, bd, bw], [Math.PI, bw, bd], [-Math.PI / 2, bd, bw]]) {
+    b.push(bx, bz, rot); b.box(M.concrete, 0, 0, dep / 2 + 0.03, len + 0.1, 0.32, 0.06, { color: mix(wall, 0x707070, 0.45), uv: [2, 2] }); b.pop();
+  }
+  sconce(G, bx + 0.95, 2.05, bz + bd / 2);
+  if (R() < 0.55) { // buhardilla hacia la calle
+    const dx = bx - bw * 0.2, dz = bz + bd * 0.24;
+    b.box(M.concrete, dx, h + rh * 0.25, dz, 1.5, 1.25, 1.4, { color: wall, uv: [3, 3], top: false });
+    b.prism(M.tiles, dx, h + rh * 0.25 + 1.25, dz, 1.6, 1.8, 0.55, { rot: Math.PI / 2, color: roof, gable: M.concrete, gableColor: wall });
+    b.vquad(M.details, dx, h + rh * 0.25 + 0.2, dz + 0.71, 0.95, 0.95, { rect: R() < 0.4 ? WINDOW_LIT : WINDOW_DARK });
+  } else if (R() < 0.5) dish(G, bx - bw * 0.3, h + rh * 0.55, bz + bd * 0.1);
   // Ventanas y puerta (planta a planta, en las cuatro fachadas).
   const win = (x, y, z, rot, lit, ww = 1.25) => { b.push(bx, bz, rot); b.vquad(M.details, x, y, z + 0.025, ww, 1.25, { rect: lit ? WINDOW_LIT : WINDOW_DARK }); b.pop(); };
-  if (floors === 2) { // ventanas de la planta alta (pintadas)
+  if (floors === 2) { // ventanas de la planta alta (pintadas), con alféizar y contraventanas
     const y = 4.1;
-    for (const x of [-bw * 0.3, 0, bw * 0.3]) win(x, y, bd / 2, 0, R() < 0.5);
-    for (const x of [-bw * 0.3, bw * 0.3]) win(x, y, bd / 2, Math.PI, R() < 0.4);
+    for (const x of [-bw * 0.3, 0, bw * 0.3]) { win(x, y, bd / 2, 0, R() < 0.5); shutters(x, y, bd / 2, 0, 1.25, 1.25); b.push(bx, bz, 0); sill(G, x, y, bd / 2, 1.5, 0.35); b.pop(); }
+    for (const x of [-bw * 0.3, bw * 0.3]) { win(x, y, bd / 2, Math.PI, R() < 0.4); shutters(x, y, bd / 2, Math.PI, 1.25, 1.25); }
+    b.box(M.concrete, bx, 3.0, bz, bw + 0.14, 0.14, bd + 0.14, { color: trim, uv: [3, 3], top: false, bottom: true });
     for (const rot of [Math.PI / 2, -Math.PI / 2]) win(0, y, bw / 2, rot, R() < 0.4);
   }
   if (!open) b.vquad(M.details, bx, 0, bz + bd / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: doorColor });
@@ -242,6 +414,15 @@ export function house(G, w, d) {
   for (const s of [-1, 1]) bush(G, bx + s * (bw * 0.3), pz + 0.55, 0.5);
   b.box(M.plain, bx + 1.6, 0, hd - 0.4, 0.08, 1.0, 0.08, { color: DARK });
   b.box(M.plain, bx + 1.6, 1.0, hd - 0.4, 0.24, 0.22, 0.44, { color: pick(R, [0x2a4d8f, 0xc8322b, 0x1c1c1f]) });
+  // Detrás: caseta de herramientas, cubos de basura junto al garaje y un macizo de flores delante.
+  if (R() < 0.45) {
+    const sx = -gside * (w / 2 - 2.2), sz = -d / 2 + 2.0;
+    b.box(M.plain, sx, 0, sz, 2.4, 1.9, 1.9, { color: pick(R, [0x7a5a3a, 0x4f5a52, 0x8a3a2a]), top: false, solid: true });
+    b.prism(M.metal, sx, 1.9, sz, 2.6, 2.1, 0.6, { color: 0x6a6f78, uv: 1.5 });
+    b.vquad(M.details, sx, 0, sz + 0.96, 0.8, 1.7, { rect: DOOR, color: 0x9a8f80 });
+  }
+  if (R() < 0.7) for (const k of [0, 0.62]) b.cyl(M.plain, gx + gside * 2.25, 0, gz + 1.6 + k, 0.26, 0.9, { sides: 8, color: k ? 0x2f4a3a : 0x30343a, capColor: 0x1a1d1f });
+  if (R() < 0.6) for (let i = 0; i < 4; i++) b.blob(M.flat, bx - 2.6 + i * 0.5 - (bx > 0 ? 0 : -3.4), 0.2, pz + 2.6, 0.26, { color: pick(R, [0xc8322b, 0xe8b0c0, 0xd6a21e, 0xb060c0, 0xf0f0e8]), seed: i, sy: 0.7 });
 }
 
 /** Nave industrial de chapa: portones con persiana, muelle de carga y cubierta en diente de sierra o a dos aguas. */
@@ -268,6 +449,15 @@ export function warehouse(G, w, d, o = {}) {
     b.box(M.plain, x - 2.3, 0.2, d / 2 + 1.25, 0.16, 0.9, 0.16, { color: 0xd6a21e });
   }
   b.box(M.concrete, 0, 0, d / 2 + 1.2, w * 0.86, 1.1, 2.4, { color: 0xa8a39a, uv: [3, 3], solid: true });
+  // Relieve: focos sobre los portones, canalón y bajantes, escalera de gato a la cubierta, palés y extractores.
+  for (let i = 0; i < n; i++) sconce(G, -w / 2 + ((i + 0.5) * w) / n, 5.6, d / 2 + 0.2);
+  b.box(M.plain, 0, h - 0.12, d / 2 + 0.08, w + 0.2, 0.14, 0.16, { color: 0x5a5d60, bottom: true });
+  for (const s of [-1, 1]) pipe(G, s * (w / 2 - 0.15), d / 2 + 0.08, h, 0x5a5d60);
+  for (const s of [-0.22, 0.22]) b.box(M.plain, -w / 2 + 1.2 + s, 0.4, d / 2 + 0.1, 0.05, h + 0.6, 0.05, { color: 0x30343a, top: false });
+  for (let y = 0.6; y < h + 0.9; y += 0.4) b.box(M.plain, -w / 2 + 1.2, y, d / 2 + 0.1, 0.44, 0.04, 0.04, { color: 0x30343a, top: false });
+  for (let i = 0; i < 2; i++) if (R() < 0.7) { const px = rr(R, -w * 0.4, w * 0.4), k = 1 + Math.floor(R() * 3); for (let j = 0; j < k; j++) b.box(M.plain, px, 1.1 + j * 0.16, d / 2 + 1.4, 1.2, 0.14, 1.0, { color: 0xb08a58, bottom: true }); }
+  b.box(M.plain, w * 0.3, 2.4, -d / 2 - 0.3, 1.2, 1.2, 0.6, { color: 0x9ea3a8, bottom: true });
+  b.box(M.plain, w * 0.3, 3.6, -d / 2 - 0.3, 0.5, h - 3.2, 0.5, { color: 0x8f959b });
   // Puerta de personal y ventanas altas en el costado.
   b.push(0, 0, Math.PI / 2);
   b.vquad(M.details, d * 0.3, 0, w / 2 + 0.03, 1.0, 2.1, { rect: DOOR, color: 0x6f7479 });
@@ -413,6 +603,9 @@ export const BLOCKS = {
     b.mark('balas', -12.5, 0, -4.6); b.mark('balas', -9, 0, -5.4); b.mark('pistola', -6, 0, -5);
     b.box(M.office, 0, 3.7, 0, 32, 6.6, 15, { cells: [3.2, 3.3], color: 0xd6dde2, cu: 1, top: M.roof, solid: true });
     b.box(M.concrete, 0, 10.3, 0, 32.5, 0.6, 15.5, { color: 0xa8a39a, uv: [3, 3], top: M.roof });
+    trimBlock(G, 32, 15, 3.7, 10.3, 3.3);
+    for (const x of [-3.2, 3.2]) sconce(G, x, 2.6, 7.5);
+    for (const x of [-14.5, -8.7, -4.2, 4.2, 8.7, 14.5]) b.box(M.concrete, x, 0, 7.56, 0.5, 3.5, 0.2, { color: 0xb9c2c8, uv: [2, 2], top: false });
     b.box(M.plain, 0, 3.75, 7.6, 7, 1.5, 0.25, { color: 0x1d2023 });
     b.vquad(M.signs, 0, 3.85, 7.74, 6.6, 1.3, { rect: signs.uv('POLICÍA') });
     b.box(M.plain, 0, 3.4, 8.6, 5, 0.2, 2.2, { color: 0x1b2a4a, bottom: true });
@@ -551,6 +744,10 @@ export const BLOCKS = {
     for (let x = -15; x <= 15; x += 6) b.box(M.plain, x, 0, 10.5, 0.2, 3.7, 0.2, { color: 0xe4dfd2, solid: true });
     b.box(M.plain, 0, 7, 8.2, 12.4, 3.2, 0.3, { color: 0x1d2023 });
     b.vquad(M.signs, 0, 7.1, 8.36, 12, 3, { rect: signs.uv('SÚPER Z') });
+    for (const x of [-17, -13, -9, -5, 0, 5, 9, 13, 17]) b.box(M.concrete, x, 0, 8.56, 0.5, 4.8, 0.18, { color: 0xcfc9bb, uv: [2, 2], top: false });
+    for (let x = -15; x <= 15; x += 6) b.box(M.lamp, x + 3, 3.66, 9.6, 0.9, 0.05, 0.3, { bottom: true, top: false });
+    for (const s of [-1, 1]) { pipe(G, s * 18.6, 8.57, 7, 0x8a8f96); pipe(G, s * 18.6, -8.57, 7, 0x8a8f96); }
+    b.push(0, 0, Math.PI); for (const x of [-12, -4, 6]) acUnit(G, x, 3.2, 8.5); b.box(M.concrete, -10, 0, 9.6, 6, 1.1, 2.2, { color: 0xa8a39a, uv: [3, 3], solid: true }); b.pop(); // muelle de carga detrás
     roofGear(G, 34, 14, 7);
     b.pop();
     parkingRow(G, 0, 3.5, 12); parkingRow(G, 0, 15, 12);
@@ -621,6 +818,8 @@ export const BLOCKS = {
     b.push(0, -11, 0);
     b.box(M.office, 0, 0, 0, 38, h, 15, { cells: [3.2, fh], color: 0xf4f4f0, cu: 1, cv: 2, top: M.roof, solid: true });
     b.box(M.concrete, 0, h, 0, 38.5, 0.8, 15.5, { color: 0xe4e2dc, uv: [3, 3], top: M.roof });
+    trimBlock(G, 38, 15, 0, h, fh, 0xdad8d0);
+    b.box(M.plain, 0, 1.1, 7.56, 38.1, 0.5, 0.06, { color: 0x3d8f8a, top: false }); // franja de color
     b.box(M.plain, 0, fh * 4, 7.6, 9, 2.6, 0.3, { color: 0x1d2023 });
     b.vquad(M.signs, 0, fh * 4 + 0.15, 7.76, 8.6, 2.3, { rect: signs.uv('HOSPITAL') });
     for (const x of [-14, 14]) b.vquad(M.details, x, fh * 4.4, 7.53, 3, 3, { rect: CROSS });
@@ -658,6 +857,7 @@ export const BLOCKS = {
     b.push(0, -13.5, 0);
     b.box(M.brick, 0, 0, 0, 38, 7.2, 11, { cells: [3.1, 3.6], color: 0xc4705a, cu: 2, top: M.roof, solid: true });
     b.box(M.concrete, 0, 7.2, 0, 38.6, 0.5, 11.6, { color: 0xe4dfd2, uv: [3, 3], top: M.roof });
+    trimBlock(G, 38, 11, 0, 7.2, 3.6, 0xe4dfd2);
     b.box(M.concrete, 0, 0, 6.2, 7, 4.2, 1.6, { color: 0xe4dfd2, uv: [3, 3], solid: true });
     b.vquad(M.details, 0, 0, 7.03, 3.2, 2.7, { rect: GLASS_DOOR });
     b.vquad(M.signs, 0, 3.0, 7.03, 4.6, 0.9, { rect: signs.uv('ESCUELA') });

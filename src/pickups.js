@@ -144,7 +144,7 @@ export class Pickups {
 
   /** Un zombi ha muerto en `position`: a veces suelta balas. */
   zombieDied(position) {
-    if (Math.random() < DROP_CHANCE) this.drop('balas', position.x, position.z, DROP_AMMO, { life: DROP_LIFE, y: Math.max(0, position.y) });
+    if (Math.random() < DROP_CHANCE) this.drop('balas', position.x, position.z, DROP_AMMO, { life: DROP_LIFE, y: this.baseY ? position.y : Math.max(0, position.y) });
   }
 
   update(dt) {

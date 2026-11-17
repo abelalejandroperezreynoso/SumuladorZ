@@ -54,6 +54,8 @@ export class GameMode {
     this.torch.visible = true;
     horde.bounds = city.bounds;
     horde.buildings = city.interiors;
+    horde.ground = (x, z) => city.groundAt(x, z);
+    horde.climbs = city.climbs;
     city.glass.onBreak = (pane) => horde.sound({ x: pane.x, y: pane.y0, z: pane.z }, GAME.cristal, 0.7);
     player.spawn = { x: city.spawn.x, y: CITY.bordillo + 0.06, z: city.spawn.z };
     pickups.layout = city.pickups;
@@ -71,6 +73,8 @@ export class GameMode {
     horde.setMood(MOODS.normal);
     horde.bounds = this.sim.bounds;
     horde.buildings = [];
+    horde.ground = null;
+    horde.climbs = [];
     city.setActive(false);
     city.setNight(0);
     sky.setActive(false);

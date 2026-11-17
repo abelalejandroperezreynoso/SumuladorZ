@@ -5,19 +5,21 @@ import { Batch } from './city-build.js';
 import { Glass } from './interior.js';
 import { Patrols } from './patrol.js';
 import { BLOCKS, roadblock } from './city-blocks.js';
-import { buildOutskirts, streetDetails } from './city-outskirts.js';
+import { buildOutskirts, streetDetails, riverPath } from './city-outskirts.js';
+import { Terrain } from './city-terrain.js';
 import { lamp, tree, bench, bin, hydrant, busStop, trafficLight, car, cone, pick, rr } from './city-props.js';
 
-// Ciudad del modo juego: en el centro, una cuadrícula de 5 × 5 manzanas de distinto tipo, con
-// sus calles, aceras, farolas y coches abandonados; alrededor, las afueras (urbanizaciones,
-// polígono industrial y casco antiguo, de calles en curva: src/city-outskirts.js). No tiene
+// Ciudad del modo juego: en el centro, llano, una cuadrícula de 3 × 3 manzanas de distinto
+// tipo, con sus calles, aceras, farolas y coches abandonados; alrededor, las afueras sobre un
+// suelo con relieve (src/city-terrain.js): el cerro con su calle en cuesta, el río con sus
+// puentes, la vía, el polígono industrial y el casco antiguo (src/city-outskirts.js). No tiene
 // muro: su límite (`limite` m desde el centro) no se ve, pero cruzarlo atrae a la horda. Se
 // construye una sola vez al cargar, lejos del mundo de simulación (que sigue en el origen), y
 // siempre sale igual: todo el azar parte de semillas fijas.
 //
 // Medidas en metros. Cada manzana ocupa `manzana` de lado contando su acera (`acera`), que
 // sube `bordillo` sobre la calzada; entre manzanas hay `calle` de calzada.
-export const CITY = { x: 600, z: 0, manzanas: 5, manzana: 46, calle: 12, acera: 3, bordillo: 0.08, limite: 262, tope: 85 };
+export const CITY = { x: 600, z: 0, manzanas: 3, manzana: 46, calle: 12, acera: 3, bordillo: 0.08, limite: 210, tope: 85 };
 // Farolas con luz de verdad: solo las `LUCES` más cercanas al jugador (las demás brillan y
 // pintan su charco de luz en el suelo, pero no iluminan). `fuerza` y `alcance` de cada una.
 const LIGHTS = { cuantas: 3, fuerza: 46, alcance: 20, cambio: 5 };
@@ -25,11 +27,9 @@ export const CITY_TUNING = { CITY, LIGHTS };
 
 // Qué hay en cada manzana (fila = de norte a sur, columna = de oeste a este).
 const LAYOUT = [
-  ['industria', 'almacenes', 'obra', 'comisaria', 'casas'],
-  ['super', 'pisos', 'torres', 'oficinas', 'casas'],
-  ['tiendas', 'oficinas', 'plaza', 'tiendas', 'parque'],
-  ['gasolinera', 'pisos', 'torres', 'hospital', 'escuela'],
-  ['casas', 'casas', 'tiendas', 'pisos', 'iglesia'],
+  ['comisaria', 'torres', 'super'],
+  ['tiendas', 'plaza', 'oficinas'],
+  ['gasolinera', 'pisos', 'hospital'],
 ];
 const LEAFY = new Set(['casas', 'pisos', 'parque', 'plaza', 'tiendas', 'escuela', 'iglesia', 'hospital']);
 const SIDES = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
@@ -91,7 +91,12 @@ export class City {
     scene.add(this.group);
     const world = physics.world;
     this.body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    world.createCollider(RAPIER.ColliderDesc.cuboid(L + 120, 0.5, L + 120).setTranslation(C.x, -0.5, C.z), this.body);
+    // Suelo: una losa bajo el centro, llano; fuera, el relieve (una malla: ver más abajo) y,
+    // por si algo lo atravesara, otra losa por debajo del lecho del río.
+    world.createCollider(RAPIER.ColliderDesc.cuboid(half + 6, 0.5, half + 6).setTranslation(C.x, -0.5, C.z), this.body);
+    world.createCollider(RAPIER.ColliderDesc.cuboid(L + 120, 0.5, L + 120).setTranslation(C.x, -4.6, C.z), this.body);
+    /** Relieve de las afueras (coordenadas respecto al centro). */
+    this.terrain = new Terrain({ half, limit: L, extent: L + C.tope + 14, river: riverPath() });
     // Tope invisible mucho más allá del límite (la horda mata antes de llegar a él).
     for (const [sx, sz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       world.createCollider(RAPIER.ColliderDesc.cuboid(sx ? 1 : L + 120, 20, sz ? 1 : L + 120).setTranslation(C.x + sx * (L + C.tope), 20, C.z + sz * (L + C.tope)), this.body);
@@ -100,7 +105,7 @@ export class City {
     /** Cristales que se rompen y edificios en los que se entra (src/interior.js). */
     this.glass = new Glass(scene, physics);
     this.interiors = [];
-    let tris = 0, solids = 1;
+    let tris = 0, solids = 3;
     const batch = () => { const b = new Batch(world, this.body); b.marks = marks; return b; };
     const done = (b) => { tris += b.build(this.group); solids += b.solids; };
     const blockAt = (i) => (i - (N - 1) / 2) * pitch;
@@ -110,9 +115,9 @@ export class City {
     const base = batch();
     base.push(C.x, C.z);
     base.hquad(M.asphalt, 0, 0, 0, half * 2, half * 2, { uv: 6 });
-    // Campo alrededor del centro: cuatro franjas (no por debajo de la calzada, que a lo lejos se pelearía con ella).
-    const F = 700;
-    SIDES.forEach((rot, i) => base.push(0, 0, rot).hquad(M.grass, 0, -0.03, half + F / 2, i % 2 ? half * 2 : half * 2 + F * 2, F, { uv: 9, color: 0xa8ac84 }).pop());
+    // Campo lejano, más allá del relieve: cuatro franjas llanas, algo hundidas.
+    const F = 500, E = this.terrain.e - 2;
+    SIDES.forEach((rot, i) => base.push(0, 0, rot).hquad(M.grass, 0, -1.2, E + F / 2, i % 2 ? E * 2 : E * 2 + F * 2, F, { uv: 9, color: 0xa8ac84 }).pop());
     const YELLOW = 0xd9b23c, WHITE = 0xe8e8e0;
     for (let k = 0; k <= N; k++) for (let j = 0; j < N; j++) {
       const a = roadAt(k), c = blockAt(j);
@@ -149,11 +154,12 @@ export class City {
 
     // --- Afueras ---
     buildOutskirts({
-      half, limit: L,
+      half, limit: L, terrain: this.terrain,
+      ground: () => { this.terrain.bake(); tris += this.terrain.build(this.group, world, this.body, M.grass, C.x, C.z); },
       section: (seed, fn) => {
         const b = batch();
         b.push(C.x, C.z);
-        fn({ b, M, R: rng(seed), signs: T.signs, glass: this.glass, interiors: this.interiors });
+        fn({ b, M, R: rng(seed), signs: T.signs, glass: this.glass, interiors: this.interiors, T: this.terrain });
         b.pop();
         done(b);
       },
@@ -165,6 +171,8 @@ export class City {
     this.solids = solids;
     this.buildMs = performance.now() - t0;
     this.lamps = marks.lamp ?? [];
+    /** Escaleras por las que los zombis suben a lo alto (ver Horde.route). */
+    this.climbs = (marks.subida ?? []).map((m) => ({ foot: { x: m.x, z: m.z }, top: { x: m.top[0], y: m.top[1], z: m.top[2] }, reach: m.reach }));
     const sp = marks.spawn[0];
     /** Dónde empieza el jugador y hacia dónde mira la cámara. */
     this.spawn = { x: sp.x, z: sp.z, yaw: 0 };
@@ -182,6 +190,11 @@ export class City {
     this.night = 0;
     this.scanT = 0;
     this.near = [];
+  }
+
+  /** Altura del suelo (sin aceras ni puentes) en un punto del mundo. */
+  groundAt(x, z) {
+    return this.terrain.at(x - this.center.x, z - this.center.z);
   }
 
   /** Muestra u oculta la ciudad (sus choques siguen ahí: queda lejos del mundo de simulación). */
