@@ -105,6 +105,7 @@ const DETOUR_FLIP = 8, DETOUR_FLIP_CITY = 22; // segundos bordeando un obstácul
 // alrededor del jugador. Aparecen entre `min` y `max` metros, donde no se les ve, y los que
 // quedan a más de `far` se retiran. Lo fija el modo juego según la hora (ver src/main.js).
 const AMBIENT_EVERY = 0.35; // segundos entre un zombi nuevo y el siguiente
+const CLIMB = 1.5; // con la presa a más de esto por encima, busca una escalera (m)
 const AMBIENT_LIFT = 0.14; // aparecen esto por encima del suelo (hay aceras) y caen
 
 // --- Zonas del cuerpo y desmembramiento ---
@@ -263,6 +264,7 @@ function dampAngle(a, b, lambda, dt) {
 class Zombie {
   constructor(horde, x, z, lift = 0, kind = 'zombie') {
     this.horde = horde;
+    lift += horde.ground?.(x, z) ?? 0; // (en la ciudad el suelo tiene relieve)
     this.rage = 0; // segundos que le quedan de furia tras recibir un golpe o un disparo de día
     this.prey = null; // a quién persigue si no es al jugador (una persona que huye)
     this.look = 0; // giro de la cabeza respecto al cuerpo (rad): mira a lo que ha detectado
@@ -1393,6 +1395,7 @@ export class Horde {
     this.stepT = 0;
     this.attackers = 0;
     this.buildings = []; // edificios de la ciudad en los que se entra (ver src/interior.js)
+    this.climbs = []; // escaleras de la ciudad: { foot: { x, z }, top: { x, y, z }, reach } (pasarela)
     this.civilians = []; // personas que huyen (modo juego)
     this.carcasses = []; // cadáveres de los que comen los zombis: { x, y, z, group, eaters, phase, gone }
     this.eaten = 0; // personas muertas a manos de los zombis en esta partida
@@ -1410,6 +1413,11 @@ export class Horde {
     cc.setApplyImpulsesToDynamicBodies(true);
     cc.setCharacterMass(60);
     this.controller = cc;
+  }
+
+  /** Altura del suelo en (x, z): 0 salvo en la ciudad, que tiene relieve (`ground` lo da el modo juego). */
+  floor(x, z) {
+    return this.ground?.(x, z) ?? 0;
   }
 
   get alive() {
@@ -1501,11 +1509,13 @@ export class Horde {
     const world = this.physics.world;
     for (let i = 0; i < 4; i++) {
       const a = Math.random() * Math.PI * 2, dir = { x: Math.sin(a), y: 0, z: Math.cos(a) };
-      if (world.castRay(new RAPIER.Ray({ x: p.x, y: 0.5, z: p.z }, dir), FEED.sitio + 0.7, true, RAPIER.QueryFilterFlags.ONLY_FIXED)) continue;
+      const y0 = this.floor(p.x, p.z);
+      if (Math.abs(this.floor(p.x + dir.x * FEED.sitio, p.z + dir.z * FEED.sitio) - y0) > 0.15) continue; // en cuesta no
+      if (world.castRay(new RAPIER.Ray({ x: p.x, y: y0 + 0.5, z: p.z }, dir), FEED.sitio + 0.7, true, RAPIER.QueryFilterFlags.ONLY_FIXED)) continue;
       const cx = p.x + dir.x * FEED.sitio, cz = p.z + dir.z * FEED.sitio;
-      const down = world.castRay(new RAPIER.Ray({ x: cx, y: 1.2, z: cz }, { x: 0, y: -1, z: 0 }), 3, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+      const down = world.castRay(new RAPIER.Ray({ x: cx, y: y0 + 1.2, z: cz }, { x: 0, y: -1, z: 0 }), 3, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
       if (!down || down.timeOfImpact < 0.9) continue; // hay algo encima del suelo
-      const c = this.addCarcass(cx, 1.2 - down.timeOfImpact, cz);
+      const c = this.addCarcass(cx, y0 + 1.2 - down.timeOfImpact, cz);
       c.eaters = 1;
       z.feedA = a + Math.PI;
       z.facing = a;
@@ -1533,7 +1543,7 @@ export class Horde {
     for (let i = 0; i < hunters * 4 && placed < hunters; i++) {
       const back = 4.5 + placed * 2 + Math.random() * 2, side = (Math.random() - 0.5) * 3.5;
       const x = p.x - dir.x * back + dir.z * side, z = p.z - dir.z * back - dir.x * side;
-      if (i < hunters * 4 - 1 && this.physics.world.intersectionWithShape({ x, y: FOOT + 0.3 + AMBIENT_LIFT, z }, rot, shape)) continue;
+      if (i < hunters * 4 - 1 && this.physics.world.intersectionWithShape({ x, y: this.floor(x, z) + FOOT + 0.3 + AMBIENT_LIFT, z }, rot, shape)) continue;
       const zb = new Zombie(this, x, z, AMBIENT_LIFT);
       zb.prey = civ;
       zb.state = 'chase';
@@ -1656,7 +1666,7 @@ export class Horde {
       z = THREE.MathUtils.clamp(P.z + Math.cos(a) * r, B.z0, B.z1);
       const d = Math.hypot(x - P.x, z - P.z);
       if (d < min * 0.7) continue;
-      const blocked = this.physics.world.intersectionWithShape({ x, y: FOOT + 0.3 + (hidden ? AMBIENT_LIFT : 0), z }, rot, shape);
+      const blocked = this.physics.world.intersectionWithShape({ x, y: this.floor(x, z) + FOOT + 0.3 + (hidden ? AMBIENT_LIFT : 0), z }, rot, shape);
       if (blocked) continue;
       if (!hidden) return { x, z };
       const eye = { x: P.x, y: P.y + 1.6, z: P.z };
@@ -1676,6 +1686,22 @@ export class Horde {
   route(pos, target, crawler) {
     const r = this.house?.route(pos, target, crawler);
     if (r) { r.house = this.house; return r; }
+    // La presa está en alto (sobre la pasarela): va al pie de la escalera que le queda más
+    // cerca y, ya en ella, sube hasta arriba. Si no, se quedaría debajo sin alcanzarla.
+    if (target.y - pos.y > CLIMB) {
+      let best = null, bd = Infinity;
+      for (const c of this.climbs) {
+        if (Math.abs(c.top.y - target.y) > 1.5 || (c.top.x - target.x) ** 2 + (c.top.z - target.z) ** 2 > c.reach ** 2) continue;
+        const d = (c.foot.x - pos.x) ** 2 + (c.foot.z - pos.z) ** 2;
+        if (d < bd) { bd = d; best = c; }
+      }
+      if (best) {
+        const ax = best.top.x - best.foot.x, az = best.top.z - best.foot.z, l = Math.hypot(ax, az);
+        const t = ((pos.x - best.foot.x) * ax + (pos.z - best.foot.z) * az) / (l * l);
+        const off = Math.hypot(pos.x - best.foot.x - ax * t, pos.z - best.foot.z - az * t);
+        return t > -0.06 && off < 0.7 ? { x: best.top.x + ax / l, z: best.top.z + az / l } : { x: best.foot.x, z: best.foot.z };
+      }
+    }
     let enter = null;
     for (const b of this.buildings) {
       const a = b.inside(pos), t = b.inside(target);

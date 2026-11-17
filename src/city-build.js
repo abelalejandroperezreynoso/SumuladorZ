@@ -40,6 +40,9 @@ export class Batch {
     this.solids = 0;
   }
 
+  /** Color 0xrrggbb en lineal, para `quad` y `tri`. */
+  lin(hex) { return lin(hex); }
+
   /** Entra en un marco local: origen en (x, z), girado `r` rad sobre la vertical y elevado `y`. */
   push(x, z, r = 0, y = 0) {
     const f = this.f;
@@ -143,16 +146,84 @@ export class Batch {
    * de la marcha; `uv`: metros por repetición de la textura.
    */
   strip(mat, pts, width, y, o = {}) {
-    const m = o.uv ?? 4, col = lin(o.color ?? 0xffffff), off = o.offset ?? 0;
+    const m = o.uv ?? 4, col = lin(o.color ?? 0xffffff), off = o.offset ?? 0, drape = o.drape;
+    // Sobre un relieve (`drape(x, z)` da la altura del suelo) la cinta se parte también a lo ancho para ceñirse a él.
+    const nA = drape ? Math.max(1, Math.ceil(width / (o.across ?? 1.3))) : 1;
+    if (drape) { // ...y a lo largo: tramos de 1,5 m como mucho (el suelo es una rejilla de 4 m con aristas)
+      const fine = [];
+      pts.forEach((p, i) => {
+        if (i) { const q = pts[i - 1], n = Math.ceil(Math.hypot(p.x - q.x, p.z - q.z) / 1.5); for (let k = 1; k < n; k++) fine.push({ x: q.x + ((p.x - q.x) * k) / n, z: q.z + ((p.z - q.z) * k) / n }); }
+        fine.push(p);
+      });
+      pts = fine;
+    }
     let prev = null, s = 0;
     for (let i = 0; i < pts.length; i++) {
       const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)];
       const tx = c.x - a.x, tz = c.z - a.z, l = Math.hypot(tx, tz) || 1, nx = -tz / l, nz = tx / l;
       const px = pts[i].x + nx * off, pz = pts[i].z + nz * off;
-      const L = this.at(px + (nx * width) / 2, y, pz + (nz * width) / 2), R = this.at(px - (nx * width) / 2, y, pz - (nz * width) / 2);
+      const row = [];
+      for (let k = 0; k <= nA; k++) {
+        const u = width / 2 - (width * k) / nA, x = px + nx * u, z = pz + nz * u;
+        row.push(this.at(x, y + (drape ? drape(x, z) : 0), z));
+      }
       if (i > 0) s += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
-      if (prev) this.quad(mat, prev.R, prev.L, L, R, [0, 1, 0], [0, prev.s / m, width / m, s / m], col);
-      prev = { L, R, s };
+      if (prev) for (let k = 0; k < nA; k++) {
+        const u0 = ((nA - k - 1) / nA) * (width / m), u1 = ((nA - k) / nA) * (width / m);
+        const p0 = prev.row[k + 1], p1 = prev.row[k], p2 = row[k], p3 = row[k + 1];
+        let n = [0, 1, 0];
+        if (drape) { // normal de la cara
+          const ax = p1[0] - p0[0], ay = p1[1] - p0[1], az = p1[2] - p0[2], bx = p3[0] - p0[0], by = p3[1] - p0[1], bz = p3[2] - p0[2];
+          n = [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx];
+          const nl = Math.hypot(...n) || 1;
+          n = n.map((v) => v / nl);
+          if (n[1] < 0) n = n.map((v) => -v);
+        }
+        const b = this.bucket(mat);
+        b.pos.push(...p0, ...p1, ...p2, ...p3);
+        for (let q = 0; q < 4; q++) { b.nor.push(...n); b.col.push(...col); }
+        b.uv.push(u0, prev.s / m, u1, prev.s / m, u1, s / m, u0, s / m);
+        b.idx.push(b.n, b.n + 1, b.n + 2, b.n, b.n + 2, b.n + 3);
+        b.n += 4;
+      }
+      prev = { row, s };
+    }
+    return this;
+  }
+
+  /**
+   * Losa inclinada: de (ax, ay, az) a (bx, by, bz) va el eje de su cara de arriba; `w` de
+   * ancho y `t` de canto. Rampas, tableros de puente, barandillas y barras en diagonal.
+   * Opciones: `color`, `uv`, `solid` (choca), `ends: false`, `under` (material de abajo).
+   * Con `mat` nulo solo deja el bloque de choque (la rampa invisible de una escalera).
+   */
+  slab(mat, ax, ay, az, bx, by, bz, w, t, o = {}) {
+    const A = this.at(ax, ay, az), B = this.at(bx, by, bz);
+    const dx = B[0] - A[0], dy = B[1] - A[1], dz = B[2] - A[2], run = Math.hypot(dx, dz) || 1e-6, len = Math.hypot(run, dy);
+    const tx = dx / run, tz = dz / run, nx = tz, nz = -tx; // n: hacia la derecha de la marcha
+    if (mat) {
+      const col = lin(o.color ?? 0xffffff), m = o.uv ?? 3, hw = w / 2;
+      const P = (E, side, low) => [E[0] + nx * side * hw, E[1] - (low ? t : 0), E[2] + nz * side * hw];
+      const up = [(-dy * tx) / len, run / len, (-dy * tz) / len];
+      this.quad(mat, P(A, 1, 0), P(A, -1, 0), P(B, -1, 0), P(B, 1, 0), up, [0, 0, w / m, len / m], col);
+      this.quad(o.under ?? mat, P(A, -1, 1), P(A, 1, 1), P(B, 1, 1), P(B, -1, 1), up.map((v) => -v), [0, 0, w / m, len / m], col);
+      this.quad(mat, P(A, 1, 1), P(A, 1, 0), P(B, 1, 0), P(B, 1, 1), [nx, 0, nz], [0, 0, t / m, len / m], col);
+      this.quad(mat, P(A, -1, 0), P(A, -1, 1), P(B, -1, 1), P(B, -1, 0), [-nx, 0, -nz], [0, 0, t / m, len / m], col);
+      if (o.ends !== false) {
+        this.quad(mat, P(A, -1, 1), P(A, -1, 0), P(A, 1, 0), P(A, 1, 1), [-tx, 0, -tz], [0, 0, w / m, t / m], col);
+        this.quad(mat, P(B, 1, 1), P(B, 1, 0), P(B, -1, 0), P(B, -1, 1), [tx, 0, tz], [0, 0, w / m, t / m], col);
+      }
+    }
+    if (o.solid) {
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.atan2(dy, run), Math.atan2(dx, dz), 0, 'YXZ'));
+      const tc = (t * run) / len; // canto medido en perpendicular a la cara
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(w / 2, tc / 2, len / 2)
+          .setTranslation((A[0] + B[0]) / 2 + ((dy * tx) / len) * (tc / 2), (A[1] + B[1]) / 2 - (run / len) * (tc / 2), (A[2] + B[2]) / 2 + ((dy * tz) / len) * (tc / 2))
+          .setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }),
+        this.body,
+      );
+      this.solids++;
     }
     return this;
   }
